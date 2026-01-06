@@ -127,25 +127,102 @@ cpet.db/
 
 ## 개발 상태
 
-현재 스켈레톤 구조가 완성되었으며, 다음 단계로 진행 예정:
+### 완료된 작업 ✅
+- [x] 프로젝트 스켈레톤 구조 생성
+- [x] Backend: FastAPI 기본 구조 및 설정
+- [x] Frontend: React + TypeScript + Vite 초기화
+- [x] Docker Compose: PostgreSQL + TimescaleDB 설정
+- [x] Database 스키마 설계 (init-db.sql)
+- [x] Git 저장소 초기화 및 GitHub 연결
+- [x] 기본 문서 작성 (README, SRS)
 
-- [ ] 데이터베이스 모델 구현
-- [ ] API 엔드포인트 구현
-- [ ] COSMED K5 파일 파서 개발
-- [ ] 대사 지표 계산 엔진 개발
-- [ ] 프론트엔드 컴포넌트 개발
-- [ ] 인증 및 권한 관리
-- [ ] 테스트 작성
+### 진행 중인 작업 🚧
+현재 Phase 1: Core Infrastructure 단계
+
+### 다음 단계
+자세한 개발 로드맵은 [TODOS.md](./TODOS.md) 참조
+
+## 데이터베이스 스키마
+
+현재 구현된 테이블:
+- `subjects`: 피험자/사용자 정보
+- `cpet_tests`: 실험 메타데이터
+- `breath_data`: 호흡 데이터 (TimescaleDB Hypertable)
+- `cohort_stats`: 코호트 통계
+- `users`: 사용자 계정 및 인증
+
+자세한 스키마는 [scripts/init-db.sql](./scripts/init-db.sql) 참조
+
+## 주요 알고리즘
+
+### 1. COSMED K5 파일 파싱
+- Excel 파일 구조 자동 감지 (BxB vs MIX)
+- 메타데이터 추출 (Row 1-10)
+- 시계열 데이터 추출 (Row 12~)
+
+### 2. 자동 구간 감지
+Bike Power 기반:
+- Rest: Power < 20W
+- Warm-up: 일정한 낮은 부하
+- Exercise: 계단식/선형 증가
+- Peak: 최대 부하
+- Recovery: 부하 급감
+
+### 3. 대사 지표 계산
+- RER = VCO2 / VO2
+- Fat Oxidation (Frayn): 1.67 × VO2 - 1.67 × VCO2
+- CHO Oxidation (Frayn): 4.55 × VCO2 - 3.21 × VO2
+- FATMAX: 지방 연소량 최대 지점
+- VO2MAX: 산소 섭취량 최대값
 
 ## 문서
 
 - [요구사항 정의서 (SRS)](./doc/srs.md)
-- API 문서: http://localhost:8000/docs (서버 실행 시)
+- [개발 TODO 리스트](./TODOS.md)
+- [API 문서](http://localhost:8000/docs) (서버 실행 시)
+
+## 기여 가이드
+
+### 개발 환경 설정
+1. 저장소 클론
+```bash
+git clone https://github.com/cyanluna-git/cpet.data.git
+cd cpet.data
+```
+
+2. Backend 설정
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+```
+
+3. Frontend 설정
+```bash
+cd frontend
+npm install
+cp .env.example .env
+```
+
+4. Database 시작
+```bash
+docker-compose up -d
+```
+
+### 커밋 메시지 규칙
+- `feat:` 새로운 기능
+- `fix:` 버그 수정
+- `docs:` 문서 변경
+- `refactor:` 코드 리팩토링
+- `test:` 테스트 추가/수정
+- `chore:` 빌드/설정 변경
 
 ## 라이선스
 
 MIT License
 
-## 기여자
+## 저장소
 
-[작성자명]
+GitHub: https://github.com/cyanluna-git/cpet.data
