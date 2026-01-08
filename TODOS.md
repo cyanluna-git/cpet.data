@@ -1,9 +1,9 @@
 # CPET Platform 개발 TODO 리스트
 
 ## 현재 상태
-**Phase**: Phase 1 - Core Infrastructure
+**Phase**: Phase 2 - Analysis Engine (시작)
 **마지막 업데이트**: 2026-01-08
-**전체 진행률**: 35%
+**전체 진행률**: 45%
 
 ---
 
@@ -41,16 +41,18 @@
 
 ---
 
-## Phase 2: Analysis Engine (예정)
+## Phase 2: Analysis Engine (진행 중)
 
-### 데이터 수집 및 처리
-- [ ] COSMED K5 Excel 파일 파서 개발
-  - [ ] Excel 파일 구조 감지 (BxB vs MIX)
-  - [ ] 메타데이터 추출 (Row 1-10)
-  - [ ] 시계열 데이터 파싱 (Row 12~)
-  - [ ] 데이터 검증 (생리학적 범위 체크)
-  - [ ] 결측치 처리
-  - [ ] 에러 핸들링
+### 데이터 수집 및 처리 ✅
+- [x] COSMED K5 Excel 파일 파서 개발
+  - [x] Excel 파일 구조 감지 (BxB vs MIX)
+  - [x] 메타데이터 추출 (피험자 정보, 테스트 정보, 환경 조건)
+  - [x] 시계열 데이터 파싱 (67-74개 컬럼 지원)
+  - [x] 데이터 검증 (생리학적 범위 체크)
+  - [x] 결측치 처리 및 경고
+  - [x] 에러 핸들링
+  - [x] 대사 지표 계산 (Frayn/Jeukendrup 공식)
+  - [x] FATMAX/VO2MAX 자동 감지
 
 ### 구간 자동 감지
 - [ ] Bike Power 기반 구간 감지 알고리즘
