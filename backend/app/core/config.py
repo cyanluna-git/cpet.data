@@ -1,11 +1,18 @@
 """Application configuration settings"""
 
-from pydantic_settings import BaseSettings
+from pydantic import computed_field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 
 
 class Settings(BaseSettings):
     """Application settings"""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore",
+    )
 
     # Application
     APP_NAME: str = "CPET Platform"
@@ -20,8 +27,14 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     ENCRYPTION_KEY: str = ""  # For encrypting PII data
 
-    # CORS
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
+    # CORS - stored as comma-separated string, accessed as list via property
+    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+
+    @computed_field
+    @property
+    def allowed_origins_list(self) -> List[str]:
+        """Parse ALLOWED_ORIGINS as a list"""
+        return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",")]
 
     # File upload
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10MB
@@ -30,10 +43,6 @@ class Settings(BaseSettings):
     # Analysis settings
     DEFAULT_SMOOTHING_WINDOW: int = 10  # seconds
     DEFAULT_CALC_METHOD: str = "Frayn"  # or "Jeukendrup"
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
 
 
 settings = Settings()
