@@ -2,8 +2,8 @@
 
 ## 현재 상태
 **Phase**: Phase 2 - Analysis Engine (시작)
-**마지막 업데이트**: 2026-01-08
-**전체 진행률**: 45%
+**마지막 업데이트**: 2026-01-09
+**전체 진행률**: 50%
 
 ---
 
@@ -27,6 +27,10 @@
   - [x] User 모델
   - [x] CohortStats 모델
 - [x] Config 설정 개선 (ALLOWED_ORIGINS 파싱)
+- [x] 개발 환경 구성 개선
+  - [x] run.py 통합 실행 스크립트 (DB, Backend, Frontend)
+  - [x] 루트 .env 파일로 환경 변수 통합
+  - [x] 포트 설정 (Frontend:3100, Backend:8100, DB:5100)
 
 ### 진행 중 🚧
 - [x] JWT 기반 인증 시스템
@@ -329,5 +333,5 @@
 
 ---
 
-**Last Updated**: 2026-01-07
+**Last Updated**: 2026-01-09
 **Next Review**: 매주 일요일

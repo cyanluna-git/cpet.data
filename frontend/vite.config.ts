@@ -1,7 +1,29 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import path from 'path'
 
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [react()],
+export default defineConfig(({ mode }) => {
+  // 루트 디렉토리의 .env 파일 로드
+  const rootDir = path.resolve(__dirname, '..')
+  const env = loadEnv(mode, rootDir, '')
+
+  const frontendPort = parseInt(env.FRONTEND_PORT || '3100')
+  const backendPort = parseInt(env.BACKEND_PORT || '8100')
+
+  return {
+    plugins: [react()],
+    server: {
+      port: frontendPort,
+      proxy: {
+        '/api': {
+          target: `http://localhost:${backendPort}`,
+          changeOrigin: true,
+        },
+      },
+    },
+    define: {
+      'import.meta.env.VITE_API_URL': JSON.stringify(env.VITE_API_URL || `http://localhost:${backendPort}`),
+    },
+  }
 })
