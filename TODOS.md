@@ -2,8 +2,8 @@
 
 ## 현재 상태
 **Phase**: Phase 1 - Core Infrastructure
-**마지막 업데이트**: 2026-01-07
-**전체 진행률**: 15%
+**마지막 업데이트**: 2026-01-08
+**전체 진행률**: 35%
 
 ---
 
@@ -19,19 +19,23 @@
 - [x] Git 저장소 초기화 및 GitHub 푸시
 - [x] 기본 문서 작성 (README.md, SRS)
 
+### 완료된 추가 작업 ✅
+- [x] 데이터베이스 모델 구현 (SQLAlchemy)
+  - [x] Subject 모델
+  - [x] CPETTest 모델
+  - [x] BreathData 모델
+  - [x] User 모델
+  - [x] CohortStats 모델
+- [x] Config 설정 개선 (ALLOWED_ORIGINS 파싱)
+
 ### 진행 중 🚧
-- [ ] 데이터베이스 모델 구현 (SQLAlchemy)
-  - [ ] Subject 모델
-  - [ ] CPETTest 모델
-  - [ ] BreathData 모델
-  - [ ] User 모델
-  - [ ] CohortStats 모델
+- [x] JWT 기반 인증 시스템
+  - [x] 로그인/회원가입 API
+  - [x] 토큰 발급 및 검증
+  - [x] 비밀번호 해싱 (bcrypt)
+  - [x] 사용자 관리 API (관리자)
 
 ### 대기 중 ⏳
-- [ ] JWT 기반 인증 시스템
-  - [ ] 로그인/로그아웃 API
-  - [ ] 토큰 발급 및 검증
-  - [ ] 비밀번호 해싱 (bcrypt)
 - [ ] Alembic 마이그레이션 설정
 - [ ] 기본 API 테스트 작성
 
