@@ -1,34 +1,58 @@
 """Application configuration settings"""
 
+from pathlib import Path
 from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List
+from typing import List, Optional
+
+# 프로젝트 루트 경로 (backend의 부모 디렉토리)
+ROOT_DIR = Path(__file__).parent.parent.parent.parent
+ENV_FILE = ROOT_DIR / ".env"
 
 
 class Settings(BaseSettings):
     """Application settings"""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ENV_FILE),
         case_sensitive=True,
         extra="ignore",
     )
+
+    # Database - 개별 변수
+    DB_HOST: str = "localhost"
+    DB_PORT: int = 5100
+    DB_USER: str = "cpet_user"
+    DB_PASSWORD: str = "cpet_password"
+    DB_NAME: str = "cpet_db"
+
+    # Database URL (직접 지정하거나 자동 생성)
+    DATABASE_URL: Optional[str] = None
+
+    @computed_field
+    @property
+    def database_url(self) -> str:
+        """DATABASE_URL 생성"""
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+        return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+
+    # Backend Server
+    BACKEND_HOST: str = "0.0.0.0"
+    BACKEND_PORT: int = 8100
 
     # Application
     APP_NAME: str = "CPET Platform"
     DEBUG: bool = False
 
-    # Database
-    DATABASE_URL: str = "postgresql+asyncpg://cpet_user:cpet_password@localhost:5432/cpet_db"
-
     # Security
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    ENCRYPTION_KEY: str = ""  # For encrypting PII data
+    ENCRYPTION_KEY: str = ""
 
-    # CORS - stored as comma-separated string, accessed as list via property
-    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+    # CORS
+    ALLOWED_ORIGINS: str = "http://localhost:3100"
 
     @computed_field
     @property
@@ -41,8 +65,11 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "./uploads"
 
     # Analysis settings
-    DEFAULT_SMOOTHING_WINDOW: int = 10  # seconds
-    DEFAULT_CALC_METHOD: str = "Frayn"  # or "Jeukendrup"
+    DEFAULT_SMOOTHING_WINDOW: int = 10
+    DEFAULT_CALC_METHOD: str = "Frayn"
+
+    # Frontend
+    FRONTEND_PORT: int = 3100
 
 
 settings = Settings()
