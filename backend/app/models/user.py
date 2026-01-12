@@ -4,8 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 import uuid
 
-from sqlalchemy import String, Boolean, ForeignKey, Index, DateTime
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Boolean, ForeignKey, Index, DateTime, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -20,7 +19,7 @@ class User(Base):
     __tablename__ = "users"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        Uuid,
         primary_key=True,
         default=uuid.uuid4,
     )
@@ -30,7 +29,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     subject_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+        Uuid,
         ForeignKey("subjects.id", ondelete="SET NULL"),
         nullable=True,
     )

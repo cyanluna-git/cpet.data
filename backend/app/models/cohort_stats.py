@@ -4,8 +4,7 @@ from datetime import datetime
 from typing import Optional
 import uuid
 
-from sqlalchemy import String, Integer, Float, UniqueConstraint, Index, DateTime
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Integer, Float, UniqueConstraint, Index, DateTime, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -17,7 +16,7 @@ class CohortStats(Base):
     __tablename__ = "cohort_stats"
 
     stat_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        Uuid,
         primary_key=True,
         default=uuid.uuid4,
     )
@@ -40,12 +39,18 @@ class CohortStats(Base):
 
     __table_args__ = (
         UniqueConstraint(
-            "gender", "age_group", "training_level", "metric_name",
-            name="uq_cohort_stats_lookup"
+            "gender",
+            "age_group",
+            "training_level",
+            "metric_name",
+            name="uq_cohort_stats_lookup",
         ),
         Index(
             "idx_cohort_stats_lookup",
-            "gender", "age_group", "training_level", "metric_name"
+            "gender",
+            "age_group",
+            "training_level",
+            "metric_name",
         ),
     )
 

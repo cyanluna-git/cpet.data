@@ -1,12 +1,21 @@
-"""BreathData model - 호흡 데이터 (TimescaleDB Hypertable)"""
+"""BreathData model - 호흡 데이터"""
 
 from datetime import datetime
 from datetime import time as time_type
 from typing import TYPE_CHECKING, Optional
 import uuid
 
-from sqlalchemy import String, Integer, Float, Boolean, ForeignKey, Index, DateTime, Time
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import (
+    String,
+    Integer,
+    Float,
+    Boolean,
+    ForeignKey,
+    Index,
+    DateTime,
+    Time,
+    Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -16,14 +25,14 @@ if TYPE_CHECKING:
 
 
 class BreathData(Base):
-    """호흡 데이터 테이블 (TimescaleDB Hypertable)"""
+    """호흡 데이터 테이블"""
 
     __tablename__ = "breath_data"
 
-    # Composite primary key for TimescaleDB
+    # Composite primary key
     time: Mapped[datetime] = mapped_column(DateTime, primary_key=True, nullable=False)
     test_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        Uuid,
         ForeignKey("cpet_tests.test_id", ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
@@ -31,13 +40,23 @@ class BreathData(Base):
 
     # Raw measurements from COSMED K5
     t_sec: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    rf: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Respiratory frequency
+    rf: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )  # Respiratory frequency
     vt: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Tidal volume
-    vo2: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Oxygen consumption
-    vco2: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # CO2 production
-    ve: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Minute ventilation
+    vo2: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )  # Oxygen consumption
+    vco2: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )  # CO2 production
+    ve: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )  # Minute ventilation
     hr: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # Heart rate
-    vo2_hr: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Oxygen pulse
+    vo2_hr: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )  # Oxygen pulse
 
     # Exercise load
     bike_power: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # Watts
@@ -55,10 +74,18 @@ class BreathData(Base):
     ve_vco2: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # Calculated metrics
-    rer: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Respiratory exchange ratio
-    fat_oxidation: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # g/min
-    cho_oxidation: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # g/min
-    pro_oxidation: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # g/min
+    rer: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )  # Respiratory exchange ratio
+    fat_oxidation: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )  # g/min
+    cho_oxidation: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )  # g/min
+    pro_oxidation: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )  # g/min
     vo2_rel: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # ml/kg/min
     mets: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
@@ -68,9 +95,13 @@ class BreathData(Base):
 
     # Quality indicators
     is_valid: Mapped[bool] = mapped_column(Boolean, default=True)
-    phase: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # Rest, Warmup, Exercise, Peak, Recovery
+    phase: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True
+    )  # Rest, Warmup, Exercise, Peak, Recovery
     raw_t_value: Mapped[Optional[time_type]] = mapped_column(Time, nullable=True)
-    data_source: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # BxB or MIX
+    data_source: Mapped[Optional[str]] = mapped_column(
+        String(10), nullable=True
+    )  # BxB or MIX
 
     # Relationships
     test: Mapped["CPETTest"] = relationship("CPETTest", back_populates="breath_data")

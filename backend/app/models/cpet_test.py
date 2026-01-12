@@ -5,8 +5,18 @@ from datetime import time as time_type
 from typing import TYPE_CHECKING, Optional
 import uuid
 
-from sqlalchemy import String, Integer, Float, Text, ForeignKey, Index, DateTime, Time
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import (
+    String,
+    Integer,
+    Float,
+    Text,
+    ForeignKey,
+    Index,
+    DateTime,
+    Time,
+    Uuid,
+    JSON,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -22,12 +32,12 @@ class CPETTest(Base):
     __tablename__ = "cpet_tests"
 
     test_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        Uuid,
         primary_key=True,
         default=uuid.uuid4,
     )
     subject_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        Uuid,
         ForeignKey("subjects.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -78,9 +88,11 @@ class CPETTest(Base):
 
     # File tracking
     source_filename: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    file_upload_timestamp: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    file_upload_timestamp: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
     parsing_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    parsing_errors: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    parsing_errors: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # Other
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
