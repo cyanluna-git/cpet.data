@@ -19,12 +19,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Database - 개별 변수
-    DB_HOST: str = "localhost"
-    DB_PORT: int = 5100
-    DB_USER: str = "cpet_user"
-    DB_PASSWORD: str = "cpet_password"
-    DB_NAME: str = "cpet_db"
+    # Database - SQLite default
+    SQLITE_DB_PATH: str = "cpet.db"
 
     # Database URL (직접 지정하거나 자동 생성)
     DATABASE_URL: Optional[str] = None
@@ -35,7 +31,7 @@ class Settings(BaseSettings):
         """DATABASE_URL 생성"""
         if self.DATABASE_URL:
             return self.DATABASE_URL
-        return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+        return f"sqlite+aiosqlite:///./{self.SQLITE_DB_PATH}"
 
     # Backend Server
     BACKEND_HOST: str = "0.0.0.0"
