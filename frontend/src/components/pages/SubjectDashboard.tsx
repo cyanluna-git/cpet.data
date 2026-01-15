@@ -25,12 +25,14 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
   async function loadData() {
     try {
       // Get all subjects and find the one associated with this user
-      const subjects = await api.getSubjects();
-      const userSubject = subjects[0]; // Simplified - in real app, match by user_id
+      const subjectsResponse = await api.getSubjects();
+      const subjectsData = Array.isArray(subjectsResponse) ? subjectsResponse : subjectsResponse.items || [];
+      const userSubject = subjectsData[0]; // Simplified - in real app, match by user_id
       
       if (userSubject) {
         setSubject(userSubject);
-        const testsData = await api.getTests();
+        const testsResponse = await api.getTests();
+        const testsData = Array.isArray(testsResponse) ? testsResponse : testsResponse.items || [];
         const userTests = testsData.filter((t: any) => t.subject_id === userSubject.id);
         setTests(userTests);
       }

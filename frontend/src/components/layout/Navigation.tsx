@@ -59,24 +59,6 @@ export function Navigation({ user, currentView, onNavigate, onLogout }: Navigati
                   <Users className="w-4 h-4" />
                   <span>피험자 관리</span>
                 </Button>
-                
-                <Button
-                  variant={currentView === 'cohort-analysis' ? 'default' : 'ghost'}
-                  onClick={() => onNavigate('cohort-analysis')}
-                  className="gap-2"
-                >
-                  <BarChart3 className="w-4 h-4" />
-                  <span>코호트 분석</span>
-                </Button>
-                
-                <Button
-                  variant={currentView === 'metabolism' ? 'default' : 'ghost'}
-                  onClick={() => onNavigate('metabolism')}
-                  className="gap-2"
-                >
-                  <Flame className="w-4 h-4" />
-                  <span>메타볼리즘</span>
-                </Button>
               </>
             )}
             
@@ -90,17 +72,27 @@ export function Navigation({ user, currentView, onNavigate, onLogout }: Navigati
                   <LineChart className="w-4 h-4" />
                   <span>내 대시보드</span>
                 </Button>
-                
-                <Button
-                  variant={currentView === 'metabolism' ? 'default' : 'ghost'}
-                  onClick={() => onNavigate('metabolism')}
-                  className="gap-2"
-                >
-                  <Flame className="w-4 h-4" />
-                  <span>메타볼리즘</span>
-                </Button>
               </>
             )}
+
+            {/* Shared buttons for all users */}
+            <Button
+              variant={currentView === 'cohort-analysis' ? 'default' : 'ghost'}
+              onClick={() => onNavigate('cohort-analysis')}
+              className="gap-2"
+            >
+              <BarChart3 className="w-4 h-4" />
+              <span>코호트 분석</span>
+            </Button>
+            
+            <Button
+              variant={currentView === 'metabolism' ? 'default' : 'ghost'}
+              onClick={() => onNavigate('metabolism')}
+              className="gap-2"
+            >
+              <Flame className="w-4 h-4" />
+              <span>메타볼리즘</span>
+            </Button>
 
             {/* User Profile Dropdown */}
             <DropdownMenu>

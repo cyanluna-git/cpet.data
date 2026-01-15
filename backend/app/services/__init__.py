@@ -8,6 +8,9 @@ from app.services.cosmed_parser import (
     TestInfo,
     EnvironmentalConditions,
 )
+from app.services.subject import SubjectService
+from app.services.test import TestService
+from app.services.cohort import CohortService
 
 __all__ = [
     "AuthService",
@@ -16,4 +19,7 @@ __all__ = [
     "SubjectInfo",
     "TestInfo",
     "EnvironmentalConditions",
+    "SubjectService",
+    "TestService",
+    "CohortService",
 ]

@@ -26,7 +26,7 @@ ENV_FILE = ROOT_DIR / ".env"
 # 프로세스 관리
 processes = []
 shutting_down = False
-use_postgres = "--postgres" in sys.argv  # PostgreSQL 사용 여부
+use_postgres = "--sqlite" not in sys.argv  # 기본값: PostgreSQL (--sqlite로 SQLite 사용 가능)
 
 # 환경 변수 (기본값)
 config = {
@@ -97,7 +97,7 @@ def check_requirements():
                 errors.append("Docker Compose가 설치되어 있지 않습니다.")
 
     # Backend venv 확인
-    venv_path = BACKEND_DIR / "venv"
+    venv_path = ROOT_DIR / ".venv"
     if not venv_path.exists():
         errors.append(f"Backend 가상환경이 없습니다. {venv_path}")
 
@@ -157,32 +157,22 @@ def start_backend():
     log(f"Backend (FastAPI) 시작 중... (포트: {port})")
 
     try:
-        # 가상환경 활성화 후 uvicorn 실행
+        # 가상환경의 python을 직접 사용
         if sys.platform == "win32":
             # Windows
-            activate_cmd = f'cd /d "{BACKEND_DIR}" && venv\\Scripts\\activate && uvicorn app.main:app --reload --host {host} --port {port}'
-            process = subprocess.Popen(
-                activate_cmd,
-                shell=True,
-                cwd=BACKEND_DIR,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-            )
+            venv_python = ROOT_DIR / ".venv" / "Scripts" / "python.exe"
         else:
             # macOS / Linux
-            activate_cmd = f"source venv/bin/activate && uvicorn app.main:app --reload --host {host} --port {port}"
-            process = subprocess.Popen(
-                activate_cmd,
-                shell=True,
-                executable="/bin/bash",
-                cwd=BACKEND_DIR,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-            )
+            venv_python = ROOT_DIR / ".venv" / "bin" / "python"
+        
+        process = subprocess.Popen(
+            [str(venv_python), "-m", "uvicorn", "app.main:app", "--reload", "--host", host, "--port", port],
+            cwd=BACKEND_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
 
         processes.append(("Backend", process))
         log(f"Backend 시작됨 - http://localhost:{port}", "SUCCESS")

@@ -1,6 +1,6 @@
 """API dependencies - FastAPI 의존성"""
 
-from typing import Annotated
+from typing import Annotated, List
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
@@ -71,7 +71,34 @@ async def get_current_admin_user(
     return current_user
 
 
+def require_roles(allowed_roles: List[str]):
+    """역할 기반 권한 검사 의존성 팩토리"""
+    async def role_checker(
+        current_user: Annotated[User, Depends(get_current_active_user)],
+    ) -> User:
+        if current_user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied. Required roles: {', '.join(allowed_roles)}",
+            )
+        return current_user
+    return role_checker
+
+
+async def get_researcher_user(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+) -> User:
+    """연구자 이상 권한 필요"""
+    if current_user.role not in ["admin", "researcher"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Researcher privileges required",
+        )
+    return current_user
+
+
 # Type aliases for dependency injection
 CurrentUser = Annotated[User, Depends(get_current_active_user)]
 AdminUser = Annotated[User, Depends(get_current_admin_user)]
+ResearcherUser = Annotated[User, Depends(get_researcher_user)]
 DBSession = Annotated[AsyncSession, Depends(get_db)]

@@ -4,12 +4,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.api import auth_router
+from app.api import (
+    auth_router,
+    subjects_router,
+    tests_router,
+    subject_tests_router,
+)
 
 app = FastAPI(
     title="CPET Database and Visualization Platform",
     description="COSMED K5 CPET data collection, analysis, and visualization platform",
     version="0.1.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
 )
 
 # CORS middleware configuration
@@ -38,11 +46,8 @@ async def health_check():
     return {"status": "healthy"}
 
 
-# Include routers
+# Include routers with /api prefix
 app.include_router(auth_router, prefix="/api")
-
-# Future routers
-# from app.api import subjects, tests, analysis
-# app.include_router(subjects.router, prefix="/api", tags=["subjects"])
-# app.include_router(tests.router, prefix="/api", tags=["tests"])
-# app.include_router(analysis.router, prefix="/api", tags=["analysis"])
+app.include_router(subjects_router, prefix="/api")
+app.include_router(tests_router, prefix="/api")
+app.include_router(subject_tests_router, prefix="/api")

@@ -25,8 +25,10 @@ export function SubjectListPage({ user, onLogout, onNavigate }: SubjectListPageP
 
   async function loadSubjects() {
     try {
-      const data = await api.getSubjects();
-      setSubjects(data);
+      const response = await api.getSubjects();
+      // Extract items from paginated response
+      const subjectsData = Array.isArray(response) ? response : response.items || [];
+      setSubjects(subjectsData);
     } catch (error) {
       console.error('Failed to load subjects:', error);
       toast.error('피험자 목록 로딩 실패');
