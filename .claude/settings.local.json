@@ -4,7 +4,9 @@
       "Bash(python3 -m venv:*)",
       "Bash(source venv/bin/activate)",
       "Bash(pip install:*)",
-      "Bash(docker-compose up:*)"
+      "Bash(docker-compose up:*)",
+      "Bash(ls:*)",
+      "Bash(tree:*)"
     ]
   }
 }

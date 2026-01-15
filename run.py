@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
 CPET Platform 실행 스크립트
-- PostgreSQL + TimescaleDB (Docker)
+- SQLite (기본) 또는 PostgreSQL + TimescaleDB (Docker, 선택적)
 - Backend (FastAPI)
 - Frontend (React + Vite)
 
 사용법: python run.py
+        python run.py --postgres  # PostgreSQL 사용
 종료: Ctrl+C
 """
 
@@ -25,6 +26,7 @@ ENV_FILE = ROOT_DIR / ".env"
 # 프로세스 관리
 processes = []
 shutting_down = False
+use_postgres = "--postgres" in sys.argv  # PostgreSQL 사용 여부
 
 # 환경 변수 (기본값)
 config = {
@@ -55,10 +57,10 @@ def load_env():
 def log(message: str, level: str = "INFO"):
     """로그 출력"""
     colors = {
-        "INFO": "\033[94m",    # Blue
-        "SUCCESS": "\033[92m", # Green
-        "WARNING": "\033[93m", # Yellow
-        "ERROR": "\033[91m",   # Red
+        "INFO": "\033[94m",  # Blue
+        "SUCCESS": "\033[92m",  # Green
+        "WARNING": "\033[93m",  # Yellow
+        "ERROR": "\033[91m",  # Red
         "RESET": "\033[0m",
     }
     color = colors.get(level, colors["INFO"])
@@ -74,20 +76,25 @@ def check_requirements():
     if not ENV_FILE.exists():
         errors.append(f".env 파일이 없습니다. {ENV_FILE}")
 
-    # Docker 확인
-    try:
-        subprocess.run(["docker", "--version"], capture_output=True, check=True)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        errors.append("Docker가 설치되어 있지 않습니다.")
-
-    # docker-compose 확인
-    try:
-        subprocess.run(["docker", "compose", "version"], capture_output=True, check=True)
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    # Docker 확인 (PostgreSQL 사용 시에만)
+    if use_postgres:
         try:
-            subprocess.run(["docker-compose", "--version"], capture_output=True, check=True)
+            subprocess.run(["docker", "--version"], capture_output=True, check=True)
         except (subprocess.CalledProcessError, FileNotFoundError):
-            errors.append("Docker Compose가 설치되어 있지 않습니다.")
+            errors.append("Docker가 설치되어 있지 않습니다.")
+
+        # docker-compose 확인
+        try:
+            subprocess.run(
+                ["docker", "compose", "version"], capture_output=True, check=True
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            try:
+                subprocess.run(
+                    ["docker-compose", "--version"], capture_output=True, check=True
+                )
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                errors.append("Docker Compose가 설치되어 있지 않습니다.")
 
     # Backend venv 확인
     venv_path = BACKEND_DIR / "venv"
@@ -97,7 +104,9 @@ def check_requirements():
     # Frontend node_modules 확인
     node_modules = FRONTEND_DIR / "node_modules"
     if not node_modules.exists():
-        errors.append(f"Frontend 의존성이 없습니다. 'cd frontend && npm install' 실행 필요")
+        errors.append(
+            f"Frontend 의존성이 없습니다. 'cd frontend && npm install' 실행 필요"
+        )
 
     if errors:
         for err in errors:
@@ -247,7 +256,10 @@ def monitor_processes():
         while True:
             for name, process in processes:
                 if process.poll() is not None:
-                    log(f"{name} 프로세스가 종료되었습니다 (코드: {process.returncode})", "ERROR")
+                    log(
+                        f"{name} 프로세스가 종료되었습니다 (코드: {process.returncode})",
+                        "ERROR",
+                    )
                     stop_all()
                     sys.exit(1)
 
@@ -277,6 +289,10 @@ def main():
     print()
     print("=" * 60)
     print("  CPET Platform 실행 스크립트")
+    if use_postgres:
+        print("  데이터베이스: PostgreSQL (Docker)")
+    else:
+        print("  데이터베이스: SQLite")
     print("  종료: Ctrl+C")
     print("=" * 60)
     print()
@@ -295,8 +311,11 @@ def main():
     print()
 
     # 서비스 시작
-    if not start_database():
-        sys.exit(1)
+    if use_postgres:
+        if not start_database():
+            sys.exit(1)
+    else:
+        log("SQLite 사용 중 - 별도 DB 서버 불필요", "INFO")
 
     if not start_backend():
         stop_all()
