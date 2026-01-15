@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
-import { MetabolismChart } from './MetabolismChart';
-import { MetabolismPatternChart } from './MetabolismPatternChart';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { sampleSubjects, generateMetabolismData, getFatMaxPoint } from '@/utils/sampleData';
 import { Navigation } from '@/components/layout/Navigation';
+
+// Lazy load chart components to reduce initial bundle size
+const MetabolismChart = lazy(() => import('./MetabolismChart').then(module => ({ default: module.MetabolismChart })));
+const MetabolismPatternChart = lazy(() => import('./MetabolismPatternChart').then(module => ({ default: module.MetabolismPatternChart })));
 
 interface User {
   id: string;
@@ -138,39 +140,48 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
           )}
           
           {/* Main Chart */}
-          {showCohortAverage ? (
-            <div className="mb-8">
-              {(() => {
-                const cohortData = calculateCohortAverage();
-                return (
-                  <MetabolismChart
-                    data={cohortData.data}
-                    fatMaxPower={cohortData.fatMaxPower}
-                    duration="평균"
-                    tss={95}
-                    title="코호트 평균 메타볼리즘"
-                    subjectName={`전체 피험자 (n=${sampleSubjects.length})`}
-                  />
-                );
-              })()}
+          <Suspense fallback={
+            <div className="mb-8 bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+              <div className="animate-pulse">
+                <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
+                <div className="h-96 bg-gray-100 rounded"></div>
+              </div>
             </div>
-          ) : selectedSubject ? (
-            <div className="mb-8">
-              {(() => {
-                const metabolismData = generateMetabolismData(selectedSubject);
-                const fatMaxPoint = getFatMaxPoint(selectedSubject);
-                return (
-                  <MetabolismChart
-                    data={metabolismData}
-                    fatMaxPower={fatMaxPoint.power}
-                    duration={fatMaxPoint.duration}
-                    tss={fatMaxPoint.tss}
-                    subjectName={`${selectedSubject.name} (${selectedSubject.research_id})`}
-                  />
-                );
-              })()}
-            </div>
-          ) : null}
+          }>
+            {showCohortAverage ? (
+              <div className="mb-8">
+                {(() => {
+                  const cohortData = calculateCohortAverage();
+                  return (
+                    <MetabolismChart
+                      data={cohortData.data}
+                      fatMaxPower={cohortData.fatMaxPower}
+                      duration="평균"
+                      tss={95}
+                      title="코호트 평균 메타볼리즘"
+                      subjectName={`전체 피험자 (n=${sampleSubjects.length})`}
+                    />
+                  );
+                })()}
+              </div>
+            ) : selectedSubject ? (
+              <div className="mb-8">
+                {(() => {
+                  const metabolismData = generateMetabolismData(selectedSubject);
+                  const fatMaxPoint = getFatMaxPoint(selectedSubject);
+                  return (
+                    <MetabolismChart
+                      data={metabolismData}
+                      fatMaxPower={fatMaxPoint.power}
+                      duration={fatMaxPoint.duration}
+                      tss={fatMaxPoint.tss}
+                      subjectName={`${selectedSubject.name} (${selectedSubject.research_id})`}
+                    />
+                  );
+                })()}
+              </div>
+            ) : null}
+          </Suspense>
           
           {/* Pattern Comparison - Only for researchers/admin */}
           {user.role !== 'subject' && (
@@ -181,10 +192,23 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                 파란색은 지방 산화, 빨간색은 탄수화물 산화를 나타냅니다.
               </p>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <MetabolismPatternChart pattern="Crossfit" />
-                <MetabolismPatternChart pattern="Hyrox" />
-              </div>
+              <Suspense fallback={
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 animate-pulse">
+                    <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
+                    <div className="h-64 bg-gray-100 rounded"></div>
+                  </div>
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 animate-pulse">
+                    <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
+                    <div className="h-64 bg-gray-100 rounded"></div>
+                  </div>
+                </div>
+              }>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <MetabolismPatternChart pattern="Crossfit" />
+                  <MetabolismPatternChart pattern="Hyrox" />
+                </div>
+              </Suspense>
               
               <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
                 <h3 className="text-lg font-semibold text-blue-900 mb-3">패턴 해석</h3>

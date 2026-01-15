@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "organization": "CPET.db Development Team",
+  "date": "January 2026",
+  "abstract": "React and Next.js performance optimization guidelines tailored for CPET.db three-tier architecture (Vercel Frontend, Cloud Run Backend, Supabase Database). Contains rules across 9 categories, prioritized by impact to guide automated refactoring and code generation.",
+  "references": [
+    "https://react.dev",
+    "https://nextjs.org",
+    "https://vercel.com",
+    "https://supabase.com",
+    "https://cloud.google.com/run"
+  ]
+}
