@@ -1,15 +1,17 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { sampleTestData, sampleSubjects } from '@/utils/sampleData';
 
-const API_BASE = '/api';
+// 환경변수에서 API URL 가져오기 (기본값: /api)
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 // axios 인스턴스 생성
 const client = axios.create({
   baseURL: API_BASE,
-  headers: { 'Content-Type': 'application/json' }
+  headers: { 'Content-Type': 'application/json' },
+  timeout: 30000,
 });
 
-// 인터셉터로 JWT 토큰 자동 추가
+// 요청 인터셉터: JWT 토큰 자동 추가
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token');
   if (token) {
@@ -18,14 +20,107 @@ client.interceptors.request.use((config) => {
   return config;
 });
 
+// 응답 인터셉터: 401 에러 시 자동 로그아웃
+client.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('demoMode');
+      // 로그인 페이지로 리다이렉트 (선택적)
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // 데모 모드 체크
 function isDemoMode() {
   return localStorage.getItem('demoMode') === 'true';
 }
 
+// 타입 정의
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface Subject {
+  id: string;
+  subject_code: string;
+  name: string;
+  birth_date?: string;
+  gender?: string;
+  height_cm?: number;
+  weight_kg?: number;
+  group?: string;
+  notes?: string;
+  test_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CPETTest {
+  id: string;
+  subject_id: string;
+  test_date: string;
+  test_type?: string;
+  protocol?: string;
+  duration_seconds?: number;
+  status: string;
+  notes?: string;
+  vo2_max?: number;
+  vo2_max_kg?: number;
+  hr_max?: number;
+  created_at: string;
+}
+
+export interface TimeSeriesData {
+  test_id: string;
+  signals: string[];
+  interval: string;
+  method: string;
+  timestamps: number[];
+  data: Record<string, number[]>;
+  total_points: number;
+}
+
+export interface TestMetrics {
+  test_id: string;
+  vo2_max?: number;
+  vo2_max_kg?: number;
+  hr_max?: number;
+  ve_max?: number;
+  rer_max?: number;
+  vt1?: { vo2: number; hr: number; time: number };
+  vt2?: { vo2: number; hr: number; time: number };
+  fat_max?: { fat_oxidation: number; hr: number; vo2: number };
+}
+
+export interface CohortSummary {
+  total_subjects: number;
+  total_tests: number;
+  filters_applied: Record<string, any>;
+  metrics: Record<string, {
+    count: number;
+    mean: number;
+    std: number;
+    min: number;
+    max: number;
+    median: number;
+  }>;
+}
+
 // API Functions
 export const api = {
+  // =====================
   // Auth
+  // =====================
   async signIn(email: string, password: string) {
     if (isDemoMode()) {
       return { user: { email }, session: { access_token: 'demo-token' } };
@@ -46,6 +141,7 @@ export const api = {
   async signOut() {
     localStorage.removeItem('access_token');
     localStorage.removeItem('demoMode');
+    localStorage.removeItem('demoRole');
   },
 
   async getSession() {
@@ -78,84 +174,344 @@ export const api = {
     return response.data;
   },
 
-  // Subjects
-  async getSubjects() {
-    if (isDemoMode()) {
-      return sampleSubjects;
-    }
-    const response = await client.get('/subjects');
+  async refreshToken() {
+    const token = localStorage.getItem('access_token');
+    if (!token) return null;
+    
+    const response = await client.post('/auth/refresh');
+    localStorage.setItem('access_token', response.data.access_token);
     return response.data;
   },
 
-  async getSubject(id: string) {
+  // =====================
+  // Subjects
+  // =====================
+  async getSubjects(params?: {
+    page?: number;
+    page_size?: number;
+    search?: string;
+    gender?: string;
+    min_age?: number;
+    max_age?: number;
+    group?: string;
+    sort_by?: string;
+    sort_order?: string;
+  }): Promise<PaginatedResponse<Subject>> {
     if (isDemoMode()) {
-      return sampleSubjects.find(s => s.id === id) || sampleSubjects[0];
+      return {
+        items: sampleSubjects as any,
+        total: sampleSubjects.length,
+        page: 1,
+        page_size: 20,
+        total_pages: 1,
+      };
+    }
+    const response = await client.get('/subjects', { params });
+    return response.data;
+  },
+
+  async getSubject(id: string): Promise<Subject & { tests: CPETTest[] }> {
+    if (isDemoMode()) {
+      const subject = sampleSubjects.find(s => s.id === id) || sampleSubjects[0];
+      return { ...subject, tests: [sampleTestData] } as any;
     }
     const response = await client.get(`/subjects/${id}`);
     return response.data;
   },
 
-  async createSubject(subjectData: any) {
+  async createSubject(data: {
+    subject_code: string;
+    name: string;
+    birth_date?: string;
+    gender?: string;
+    height_cm?: number;
+    weight_kg?: number;
+    group?: string;
+    notes?: string;
+  }): Promise<Subject> {
     if (isDemoMode()) {
-      return { success: true, subject: subjectData };
+      return { id: 'demo-new-subject', ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() } as Subject;
     }
-    const response = await client.post('/subjects', subjectData);
+    const response = await client.post('/subjects', data);
     return response.data;
   },
 
+  async updateSubject(id: string, data: Partial<Subject>): Promise<Subject> {
+    if (isDemoMode()) {
+      return { id, ...data } as Subject;
+    }
+    const response = await client.patch(`/subjects/${id}`, data);
+    return response.data;
+  },
+
+  async deleteSubject(id: string): Promise<void> {
+    if (isDemoMode()) return;
+    await client.delete(`/subjects/${id}`);
+  },
+
+  // =====================
   // Tests
-  async getTests() {
+  // =====================
+  async getTests(params?: {
+    page?: number;
+    page_size?: number;
+    subject_id?: string;
+    test_type?: string;
+  }): Promise<PaginatedResponse<CPETTest>> {
     if (isDemoMode()) {
-      return [sampleTestData];
+      return {
+        items: [sampleTestData] as any,
+        total: 1,
+        page: 1,
+        page_size: 20,
+        total_pages: 1,
+      };
     }
-    const response = await client.get('/tests');
+    const response = await client.get('/tests', { params });
     return response.data;
   },
 
-  async getTest(id: string) {
+  async getTest(id: string): Promise<CPETTest> {
     if (isDemoMode()) {
-      return sampleTestData;
+      return sampleTestData as any;
     }
     const response = await client.get(`/tests/${id}`);
     return response.data;
   },
 
+  async uploadTest(file: File, subjectId: string, notes?: string): Promise<{
+    test: CPETTest;
+    breath_data_count: number;
+    message: string;
+  }> {
+    if (isDemoMode()) {
+      return {
+        test: sampleTestData as any,
+        breath_data_count: 500,
+        message: 'Demo upload successful',
+      };
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('subject_id', subjectId);
+    if (notes) formData.append('notes', notes);
+
+    const response = await client.post('/tests/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000, // 2분 타임아웃 (대용량 파일)
+    });
+    return response.data;
+  },
+
+  async updateTest(id: string, data: Partial<CPETTest>): Promise<CPETTest> {
+    if (isDemoMode()) {
+      return { id, ...data } as CPETTest;
+    }
+    const response = await client.patch(`/tests/${id}`, data);
+    return response.data;
+  },
+
+  async deleteTest(id: string): Promise<void> {
+    if (isDemoMode()) return;
+    await client.delete(`/tests/${id}`);
+  },
+
+  // =====================
+  // Time Series & Metrics
+  // =====================
+  async getTimeSeries(testId: string, params?: {
+    signals?: string;
+    interval?: string;
+    method?: string;
+    start_time?: number;
+    end_time?: number;
+    max_points?: number;
+  }): Promise<TimeSeriesData> {
+    if (isDemoMode()) {
+      // 데모 시계열 데이터 생성
+      const signals = (params?.signals || 'VO2,VCO2,HR').split(',');
+      const points = 100;
+      const timestamps = Array.from({ length: points }, (_, i) => i * 6);
+      const data: Record<string, number[]> = {};
+      signals.forEach(signal => {
+        data[signal] = Array.from({ length: points }, () => Math.random() * 50 + 20);
+      });
+      return {
+        test_id: testId,
+        signals,
+        interval: params?.interval || '1s',
+        method: params?.method || 'mean',
+        timestamps,
+        data,
+        total_points: points,
+      };
+    }
+    const response = await client.get(`/tests/${testId}/series`, { params });
+    return response.data;
+  },
+
+  async getTestMetrics(testId: string): Promise<TestMetrics> {
+    if (isDemoMode()) {
+      return {
+        test_id: testId,
+        vo2_max: 3.85,
+        vo2_max_kg: 52.3,
+        hr_max: 185,
+        ve_max: 145.2,
+        rer_max: 1.15,
+        vt1: { vo2: 2.1, hr: 135, time: 360 },
+        vt2: { vo2: 3.2, hr: 165, time: 540 },
+        fat_max: { fat_oxidation: 0.65, hr: 128, vo2: 1.85 },
+      };
+    }
+    const response = await client.get(`/tests/${testId}/metrics`);
+    return response.data;
+  },
+
+  // =====================
+  // Subject Tests (alternative path)
+  // =====================
+  async getSubjectTests(subjectId: string, params?: {
+    page?: number;
+    page_size?: number;
+  }): Promise<PaginatedResponse<CPETTest>> {
+    if (isDemoMode()) {
+      return {
+        items: [sampleTestData] as any,
+        total: 1,
+        page: 1,
+        page_size: 20,
+        total_pages: 1,
+      };
+    }
+    const response = await client.get(`/subjects/${subjectId}/tests`, { params });
+    return response.data;
+  },
+
+  // =====================
+  // Cohort Analysis
+  // =====================
+  async getCohortSummary(params?: {
+    gender?: string;
+    min_age?: number;
+    max_age?: number;
+    group?: string;
+    test_type?: string;
+    metrics?: string;
+  }): Promise<CohortSummary> {
+    if (isDemoMode()) {
+      return {
+        total_subjects: sampleSubjects.length,
+        total_tests: 10,
+        filters_applied: params || {},
+        metrics: {
+          VO2max: { count: 10, mean: 45.2, std: 8.5, min: 32.1, max: 58.7, median: 44.5 },
+          VO2max_kg: { count: 10, mean: 52.3, std: 7.2, min: 42.0, max: 65.0, median: 51.8 },
+          HRmax: { count: 10, mean: 182, std: 12, min: 165, max: 198, median: 183 },
+        },
+      };
+    }
+    const response = await client.get('/cohorts/summary', { params });
+    return response.data;
+  },
+
+  async getCohortDistribution(params: {
+    metric: string;
+    bins?: number;
+    gender?: string;
+    min_age?: number;
+    max_age?: number;
+    group?: string;
+    test_type?: string;
+  }) {
+    if (isDemoMode()) {
+      const bins = params.bins || 10;
+      return {
+        metric: params.metric,
+        bins: Array.from({ length: bins }, (_, i) => ({
+          bin_start: 30 + i * 4,
+          bin_end: 34 + i * 4,
+          count: Math.floor(Math.random() * 10) + 1,
+        })),
+        total_count: 50,
+        filters_applied: params,
+      };
+    }
+    const response = await client.get('/cohorts/distribution', { params });
+    return response.data;
+  },
+
+  async getPercentile(params: {
+    subject_id: string;
+    test_id?: string;
+    metrics?: string;
+    compare_gender?: boolean;
+    compare_age_range?: number;
+  }) {
+    if (isDemoMode()) {
+      const metrics = (params.metrics || 'VO2max,VO2max_kg').split(',');
+      return {
+        subject_id: params.subject_id,
+        test_id: params.test_id || 'demo-test',
+        percentiles: Object.fromEntries(
+          metrics.map(m => [m, { value: 45, percentile: 72 }])
+        ),
+        comparison_group: { total: 50, gender: 'M', age_range: '20-30' },
+      };
+    }
+    const response = await client.get('/cohorts/percentile', { params });
+    return response.data;
+  },
+
+  async getGroupComparison(params: {
+    group_by: string;
+    metrics?: string;
+    test_type?: string;
+  }) {
+    if (isDemoMode()) {
+      return {
+        group_by: params.group_by,
+        groups: [
+          { group: 'M', count: 30, metrics: { VO2max: { mean: 48.5, std: 7.2 } } },
+          { group: 'F', count: 20, metrics: { VO2max: { mean: 42.1, std: 6.8 } } },
+        ],
+        filters_applied: params,
+      };
+    }
+    const response = await client.get('/cohorts/comparison', { params });
+    return response.data;
+  },
+
+  async getOverallStats() {
+    if (isDemoMode()) {
+      return {
+        total_subjects: sampleSubjects.length,
+        total_tests: 15,
+        total_breath_data_points: 75000,
+        gender_distribution: { M: 8, F: 7 },
+        age_distribution: { '20s': 5, '30s': 6, '40s': 4 },
+      };
+    }
+    const response = await client.get('/cohorts/stats');
+    return response.data;
+  },
+
+  // =====================
+  // Legacy compatibility (deprecated)
+  // =====================
+  /** @deprecated Use getCohortSummary instead */
+  async getCohortStats(filters: any) {
+    console.warn('api.getCohortStats is deprecated. Use api.getCohortSummary instead.');
+    return this.getCohortSummary(filters);
+  },
+
+  /** @deprecated Use uploadTest instead */
   async createTest(testData: any) {
+    console.warn('api.createTest is deprecated. Use api.uploadTest instead.');
     if (isDemoMode()) {
       return { success: true, test: testData };
     }
     const response = await client.post('/tests', testData);
-    return response.data;
-  },
-
-  async updateTest(id: string, updates: any) {
-    if (isDemoMode()) {
-      return { success: true, test: { id, ...updates } };
-    }
-    const response = await client.put(`/tests/${id}`, updates);
-    return response.data;
-  },
-
-  async deleteTest(id: string) {
-    if (isDemoMode()) {
-      return { success: true };
-    }
-    const response = await client.delete(`/tests/${id}`);
-    return response.data;
-  },
-
-  // Cohort Analysis
-  async getCohortStats(filters: any) {
-    if (isDemoMode()) {
-      // 데모 모드에서 샘플 통계 반환
-      return {
-        totalSubjects: sampleSubjects.length,
-        avgVO2Max: 45.2,
-        avgFatMaxHR: 128,
-        subjects: sampleSubjects,
-      };
-    }
-    const response = await client.post('/cohort/stats', { filters });
     return response.data;
   },
 };

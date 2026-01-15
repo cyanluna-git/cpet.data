@@ -24,10 +24,14 @@ export function ResearcherDashboard({ user, onLogout, onNavigate }: ResearcherDa
 
   async function loadData() {
     try {
-      const [testsData, subjectsData] = await Promise.all([
+      const [testsResponse, subjectsResponse] = await Promise.all([
         api.getTests(),
         api.getSubjects()
       ]);
+
+      // Extract items from paginated responses
+      const testsData = Array.isArray(testsResponse) ? testsResponse : testsResponse.items || [];
+      const subjectsData = Array.isArray(subjectsResponse) ? subjectsResponse : subjectsResponse.items || [];
 
       // If no data exists, create sample data
       if (testsData.length === 0) {

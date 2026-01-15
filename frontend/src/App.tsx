@@ -129,6 +129,9 @@ function SubjectDashboardWrapper() {
       case 'test-view':
         navigate(`/tests/${params?.testId}`);
         break;
+      case 'cohort-analysis':
+        navigate('/cohort');
+        break;
       case 'metabolism':
         navigate('/metabolism');
         break;
@@ -163,6 +166,12 @@ function SubjectListWrapper() {
         break;
       case 'researcher-dashboard':
         navigate('/');
+        break;
+      case 'cohort-analysis':
+        navigate('/cohort');
+        break;
+      case 'metabolism':
+        navigate('/metabolism');
         break;
       default:
         navigate('/subjects');
@@ -199,6 +208,12 @@ function SubjectDetailWrapper() {
         break;
       case 'researcher-dashboard':
         navigate('/');
+        break;
+      case 'cohort-analysis':
+        navigate('/cohort');
+        break;
+      case 'metabolism':
+        navigate('/metabolism');
         break;
       default:
         navigate(`/subjects/${id}`);
@@ -237,6 +252,12 @@ function SingleTestViewWrapper() {
       case 'researcher-dashboard':
         navigate('/');
         break;
+      case 'cohort-analysis':
+        navigate('/cohort');
+        break;
+      case 'metabolism':
+        navigate('/metabolism');
+        break;
       default:
         navigate(`/tests/${id}`);
     }
@@ -270,6 +291,9 @@ function CohortAnalysisWrapper() {
       case 'subject-list':
         navigate('/subjects');
         break;
+      case 'metabolism':
+        navigate('/metabolism');
+        break;
       default:
         navigate('/cohort');
     }
@@ -301,6 +325,9 @@ function MetabolismWrapper() {
         break;
       case 'subject-dashboard':
         navigate('/my-dashboard');
+        break;
+      case 'cohort-analysis':
+        navigate('/cohort');
         break;
       default:
         navigate('/metabolism');
@@ -364,7 +391,7 @@ export default function App() {
           } />
 
           <Route path="/cohort" element={
-            <ProtectedRoute allowedRoles={['admin', 'researcher']}>
+            <ProtectedRoute>
               <CohortAnalysisWrapper />
             </ProtectedRoute>
           } />

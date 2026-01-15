@@ -19,6 +19,7 @@ interface CohortAnalysisPageProps {
 export function CohortAnalysisPage({ user, onLogout, onNavigate }: CohortAnalysisPageProps) {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     gender: 'all',
     age_min: undefined,
@@ -32,11 +33,25 @@ export function CohortAnalysisPage({ user, onLogout, onNavigate }: CohortAnalysi
   async function loadCohortStats() {
     try {
       setLoading(true);
+      setError(null);
       const data = await api.getCohortStats(filters);
-      setStats(data);
+      setStats(data || {
+        total_subjects: 0,
+        total_tests: 0,
+        filters_applied: filters,
+        metrics: {}
+      });
     } catch (error) {
       console.error('Failed to load cohort stats:', error);
-      toast.error('코호트 통계 로�� 실패');
+      const errorMsg = error instanceof Error ? error.message : '코호트 통계 로딩 실패';
+      setError(errorMsg);
+      toast.error(errorMsg);
+      setStats({
+        total_subjects: 0,
+        total_tests: 0,
+        filters_applied: filters,
+        metrics: {}
+      });
     } finally {
       setLoading(false);
     }
@@ -56,7 +71,22 @@ export function CohortAnalysisPage({ user, onLogout, onNavigate }: CohortAnalysi
       <div className="min-h-screen bg-gray-50">
         <Navigation user={user} currentView="cohort-analysis" onNavigate={onNavigate} onLogout={onLogout} />
         <div className="flex items-center justify-center h-96">
-          <div className="w-16 h-16 border-4 border-[#2563EB] border-t-transparent rounded-full animate-spin"></div>
+          {error && <div className="text-red-500">{error}</div>}
+          {!error && <div className="w-16 h-16 border-4 border-[#2563EB] border-t-transparent rounded-full animate-spin"></div>}
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !stats) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navigation user={user} currentView="cohort-analysis" onNavigate={onNavigate} onLogout={onLogout} />
+        <div className="flex items-center justify-center h-96">
+          <div className="text-center">
+            <p className="text-red-500 mb-4">{error}</p>
+            <Button onClick={() => loadCohortStats()}>다시 시도</Button>
+          </div>
         </div>
       </div>
     );
