@@ -3,7 +3,7 @@
  * PaginatedResponse 처리를 단순화
  */
 
-import { api } from './api';
+import { api } from '@/lib/api';
 
 export interface PaginatedResponse<T> {
   items: T[];

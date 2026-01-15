@@ -4,7 +4,7 @@
  */
 
 import { useNavigate } from 'react-router-dom';
-import { View, NavigationParams } from '@/types/navigation';
+import type { View, NavigationParams } from '@/types/navigation';
 import { getNavigationPath } from '@/utils/navigationConfig';
 
 /**

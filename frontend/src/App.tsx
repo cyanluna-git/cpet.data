@@ -86,7 +86,7 @@ function ResearcherDashboardWrapper() {
   async function handleLogout() {
     await logout();
     toast.success('로그아웃 되었습니다');
-    handleNavigate('researcher-dashboard');
+    window.location.href = '/login';
   }
 
   return (
@@ -105,7 +105,7 @@ function SubjectDashboardWrapper() {
   async function handleLogout() {
     await logout();
     toast.success('로그아웃 되었습니다');
-    handleNavigate('subject-dashboard');
+    window.location.href = '/login';
   }
 
   return (
@@ -124,7 +124,7 @@ function SubjectListWrapper() {
   async function handleLogout() {
     await logout();
     toast.success('로그아웃 되었습니다');
-    handleNavigate('subject-list');
+    window.location.href = '/login';
   }
 
   return (
@@ -144,7 +144,7 @@ function SubjectDetailWrapper() {
   async function handleLogout() {
     await logout();
     toast.success('로그아웃 되었습니다');
-    handleNavigate('subject-detail', { subjectId: id });
+    window.location.href = '/login';
   }
 
   return (
@@ -165,7 +165,7 @@ function SingleTestViewWrapper() {
   async function handleLogout() {
     await logout();
     toast.success('로그아웃 되었습니다');
-    handleNavigate('test-view', { testId: id });
+    window.location.href = '/login';
   }
 
   return (
@@ -185,7 +185,7 @@ function CohortAnalysisWrapper() {
   async function handleLogout() {
     await logout();
     toast.success('로그아웃 되었습니다');
-    handleNavigate('cohort-analysis');
+    window.location.href = '/login';
   }
 
   return (
@@ -204,7 +204,7 @@ function MetabolismWrapper() {
   async function handleLogout() {
     await logout();
     toast.success('로그아웃 되었습니다');
-    handleNavigate('metabolism');
+    window.location.href = '/login';
   }
 
   return (
