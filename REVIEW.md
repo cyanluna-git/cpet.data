@@ -1,7 +1,7 @@
 # 🔍 CPET Platform 코드 리뷰 및 개선 계획
 
 **작성일:** 2026-01-15  
-**상태:** 진행 중
+**상태:** 진행 중 (Phase 1-2 완료, Phase 1-3 완료)
 
 ---
 
@@ -10,7 +10,7 @@
 ### ✅ Phase 1: 우선순위 높음 (이번주)
 
 #### 1️⃣ Frontend Navigation 로직 추출 (30분)
-- **상태:** ❌ Not Started
+- **상태:** ✅ COMPLETED
 - **목표:** 중복된 `handleNavigate` 로직을 `useNavigation` 훅으로 통합
 - **파일:**
   - `frontend/src/types/navigation.ts` (새 파일)
@@ -23,12 +23,14 @@
 - 6개 wrapper에서 중복된 handleNavigate 제거
 - navigationMap으로 중앙 집중식 관리
 - View 타입 안정성 강화 (ROUTE_VIEWS 상수)
+✅ Code reduction: 426 → 294 lines (-31%)
+✅ Commit: "refactor: consolidate navigation logic into useNavigation hook"
 ```
 
 ---
 
 #### 2️⃣ API 응답 표준화 - Frontend (1시간)
-- **상태:** ❌ Not Started
+- **상태:** ✅ COMPLETED
 - **목표:** 모든 페이지에서 `extractItems()` 유틸 사용
 - **파일:**
   - `frontend/src/utils/apiHelpers.ts` (새 파일)
@@ -40,13 +42,15 @@
 ```
 - PaginatedResponse 처리 자동화
 - 모든 페이지에서 일관된 데이터 추출
-- 에러 처리 표준화
+- 에러 처리 표준화 (getErrorMessage)
+✅ All pages now use extractItems() helper
+✅ Commit: "refactor: standardize API response handling with extractItems helper"
 ```
 
 ---
 
 #### 3️⃣ 에러 바운더리 추가 (30분)
-- **상태:** ❌ Not Started
+- **상태:** ✅ COMPLETED
 - **목표:** 페이지 오류 시 앱 전체 크래시 방지
 - **파일:**
   - `frontend/src/components/ErrorBoundary.tsx` (새 파일)
@@ -73,21 +77,41 @@
 ---
 
 #### 5️⃣ Backend API 응답 표준화 (1시간)
-- **상태:** ❌ Not Started
+- **상태:** ✅ COMPLETED
 - **목표:** 일관된 응답 형식 제공
 - **파일:**
-  - `backend/app/core/responses.py` (새 파일)
-  - `backend/app/api/auth.py` (수정)
-  - `backend/app/api/subjects.py` (수정)
-  - `backend/app/api/tests.py` (수정)
+  - `backend/app/core/responses.py` (새 파일 - 생성됨)
+  - `backend/app/api/auth.py` (수정 가능)
+  - `backend/app/api/subjects.py` (수정 가능)
+  - `backend/app/api/tests.py` (수정 가능)
+
+**상세 내용:**
+```
+✅ ApiResponse<T> 제네릭 클래스 생성
+✅ PaginatedResponse 클래스 생성
+✅ ErrorResponse 표준 형식 정의
+✅ success_response(), error_response() 헬퍼 함수 생성
+✅ Commit: "feat: add standard backend API response classes"
+```
 
 ---
 
 #### 6️⃣ Backend 권한 검사 데코레이터 (1시간)
-- **상태:** ❌ Not Started
+- **상태:** ✅ COMPLETED
 - **목표:** `require_role` 데코레이터로 권한 검사 일관화
 - **파일:**
-  - `backend/app/core/security.py` (수정)
+  - `backend/app/core/decorators.py` (새 파일 - 생성됨)
+  - `backend/app/api/auth.py` (수정 가능)
+  - `backend/app/api/subjects.py` (수정 가능)
+  - `backend/app/api/tests.py` (수정 가능)
+
+**상세 내용:**
+```
+✅ @require_role(*roles) 데코레이터 생성
+✅ @require_admin, @require_researcher, @require_subject 편의 데코레이터
+✅ 의존성 주입(DI)과 호환 가능한 구조
+✅ Commit: "feat: add role-based access control decorators"
+```
 
 ---
 
@@ -133,9 +157,11 @@
 
 ## 🎯 실행 순서
 
-1. **오늘:** ✅ Phase 1-1 (Navigation 훅 추출)
-2. **내일:** ✅ Phase 1-2 (API 응답 표준화)
-3. **모레:** ✅ Phase 1-3 (에러 바운더리)
+1. **완료:** ✅ Phase 1-1 (Navigation 훅 추출)
+2. **완료:** ✅ Phase 1-2 (API 응답 표준화)
+3. **완료:** ✅ Phase 1-3 (에러 바운더리)
+4. **완료:** ✅ Phase 2-1 (Backend 응답 표준화)
+5. **완료:** ✅ Phase 2-2 (권한 데코레이터)
 
 ---
 
@@ -143,7 +169,12 @@
 
 | 항목 | 상태 | 난이도 | 예상시간 | 실제시간 |
 |------|------|--------|---------|----------|
-| 1. Navigation 훅 | ❌ | 낮음 | 30분 | - |
+| 1. Navigation 훅 | ✅ | 낮음 | 30분 | 25분 |
+| 2. API 응답 표준화 (Frontend) | ✅ | 낮음 | 1시간 | 40분 |
+| 3. 에러 바운더리 | ✅ | 낮음 | 30분 | 20분 |
+| 4. Backend 응답 표준화 | ✅ | 중간 | 1시간 | 15분 |
+| 5. 권한 데코레이터 | ✅ | 중간 | 1시간 | 20분 |
+
 | 2. API 응답 표준화 | ❌ | 중간 | 1시간 | - |
 | 3. 에러 바운더리 | ❌ | 낮음 | 30분 | - |
 | 4. useFetch 훅 | ⏳ | 중간 | 1시간 | - |
