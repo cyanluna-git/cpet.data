@@ -3,7 +3,7 @@
  * 뷰/페이지에서 실제 라우트 경로로의 매핑
  */
 
-import { View } from '@/types/navigation';
+import type { View } from '@/types/navigation';
 
 /**
  * View 타입에서 URL 경로로의 매핑
