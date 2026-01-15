@@ -1,5 +1,6 @@
-import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AuthProvider, useAuth, type User } from '@/hooks/useAuth';
+import { useNavigation } from '@/hooks/useNavigation';
 import { toast, Toaster } from 'sonner';
 import { ReactNode } from 'react';
 
@@ -49,66 +50,42 @@ function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
 }
 
 // Wrapper components to adapt legacy props to React Router
-type View = 'login' | 'researcher-dashboard' | 'subject-dashboard' | 'test-view' | 'subject-list' | 'subject-detail' | 'cohort-analysis' | 'metabolism';
-
 function LoginPageWrapper() {
-  const navigate = useNavigate();
+  const { handleNavigate } = useNavigation();
   const { login, demoLogin } = useAuth();
 
-  async function handleLogin(email: string, password: string) {
+  async function handleLoginSubmit(email: string, password: string) {
     try {
       await login(email, password);
       toast.success('로그인 성공');
-      navigate('/');
+      handleNavigate('researcher-dashboard');
     } catch (error: any) {
       toast.error(error.message || '로그인 실패');
       throw error;
     }
   }
 
-  function handleDemoLogin(role: 'researcher' | 'subject') {
+  function handleDemoLoginSubmit(role: 'researcher' | 'subject') {
     demoLogin(role);
     toast.success('데모 모드로 접속했습니다');
     if (role === 'subject') {
-      navigate('/my-dashboard');
+      handleNavigate('subject-dashboard');
     } else {
-      navigate('/');
+      handleNavigate('researcher-dashboard');
     }
   }
 
-  return <LoginPage onLogin={handleLogin} onDemoLogin={handleDemoLogin} />;
+  return <LoginPage onLogin={handleLoginSubmit} onDemoLogin={handleDemoLoginSubmit} />;
 }
 
 function ResearcherDashboardWrapper() {
-  const navigate = useNavigate();
+  const { handleNavigate } = useNavigation();
   const { user, logout } = useAuth();
-
-  function handleNavigate(view: View, params?: { testId?: string; subjectId?: string }) {
-    switch (view) {
-      case 'test-view':
-        navigate(`/tests/${params?.testId}`);
-        break;
-      case 'subject-detail':
-        navigate(`/subjects/${params?.subjectId}`);
-        break;
-      case 'subject-list':
-        navigate('/subjects');
-        break;
-      case 'cohort-analysis':
-        navigate('/cohort');
-        break;
-      case 'metabolism':
-        navigate('/metabolism');
-        break;
-      default:
-        navigate('/');
-    }
-  }
 
   async function handleLogout() {
     await logout();
     toast.success('로그아웃 되었습니다');
-    navigate('/login');
+    handleNavigate('researcher-dashboard');
   }
 
   return (
@@ -121,29 +98,13 @@ function ResearcherDashboardWrapper() {
 }
 
 function SubjectDashboardWrapper() {
-  const navigate = useNavigate();
+  const { handleNavigate } = useNavigation();
   const { user, logout } = useAuth();
-
-  function handleNavigate(view: View, params?: { testId?: string }) {
-    switch (view) {
-      case 'test-view':
-        navigate(`/tests/${params?.testId}`);
-        break;
-      case 'cohort-analysis':
-        navigate('/cohort');
-        break;
-      case 'metabolism':
-        navigate('/metabolism');
-        break;
-      default:
-        navigate('/my-dashboard');
-    }
-  }
 
   async function handleLogout() {
     await logout();
     toast.success('로그아웃 되었습니다');
-    navigate('/login');
+    handleNavigate('subject-dashboard');
   }
 
   return (
@@ -156,32 +117,13 @@ function SubjectDashboardWrapper() {
 }
 
 function SubjectListWrapper() {
-  const navigate = useNavigate();
+  const { handleNavigate } = useNavigation();
   const { user, logout } = useAuth();
-
-  function handleNavigate(view: View, params?: { subjectId?: string }) {
-    switch (view) {
-      case 'subject-detail':
-        navigate(`/subjects/${params?.subjectId}`);
-        break;
-      case 'researcher-dashboard':
-        navigate('/');
-        break;
-      case 'cohort-analysis':
-        navigate('/cohort');
-        break;
-      case 'metabolism':
-        navigate('/metabolism');
-        break;
-      default:
-        navigate('/subjects');
-    }
-  }
 
   async function handleLogout() {
     await logout();
     toast.success('로그아웃 되었습니다');
-    navigate('/login');
+    handleNavigate('subject-list');
   }
 
   return (
@@ -195,35 +137,13 @@ function SubjectListWrapper() {
 
 function SubjectDetailWrapper() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const { handleNavigate } = useNavigation();
   const { user, logout } = useAuth();
-
-  function handleNavigate(view: View, params?: { testId?: string; subjectId?: string }) {
-    switch (view) {
-      case 'test-view':
-        navigate(`/tests/${params?.testId}`);
-        break;
-      case 'subject-list':
-        navigate('/subjects');
-        break;
-      case 'researcher-dashboard':
-        navigate('/');
-        break;
-      case 'cohort-analysis':
-        navigate('/cohort');
-        break;
-      case 'metabolism':
-        navigate('/metabolism');
-        break;
-      default:
-        navigate(`/subjects/${id}`);
-    }
-  }
 
   async function handleLogout() {
     await logout();
     toast.success('로그아웃 되었습니다');
-    navigate('/login');
+    handleNavigate('subject-detail', { subjectId: id });
   }
 
   return (
@@ -238,35 +158,13 @@ function SubjectDetailWrapper() {
 
 function SingleTestViewWrapper() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const { handleNavigate } = useNavigation();
   const { user, logout } = useAuth();
-
-  function handleNavigate(view: View, params?: { subjectId?: string }) {
-    switch (view) {
-      case 'subject-detail':
-        navigate(`/subjects/${params?.subjectId}`);
-        break;
-      case 'subject-list':
-        navigate('/subjects');
-        break;
-      case 'researcher-dashboard':
-        navigate('/');
-        break;
-      case 'cohort-analysis':
-        navigate('/cohort');
-        break;
-      case 'metabolism':
-        navigate('/metabolism');
-        break;
-      default:
-        navigate(`/tests/${id}`);
-    }
-  }
 
   async function handleLogout() {
     await logout();
     toast.success('로그아웃 되었습니다');
-    navigate('/login');
+    handleNavigate('test-view', { testId: id });
   }
 
   return (
@@ -280,29 +178,13 @@ function SingleTestViewWrapper() {
 }
 
 function CohortAnalysisWrapper() {
-  const navigate = useNavigate();
+  const { handleNavigate } = useNavigation();
   const { user, logout } = useAuth();
-
-  function handleNavigate(view: View) {
-    switch (view) {
-      case 'researcher-dashboard':
-        navigate('/');
-        break;
-      case 'subject-list':
-        navigate('/subjects');
-        break;
-      case 'metabolism':
-        navigate('/metabolism');
-        break;
-      default:
-        navigate('/cohort');
-    }
-  }
 
   async function handleLogout() {
     await logout();
     toast.success('로그아웃 되었습니다');
-    navigate('/login');
+    handleNavigate('cohort-analysis');
   }
 
   return (
@@ -315,29 +197,13 @@ function CohortAnalysisWrapper() {
 }
 
 function MetabolismWrapper() {
-  const navigate = useNavigate();
+  const { handleNavigate } = useNavigation();
   const { user, logout } = useAuth();
-
-  function handleNavigate(view: View) {
-    switch (view) {
-      case 'researcher-dashboard':
-        navigate('/');
-        break;
-      case 'subject-dashboard':
-        navigate('/my-dashboard');
-        break;
-      case 'cohort-analysis':
-        navigate('/cohort');
-        break;
-      default:
-        navigate('/metabolism');
-    }
-  }
 
   async function handleLogout() {
     await logout();
     toast.success('로그아웃 되었습니다');
-    navigate('/login');
+    handleNavigate('metabolism');
   }
 
   return (

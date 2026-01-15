@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Upload, Users, FileText, TrendingUp, Activity, Calendar } from 'lucide-react';
 import { api } from '@/lib/api';
+import { extractItems, getErrorMessage } from '@/utils/apiHelpers';
 import { sampleTestData, sampleSubjects } from '@/utils/sampleData';
 import { toast } from 'sonner';
 
@@ -30,8 +31,8 @@ export function ResearcherDashboard({ user, onLogout, onNavigate }: ResearcherDa
       ]);
 
       // Extract items from paginated responses
-      const testsData = Array.isArray(testsResponse) ? testsResponse : testsResponse.items || [];
-      const subjectsData = Array.isArray(subjectsResponse) ? subjectsResponse : subjectsResponse.items || [];
+      const testsData = extractItems(testsResponse);
+      const subjectsData = extractItems(subjectsResponse);
 
       // If no data exists, create sample data
       if (testsData.length === 0) {
@@ -42,7 +43,7 @@ export function ResearcherDashboard({ user, onLogout, onNavigate }: ResearcherDa
       }
     } catch (error) {
       console.error('Failed to load data:', error);
-      toast.error('데이터 로딩 실패');
+      toast.error(getErrorMessage(error));
     } finally {
       setLoading(false);
     }
