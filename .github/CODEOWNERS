@@ -1,0 +1,31 @@
+# CPET Platform 코드 리뷰 프로세스 및 권한 설정
+
+# 개발자 그룹
+@cyanluna-pro16 = Frontend + Backend Lead
+
+# Phase별 승인자
+* @cyanluna-pro16
+
+# Navigation & Router 변경
+/frontend/src/types/navigation.ts @cyanluna-pro16
+/frontend/src/hooks/useNavigation.ts @cyanluna-pro16
+/frontend/src/utils/navigationConfig.ts @cyanluna-pro16
+/frontend/src/App.tsx @cyanluna-pro16
+
+# API 통합 계층
+/frontend/src/lib/api.ts @cyanluna-pro16
+/frontend/src/utils/apiHelpers.ts @cyanluna-pro16
+/backend/app/core/responses.py @cyanluna-pro16
+
+# 에러 처리 및 경계
+/frontend/src/components/ErrorBoundary.tsx @cyanluna-pro16
+/frontend/src/hooks/useAsync.ts @cyanluna-pro16
+
+# 설정 파일
+/frontend/src/config/env.ts @cyanluna-pro16
+/backend/app/core/config.py @cyanluna-pro16
+
+# 문서
+/REVIEW.md @cyanluna-pro16
+/ARCHITECTURE.md @cyanluna-pro16
+/CONTRIBUTING.md @cyanluna-pro16

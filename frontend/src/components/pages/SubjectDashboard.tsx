@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Activity, TrendingUp, Heart, Flame, Calendar } from 'lucide-react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
+import { extractItems, getErrorMessage } from '@/utils/apiHelpers';
 
 interface SubjectDashboardProps {
   user: any;
@@ -26,19 +27,19 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
     try {
       // Get all subjects and find the one associated with this user
       const subjectsResponse = await api.getSubjects();
-      const subjectsData = Array.isArray(subjectsResponse) ? subjectsResponse : subjectsResponse.items || [];
+      const subjectsData = extractItems(subjectsResponse);
       const userSubject = subjectsData[0]; // Simplified - in real app, match by user_id
       
       if (userSubject) {
         setSubject(userSubject);
         const testsResponse = await api.getTests();
-        const testsData = Array.isArray(testsResponse) ? testsResponse : testsResponse.items || [];
+        const testsData = extractItems(testsResponse);
         const userTests = testsData.filter((t: any) => t.subject_id === userSubject.id);
         setTests(userTests);
       }
     } catch (error) {
       console.error('Failed to load data:', error);
-      toast.error('데이터 로딩 실패');
+      toast.error(getErrorMessage(error));
     } finally {
       setLoading(false);
     }

@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Users, Search, UserPlus } from 'lucide-react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
+import { extractItems, getErrorMessage } from '@/utils/apiHelpers';
 
 interface SubjectListPageProps {
   user: any;
@@ -26,12 +27,11 @@ export function SubjectListPage({ user, onLogout, onNavigate }: SubjectListPageP
   async function loadSubjects() {
     try {
       const response = await api.getSubjects();
-      // Extract items from paginated response
-      const subjectsData = Array.isArray(response) ? response : response.items || [];
+      const subjectsData = extractItems(response);
       setSubjects(subjectsData);
     } catch (error) {
       console.error('Failed to load subjects:', error);
-      toast.error('피험자 목록 로딩 실패');
+      toast.error(getErrorMessage(error));
     } finally {
       setLoading(false);
     }
