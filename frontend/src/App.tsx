@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AuthProvider, useAuth, type User } from '@/hooks/useAuth';
 import { useNavigation } from '@/hooks/useNavigation';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { toast, Toaster } from 'sonner';
 import { ReactNode } from 'react';
 
@@ -230,62 +231,64 @@ function RootRedirect() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Toaster position="top-right" richColors />
-        <Routes>
-          <Route path="/login" element={<LoginPageWrapper />} />
+    <ErrorBoundary>
+      <AuthProvider>
+        <BrowserRouter>
+          <Toaster position="top-right" richColors />
+          <Routes>
+            <Route path="/login" element={<LoginPageWrapper />} />
 
-          {/* Root - redirects based on role */}
-          <Route path="/" element={
-            <ProtectedRoute>
-              <RootRedirect />
-            </ProtectedRoute>
-          } />
+            {/* Root - redirects based on role */}
+            <Route path="/" element={
+              <ProtectedRoute>
+                <RootRedirect />
+              </ProtectedRoute>
+            } />
 
-          {/* Researcher routes */}
-          <Route path="/subjects" element={
-            <ProtectedRoute allowedRoles={['admin', 'researcher']}>
-              <SubjectListWrapper />
-            </ProtectedRoute>
-          } />
+            {/* Researcher routes */}
+            <Route path="/subjects" element={
+              <ProtectedRoute allowedRoles={['admin', 'researcher']}>
+                <SubjectListWrapper />
+              </ProtectedRoute>
+            } />
 
-          <Route path="/subjects/:id" element={
-            <ProtectedRoute allowedRoles={['admin', 'researcher']}>
-              <SubjectDetailWrapper />
-            </ProtectedRoute>
-          } />
+            <Route path="/subjects/:id" element={
+              <ProtectedRoute allowedRoles={['admin', 'researcher']}>
+                <SubjectDetailWrapper />
+              </ProtectedRoute>
+            } />
 
-          <Route path="/cohort" element={
-            <ProtectedRoute>
-              <CohortAnalysisWrapper />
-            </ProtectedRoute>
-          } />
+            <Route path="/cohort" element={
+              <ProtectedRoute>
+                <CohortAnalysisWrapper />
+              </ProtectedRoute>
+            } />
 
-          {/* Subject routes */}
-          <Route path="/my-dashboard" element={
-            <ProtectedRoute>
-              <SubjectDashboardWrapper />
-            </ProtectedRoute>
-          } />
+            {/* Subject routes */}
+            <Route path="/my-dashboard" element={
+              <ProtectedRoute>
+                <SubjectDashboardWrapper />
+              </ProtectedRoute>
+            } />
 
-          {/* Shared routes */}
-          <Route path="/tests/:id" element={
-            <ProtectedRoute>
-              <SingleTestViewWrapper />
-            </ProtectedRoute>
-          } />
+            {/* Shared routes */}
+            <Route path="/tests/:id" element={
+              <ProtectedRoute>
+                <SingleTestViewWrapper />
+              </ProtectedRoute>
+            } />
 
-          <Route path="/metabolism" element={
-            <ProtectedRoute>
-              <MetabolismWrapper />
-            </ProtectedRoute>
-          } />
+            <Route path="/metabolism" element={
+              <ProtectedRoute>
+                <MetabolismWrapper />
+              </ProtectedRoute>
+            } />
 
-          {/* Catch all */}
-          <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+            {/* Catch all */}
+            <Route path="*" element={<Navigate to="/" />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
