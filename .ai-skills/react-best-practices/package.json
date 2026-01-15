@@ -1,0 +1,20 @@
+{
+  "name": "cpet-db-react-best-practices",
+  "version": "1.0.0",
+  "description": "React best practices for CPET.db with Vercel, Cloud Run, and Supabase",
+  "type": "module",
+  "scripts": {
+    "info": "echo 'Rules are ready to use in the rules/ directory'"
+  },
+  "keywords": [
+    "react",
+    "next.js",
+    "performance",
+    "vercel",
+    "cloud-run",
+    "supabase"
+  ],
+  "author": "CPET.db Team",
+  "license": "MIT",
+  "devDependencies": {}
+}
