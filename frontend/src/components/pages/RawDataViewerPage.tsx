@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { Navigation } from '@/components/layout/Navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Table, Database, Download, ChevronLeft, ChevronRight, Settings2, Check } from 'lucide-react';
+import { Database, Download, ChevronLeft, ChevronRight, Settings2, Check, User, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { getErrorMessage, getAuthToken } from '@/utils/apiHelpers';
 
@@ -16,7 +16,14 @@ interface TestOption {
   test_id: string;
   source_filename: string;
   test_date: string;
+  subject_id: string;
   subject_name?: string;
+}
+
+interface SubjectOption {
+  id: string;
+  name: string;
+  research_id: string;
 }
 
 interface BreathDataRow {
@@ -120,11 +127,16 @@ const DEFAULT_SELECTED_COLUMNS = ['hr', 'vo2', 'vco2', 've', 'rer', 'fat_oxidati
 const PAGE_SIZE = 50;
 
 export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerPageProps) {
+  // 피험자 및 테스트 상태
+  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
   const [tests, setTests] = useState<TestOption[]>([]);
+  const [filteredTests, setFilteredTests] = useState<TestOption[]>([]);
   const [selectedTestId, setSelectedTestId] = useState<string>('');
   const [rawData, setRawData] = useState<RawDataResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [loadingTests, setLoadingTests] = useState(true);
+  const [loadingSubjects, setLoadingSubjects] = useState(true);
+  const [loadingTests, setLoadingTests] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   
   // 컬럼 선택 상태
@@ -170,12 +182,40 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     ...SELECTABLE_COLUMNS.filter(c => selectedColumns.includes(c.key))
   ];
 
-  // 테스트 목록 로드
+  // 피험자 목록 로드
   useEffect(() => {
-    loadTests();
+    loadSubjects();
   }, []);
 
-  async function loadTests() {
+  async function loadSubjects() {
+    try {
+      setLoadingSubjects(true);
+      const token = getAuthToken();
+      const response = await fetch('/api/subjects?page_size=100', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error('Failed to load subjects');
+      const data = await response.json();
+      
+      const options: SubjectOption[] = data.items.map((s: any) => ({
+        id: s.id,
+        name: s.encrypted_name || s.name || s.research_id,
+        research_id: s.research_id,
+      }));
+      console.log('Loaded subjects:', options.length, 'Sample:', options[0]);
+      setSubjects(options);
+      
+      // 테스트 목록도 같이 로드
+      await loadAllTests();
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setLoadingSubjects(false);
+    }
+  }
+
+  // 전체 테스트 목록 로드
+  async function loadAllTests() {
     try {
       setLoadingTests(true);
       const token = getAuthToken();
@@ -185,23 +225,40 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       if (!response.ok) throw new Error('Failed to load tests');
       const data = await response.json();
       
+      console.log('Loaded tests:', data.items?.length, 'Sample:', data.items?.[0]);
+      
       const options: TestOption[] = data.items.map((t: any) => ({
         test_id: t.test_id,
         source_filename: t.source_filename || 'Unknown',
         test_date: t.test_date,
+        subject_id: t.subject_id,
         subject_name: t.subject_name,
       }));
       setTests(options);
-      
-      if (options.length > 0) {
-        setSelectedTestId(options[0].test_id);
-      }
     } catch (error) {
       toast.error(getErrorMessage(error));
     } finally {
       setLoadingTests(false);
     }
   }
+
+  // 피험자 선택 시 해당 피험자의 테스트만 필터
+  useEffect(() => {
+    if (selectedSubjectId) {
+      // UUID 문자열 비교 (대소문자 무시)
+      const filtered = tests.filter(t => 
+        String(t.subject_id).toLowerCase() === String(selectedSubjectId).toLowerCase()
+      );
+      console.log('Filtering tests for subject:', selectedSubjectId, 'Found:', filtered.length, 'of', tests.length);
+      setFilteredTests(filtered);
+      setSelectedTestId('');
+      setRawData(null);
+    } else {
+      setFilteredTests([]);
+      setSelectedTestId('');
+      setRawData(null);
+    }
+  }, [selectedSubjectId, tests]);
 
   // 선택한 테스트의 raw data 로드
   async function loadRawData() {
@@ -267,65 +324,80 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     <div className="min-h-screen bg-gray-50">
       <Navigation user={user} currentView="raw-data" onNavigate={onNavigate} onLogout={onLogout} />
 
-      <div className="max-w-full mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Database className="w-6 h-6 text-[#2563EB]" />
-              <h1 className="text-3xl font-bold text-gray-900">Raw Data Viewer</h1>
+      <div className="max-w-full mx-auto px-6 pt-6">
+        {/* 필터 영역 - 피험자 & 테스트 날짜 선택 */}
+        <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4 shadow-sm">
+          <div className="flex gap-4 items-center flex-wrap">
+            {/* 피험자 선택 */}
+            <div className="flex items-center gap-2">
+              <User className="w-4 h-4 text-gray-500" />
+              <label className="text-sm font-medium text-gray-700">피험자</label>
+              <select
+                className="px-3 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2563EB] text-sm min-w-[200px]"
+                value={selectedSubjectId}
+                onChange={(e) => setSelectedSubjectId(e.target.value)}
+                disabled={loadingSubjects}
+              >
+                <option value="">피험자 선택...</option>
+                {loadingSubjects ? (
+                  <option disabled>로딩중...</option>
+                ) : subjects.length === 0 ? (
+                  <option disabled>등록된 피험자 없음</option>
+                ) : (
+                  subjects.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.research_id})
+                    </option>
+                  ))
+                )}
+              </select>
             </div>
-            <p className="text-gray-600">테스트별 호흡 데이터 (breath_data) 원본 조회</p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onNavigate('admin-data')}>
-              DB 관리
+
+            {/* 테스트 날짜 선택 */}
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-gray-500" />
+              <label className="text-sm font-medium text-gray-700">테스트</label>
+              <select
+                className="px-3 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2563EB] text-sm min-w-[300px] disabled:bg-gray-100"
+                value={selectedTestId}
+                onChange={(e) => setSelectedTestId(e.target.value)}
+                disabled={!selectedSubjectId || loadingTests}
+              >
+                {!selectedSubjectId ? (
+                  <option value="">피험자를 먼저 선택하세요</option>
+                ) : filteredTests.length === 0 ? (
+                  <option value="">테스트 없음</option>
+                ) : (
+                  <>
+                    <option value="">테스트 선택...</option>
+                    {filteredTests.map((t) => (
+                      <option key={t.test_id} value={t.test_id}>
+                        {new Date(t.test_date).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })} - {t.source_filename}
+                      </option>
+                    ))}
+                  </>
+                )}
+              </select>
+            </div>
+
+            {/* CSV 다운로드 */}
+            <Button variant="outline" size="sm" onClick={downloadCSV} disabled={!rawData} className="ml-auto">
+              <Download className="w-4 h-4 mr-1" />
+              CSV
             </Button>
           </div>
-        </div>
-
-        {/* 테스트 선택 */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Table className="w-5 h-5" />
-              테스트 선택
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-4 items-end">
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  테스트
-                </label>
-                <select
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
-                  value={selectedTestId}
-                  onChange={(e) => setSelectedTestId(e.target.value)}
-                  disabled={loadingTests}
-                >
-                  {loadingTests ? (
-                    <option>로딩중...</option>
-                  ) : tests.length === 0 ? (
-                    <option>테스트 없음</option>
-                  ) : (
-                    tests.map((t) => (
-                      <option key={t.test_id} value={t.test_id}>
-                        {t.source_filename} ({new Date(t.test_date).toLocaleDateString()})
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-              <Button onClick={loadRawData} disabled={loading || !selectedTestId}>
-                {loading ? '로딩중...' : '조회'}
-              </Button>
-              <Button variant="outline" onClick={downloadCSV} disabled={!rawData}>
-                <Download className="w-4 h-4 mr-2" />
-                CSV
-              </Button>
+          
+          {/* 선택된 정보 표시 */}
+          {rawData && (
+            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-4 text-sm text-gray-600">
+              <span className="font-medium text-gray-900">{rawData.source_filename}</span>
+              <span>피험자: {rawData.subject_name || 'Unknown'}</span>
+              <span>날짜: {new Date(rawData.test_date).toLocaleDateString()}</span>
+              <span>총 {rawData.total_rows.toLocaleString()}행</span>
+              <span>표시 컬럼: {displayColumns.length}개</span>
             </div>
-          </CardContent>
-        </Card>
+          )}
+        </div>
 
         {/* 데이터 테이블 */}
         {loading ? (
@@ -334,17 +406,12 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
           </div>
         ) : rawData ? (
           <Card>
-            <CardHeader>
+            <CardHeader className="py-3">
               <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>{rawData.source_filename}</CardTitle>
-                  <p className="text-sm text-gray-500 mt-1">
-                    피험자: {rawData.subject_name || 'Unknown'} | 
-                    날짜: {new Date(rawData.test_date).toLocaleDateString()} |
-                    총 {rawData.total_rows}행 | 
-                    표시 컬럼: {displayColumns.length}개
-                  </p>
-                </div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Database className="w-4 h-4" />
+                  Breath Data
+                </CardTitle>
                 <div className="flex items-center gap-2">
                   {/* 컬럼 선택기 */}
                   <div className="relative" ref={columnSelectorRef}>
@@ -515,8 +582,10 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
             </CardContent>
           </Card>
         ) : (
-          <Card className="p-12 text-center text-gray-500">
-            테스트를 선택하고 조회 버튼을 클릭하세요
+          <Card className="p-12 text-center text-gray-400">
+            <Database className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p className="text-lg font-medium text-gray-500">피험자와 테스트를 선택하세요</p>
+            <p className="text-sm mt-1">상단 필터에서 피험자를 먼저 선택한 후, 테스트 날짜를 선택하면 데이터가 표시됩니다.</p>
           </Card>
         )}
       </div>
