@@ -232,7 +232,7 @@ INSERT INTO users (email, password_hash, role, is_active)
 VALUES ('admin@cpet.db', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYqQnLhF0uG', 'admin', true)
 ON CONFLICT (email) DO NOTHING;
 
--- Insert requested admin account: gerald.park / alskqp10
+-- Insert requested admin account: gerald.park@cpet.com / alskqp10
 INSERT INTO users (email, password_hash, role, is_active)
-VALUES ('gerald.park', '$2b$12$EkA2Eo4yVYE3klaIH3KBl.pF0G8HP4b7sN7RcxVNCuLMxmnyr43kW', 'admin', true)
+VALUES ('gerald.park@cpet.com', '$2b$12$EkA2Eo4yVYE3klaIH3KBl.pF0G8HP4b7sN7RcxVNCuLMxmnyr43kW', 'admin', true)
 ON CONFLICT (email) DO NOTHING;
