@@ -1,13 +1,315 @@
 {
-  "success": [],
-  "failed": [
+  "success": [
     {
-      "file": "Cho Kwangho 20240718 CPET MIX_20240718094328.xlsx",
-      "error": {
-        "status": 500,
-        "detail": "Internal Server Error"
-      }
+      "file": "KIM DOYOON 20221229 CPET BxB_20221229083858.xlsx",
+      "test_id": "fe5f1bc4-a3a0-4576-be52-e0375601bf8f",
+      "subject": "DOYOON KIM",
+      "date": "2022-12-29"
+    },
+    {
+      "file": "Park Geunyun 20240821 CPET MIX_20240821104510.xlsx",
+      "test_id": "09276f3e-efc8-460f-9542-9e635a41cf25",
+      "subject": "Geunyun Park",
+      "date": "2024-08-21"
+    },
+    {
+      "file": "Park Geunyun 20241105 CPET BxB_20241106161647.xlsx",
+      "test_id": "865c73d9-5735-41f2-96b9-ffc383f30f5c",
+      "subject": "Geunyun Park",
+      "date": "2024-11-05"
+    },
+    {
+      "file": "Park Junghooon 20240821 CPET MIX_20240821105945.xlsx",
+      "test_id": "6ffc386f-ec5a-4265-9471-13b6b2dbf3c0",
+      "subject": "Junghooon Park",
+      "date": "2024-08-21"
+    },
+    {
+      "file": "Park Yongdoo 20221020 CPET BxB_20240418141557.xlsx",
+      "test_id": "6f9ef144-9ff3-420e-b457-769408e4c35f",
+      "subject": "Yongdoo Park",
+      "date": "2022-10-20"
+    },
+    {
+      "file": "Park Yongdoo 20241002 CPET MIX_20241002143141.xlsx",
+      "test_id": "7bac5cbb-3d63-4cff-b527-155a75c9f895",
+      "subject": "Yongdoo Park",
+      "date": "2024-10-02"
+    },
+    {
+      "file": "Park Yongdoo 20241010 CPET BxB_20241010091040.xlsx",
+      "test_id": "1c18c845-9ed9-4c51-a7b6-bf0fa9255e70",
+      "subject": "Yongdoo Park",
+      "date": "2024-10-10"
+    },
+    {
+      "file": "Park Yongdoo 20241014 CPET BxB_20241014132140.xlsx",
+      "test_id": "fec1f18b-c377-4e88-a66b-65aa400d4ebf",
+      "subject": "Yongdoo Park",
+      "date": "2024-10-14"
+    },
+    {
+      "file": "Park Yongdoo 20241125 CPET BxB_20241126141425.xlsx",
+      "test_id": "e9fe9120-60e2-4442-b491-8ff7fc6c9e1f",
+      "subject": "Yongdoo Park",
+      "date": "2024-11-25"
+    },
+    {
+      "file": "Park Yongdoo 20241128 CPET BxB_20241129092115.xlsx",
+      "test_id": "bbcbe044-2b4a-44e9-8821-0997cfd16eb7",
+      "subject": "Yongdoo Park",
+      "date": "2024-11-28"
+    },
+    {
+      "file": "Park Yongdoo 20241217 CPET BxB_20241218131400.xlsx",
+      "test_id": "5e83abfb-4a57-43f3-b214-1dd7d3f4d8bd",
+      "subject": "Yongdoo Park",
+      "date": "2024-12-17"
+    },
+    {
+      "file": "SEOK WOOCHAN 20221229 CPET BxB_20221229102008.xlsx",
+      "test_id": "bbda60cf-569a-449e-bd42-d691cc767b32",
+      "subject": "WOOCHAN SEOK",
+      "date": "2022-12-29"
     }
   ],
-  "skipped": []
+  "failed": [],
+  "skipped": [
+    {
+      "file": "Cho Kwangho 20240718 CPET MIX_20240718094328.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Chung Sunghoon 20240725 CPET MIX_20240725175439.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Chung Sunghoon 20240808 CPET MIX_20240808091637.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "HONG Changsun 20240417 CPET MIX_20240417140235.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "HONG Changsun 20240417 CPET MIX_20240417140258.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "HONG Changsun 20240620 CPET MIX_20240620123511.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Hong Changsun 20240718 CPET MIX_20240718125243.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Hong Changsun 20241002 CPET MIX_20241002143229.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Hong Changsun 20241212 CPET BxB_20241216123937.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Hong Changsun 20241212 CPET BxB_20241216123950.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Joo Sungjun 20240315 CPET MIX_20240318093916.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Joo Sungjun 20241210 CPET BxB_20241210110702.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Joo Sungjun 20241210 CPET BxB_20241210115339.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "KIM DONGWOOK 20221228 CPET BxB_20221228094021.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "KIM DONGWOOK 20240315 CPET MIX_20240315134921.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "KIM DONGWOOK 20240506 CPET MIX_20240507092110.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "KIM DONGWOOK 20240506 CPET MIX_20240507092126.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Kim Daesoon 20240628 CPET MIX_20240628153357.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Kim Daesoon 20240808 CPET MIX_20240808110654.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Kim Daesoon 20241212 CPET BxB_20241216124200.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Kim Dongwook 20240627 CPET MIX_20240627114616.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Geunyun 20240315 CPET MIX_20240318094004.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Geunyun 20240628 CPET MIX_20240628153332.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20240314 CPET MIX_20240418131336.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20240314 CPET MIX_20240424130524.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20240424 CPET MIX_20240424123041.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20240426 CPET MIX_20240426133023.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20240508 CPET MIX_20240508120600.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20240524 CPET MIX_20240524114321.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20240627 CPET MIX_20240627081630.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20240705 CPET MIX_20240705122246.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20240711 CPET MIX_20240711113918.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20240805 CPET MIX_20240805111700.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20240820 CPET MIX_20240820113701.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20240823 CPET MIX_20240823115154.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20241009 CPET BxB_20241009122858.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20241021 CPET BxB_20241022141101.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20241117 CPET BxB_20241118120858.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20241118 CPET BxB_20241119094509.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20241119 CPET BxB_20241120094150.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20241120 CPET BxB_20241121102119.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20241121 CPET BxB_20241122100500.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20241124 CPET BxB_20241125124025.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20241125 CPET BxB_20241126120651.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20241125 CPET BxB_20241126141407.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20241127 CPET BxB_20241128105300.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20241130 CPET BxB_20241201092443.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20241201 CPET BxB_20241202122328.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20241204 CPET BxB_20241205110240.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20241217 CPET BxB_20241218113618.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20250112 CPET MIX_20250113102929.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20250225 CPET BxB_20250225113036.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Park Yongdoo 20250503 CPET MIX_20250503080056.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Seok Woochan 20240718 CPET MIX_20240718105952.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Seok Woochan 20240718 CPET MIX_20240718124828.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Seok Woochan 20250111 CPET MIX_20250111080546.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Shin Haesung 20240417 CPET MIX_20240417140416.xlsx",
+      "reason": "Already uploaded"
+    },
+    {
+      "file": "Shin Haesung20240403 CPET MIX_20240403123342.xlsx",
+      "reason": "Subject not found in DB: Inwoo Son"
+    },
+    {
+      "file": "Son Kyoungkyu 20250111 CPET MIX_20250111100351.xlsx",
+      "reason": "Already uploaded"
+    }
+  ]
 }
