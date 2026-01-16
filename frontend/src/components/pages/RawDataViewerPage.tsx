@@ -471,21 +471,37 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         throw new Error(err.detail || 'Failed to load processed data');
       }
       const data = await response.json();
+      console.log('📊 Analysis API Response:', data);
       setAnalysisData(data);
       
       // processed_series를 차트 데이터로 변환
       if (data.processed_series?.smoothed) {
+        console.log('✨ Processed Series Smoothed:', data.processed_series.smoothed.length, 'points');
         const chartDataPoints = data.processed_series.smoothed.map((point: any) => ({
+          bike_power: point.power || 0,  // 차트 X축용으로 bike_power로 매핑
           power: point.power || 0,
           fat_oxidation: point.fat_oxidation,
           cho_oxidation: point.cho_oxidation,
-          rer: point.rer,
+          rer: point.rer || null,
           // 추가 계산된 값
           total_oxidation: (point.fat_oxidation || 0) + (point.cho_oxidation || 0),
         }));
+        console.log('📈 Chart Data Points:', chartDataPoints.length, 'Sample:', chartDataPoints[0]);
         setProcessedData({ data: chartDataPoints });
+        
+        // 차트 설정 자동 전환: X축을 bike_power로, Y축을 metabolism 관련으로
+        setChartXAxis('bike_power');
+        if (chartYAxisLeft.length === 0 && chartYAxisRight.length === 0) {
+          setChartYAxisLeft(['fat_oxidation', 'cho_oxidation']);
+          setChartYAxisRight(['rer']);
+        }
+        setShowChart(true);
+      } else {
+        console.warn('⚠️ No processed_series.smoothed in response');
+        toast.warning('전처리 데이터가 없습니다. Raw 데이터를 확인하세요.');
       }
     } catch (error) {
+      console.error('❌ Load Processed Data Error:', error);
       toast.error(getErrorMessage(error));
       setProcessedData(null);
       setAnalysisData(null);
