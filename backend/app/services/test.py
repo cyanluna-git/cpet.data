@@ -166,9 +166,19 @@ class TestService:
                 smoothing_window=smoothing_window,
             )
 
+            # 구간 감지 (Phase Detection)
+            df_with_phases = parser.detect_phases(df_with_metrics)
+
+            # 구간 경계 및 메트릭 계산
+            phase_boundaries = parser.get_phase_boundaries(df_with_phases)
+            phase_metrics = parser.calculate_phase_metrics(df_with_phases)
+
             # VO2MAX, FATMAX 찾기
-            vo2max_metrics = parser.find_vo2max(df_with_metrics)
-            fatmax_metrics = parser.find_fatmax(df_with_metrics)
+            vo2max_metrics = parser.find_vo2max(df_with_phases)
+            fatmax_metrics = parser.find_fatmax(df_with_phases)
+
+            # VT1/VT2 역치 감지
+            vt_thresholds = parser.detect_ventilatory_thresholds(df_with_phases, method='v_slope')
 
             # CPETTest 생성
             test = CPETTest(
@@ -195,19 +205,29 @@ class TestService:
                 fat_max_hr=fatmax_metrics.get("fat_max_hr"),
                 fat_max_watt=fatmax_metrics.get("fat_max_watt"),
                 fat_max_g_min=fatmax_metrics.get("fat_max_g_min"),
+                # VT 역치 추가
+                vt1_hr=vt_thresholds.get("vt1_hr"),
+                vt1_vo2=vt_thresholds.get("vt1_vo2"),
+                vt2_hr=vt_thresholds.get("vt2_hr"),
+                vt2_vo2=vt_thresholds.get("vt2_vo2"),
+                # 구간 경계 시간 추가
+                warmup_end_sec=phase_boundaries.get("warmup_end_sec"),
+                test_end_sec=phase_boundaries.get("exercise_end_sec"),
                 calc_method=calc_method,
                 smoothing_window=smoothing_window,
                 source_filename=filename,
                 file_upload_timestamp=datetime.utcnow(),
                 parsing_status="success" if not parsed_data.parsing_errors else "warning",
                 parsing_errors={"errors": parsed_data.parsing_errors} if parsed_data.parsing_errors else None,
+                # 구간별 메트릭 저장 (JSON)
+                phase_metrics=phase_metrics if phase_metrics else None,
             )
             self.db.add(test)
             await self.db.flush()
 
-            # BreathData 생성
+            # BreathData 생성 (phase 정보 포함)
             base_time = test.test_date
-            for idx, row in df_with_metrics.iterrows():
+            for idx, row in df_with_phases.iterrows():
                 t_sec = row.get("t_sec", idx)
                 if t_sec is None or (isinstance(t_sec, float) and t_sec != t_sec):  # NaN check
                     t_sec = float(idx)
@@ -238,7 +258,7 @@ class TestService:
                     vo2_rel=row.get("vo2_rel"),
                     mets=row.get("mets"),
                     ee_total=row.get("ee_total_calc"),
-                    phase=row.get("phase"),
+                    phase=row.get("phase"),  # 자동 감지된 구간
                     data_source=parsed_data.protocol_type,
                     is_valid=True,
                 )
@@ -450,3 +470,292 @@ class TestService:
             data.append(row)
 
         return data
+    async def get_analysis(
+        self,
+        test_id: UUID,
+        interval: str = "5s",
+    ) -> Dict[str, Any]:
+        """
+        테스트 분석 결과 조회 (대사 프로파일 차트용)
+
+        Returns:
+            - phase_boundaries: 구간 경계
+            - phase_metrics: 구간별 메트릭
+            - fatmax: FATMAX 정보
+            - vo2max: VO2MAX 정보
+            - timeseries: 다운샘플된 시계열 데이터
+            - 통계 요약
+        """
+        test = await self.get_by_id(test_id)
+        if not test:
+            return {}
+
+        # 모든 호흡 데이터 조회
+        query = select(BreathData).where(
+            BreathData.test_id == test_id
+        ).order_by(BreathData.t_sec)
+
+        result = await self.db.execute(query)
+        breath_data = list(result.scalars().all())
+
+        if not breath_data:
+            return {
+                "test_id": test_id,
+                "subject_id": test.subject_id,
+                "test_date": test.test_date,
+                "error": "No breath data found",
+            }
+
+        # 구간 경계 계산
+        phase_boundaries = self._calculate_phase_boundaries(breath_data)
+
+        # 구간별 메트릭 계산
+        phase_metrics = self._calculate_phase_metrics(breath_data)
+
+        # FATMAX 정보
+        fatmax_info = self._find_fatmax_info(breath_data, test)
+
+        # VO2MAX 정보
+        vo2max_info = self._find_vo2max_info(breath_data, test)
+
+        # 시계열 다운샘플링 (차트용)
+        interval_sec = int(interval.rstrip("s"))
+        timeseries = self._downsample_for_chart(breath_data, interval_sec)
+
+        # 총 연소량 계산
+        total_fat_g = sum(
+            bd.fat_oxidation for bd in breath_data
+            if bd.fat_oxidation is not None
+        ) / 60  # g/min → g (assuming 1 data point per second)
+
+        total_cho_g = sum(
+            bd.cho_oxidation for bd in breath_data
+            if bd.cho_oxidation is not None
+        ) / 60
+
+        # 평균 RER (Exercise 구간만)
+        exercise_rers = [
+            bd.rer for bd in breath_data
+            if bd.rer is not None and bd.phase == "Exercise"
+        ]
+        avg_rer = sum(exercise_rers) / len(exercise_rers) if exercise_rers else None
+
+        # 운동 시간
+        exercise_duration = None
+        if phase_boundaries.get("phases"):
+            for p in phase_boundaries["phases"]:
+                if p["phase"] == "Exercise":
+                    exercise_duration = p["end_sec"] - p["start_sec"]
+                    break
+
+        return {
+            "test_id": test_id,
+            "subject_id": test.subject_id,
+            "test_date": test.test_date,
+            "protocol_type": test.protocol_type,
+            "calc_method": test.calc_method,
+            "phase_boundaries": phase_boundaries,
+            "phase_metrics": phase_metrics,
+            "fatmax": fatmax_info,
+            "vo2max": vo2max_info,
+            "vt1_hr": test.vt1_hr,
+            "vt1_vo2": test.vt1_vo2,
+            "vt2_hr": test.vt2_hr,
+            "vt2_vo2": test.vt2_vo2,
+            "timeseries": timeseries,
+            "timeseries_interval": interval,
+            "total_fat_burned_g": round(total_fat_g, 2) if total_fat_g else None,
+            "total_cho_burned_g": round(total_cho_g, 2) if total_cho_g else None,
+            "avg_rer": round(avg_rer, 3) if avg_rer else None,
+            "exercise_duration_sec": exercise_duration,
+        }
+
+    def _calculate_phase_boundaries(self, breath_data: List[BreathData]) -> Dict[str, Any]:
+        """구간 경계 계산"""
+        boundaries = {
+            "rest_end_sec": None,
+            "warmup_end_sec": None,
+            "exercise_end_sec": None,
+            "peak_sec": None,
+            "total_duration_sec": breath_data[-1].t_sec if breath_data else 0,
+            "phases": []
+        }
+
+        current_phase = None
+        phase_start = None
+
+        for bd in breath_data:
+            if bd.phase != current_phase:
+                # 이전 구간 종료
+                if current_phase is not None and phase_start is not None:
+                    boundaries["phases"].append({
+                        "phase": current_phase,
+                        "start_sec": phase_start,
+                        "end_sec": bd.t_sec or 0
+                    })
+
+                    if current_phase == "Rest":
+                        boundaries["rest_end_sec"] = bd.t_sec
+                    elif current_phase == "Warm-up":
+                        boundaries["warmup_end_sec"] = bd.t_sec
+                    elif current_phase == "Exercise":
+                        boundaries["exercise_end_sec"] = bd.t_sec
+
+                current_phase = bd.phase
+                phase_start = bd.t_sec
+
+                if bd.phase == "Peak":
+                    boundaries["peak_sec"] = bd.t_sec
+
+        # 마지막 구간
+        if current_phase is not None and phase_start is not None:
+            boundaries["phases"].append({
+                "phase": current_phase,
+                "start_sec": phase_start,
+                "end_sec": breath_data[-1].t_sec if breath_data else 0
+            })
+
+        return boundaries
+
+    def _calculate_phase_metrics(self, breath_data: List[BreathData]) -> Dict[str, Dict]:
+        """구간별 메트릭 계산"""
+        phases_data = {}
+        for bd in breath_data:
+            phase = bd.phase or "Unknown"
+            if phase not in phases_data:
+                phases_data[phase] = []
+            phases_data[phase].append(bd)
+
+        metrics = {}
+        for phase, data in phases_data.items():
+            hrs = [bd.hr for bd in data if bd.hr]
+            vo2s = [bd.vo2 for bd in data if bd.vo2]
+            rers = [bd.rer for bd in data if bd.rer]
+            fats = [bd.fat_oxidation for bd in data if bd.fat_oxidation]
+            chos = [bd.cho_oxidation for bd in data if bd.cho_oxidation]
+            powers = [bd.bike_power for bd in data if bd.bike_power]
+            t_secs = [bd.t_sec for bd in data if bd.t_sec is not None]
+
+            metrics[phase] = {
+                "duration_sec": max(t_secs) - min(t_secs) if t_secs else 0,
+                "data_points": len(data),
+                "avg_hr": sum(hrs) / len(hrs) if hrs else None,
+                "max_hr": max(hrs) if hrs else None,
+                "avg_vo2": sum(vo2s) / len(vo2s) if vo2s else None,
+                "max_vo2": max(vo2s) if vo2s else None,
+                "avg_rer": sum(rers) / len(rers) if rers else None,
+                "max_rer": max(rers) if rers else None,
+                "avg_fat_oxidation": sum(fats) / len(fats) if fats else None,
+                "max_fat_oxidation": max(fats) if fats else None,
+                "avg_cho_oxidation": sum(chos) / len(chos) if chos else None,
+                "max_cho_oxidation": max(chos) if chos else None,
+                "avg_bike_power": sum(powers) / len(powers) if powers else None,
+                "max_bike_power": max(powers) if powers else None,
+            }
+
+        return metrics
+
+    def _find_fatmax_info(self, breath_data: List[BreathData], test: CPETTest) -> Dict[str, Any]:
+        """FATMAX 상세 정보"""
+        fatmax_bd = max(
+            (bd for bd in breath_data if bd.fat_oxidation is not None),
+            key=lambda x: x.fat_oxidation,
+            default=None
+        )
+
+        if not fatmax_bd:
+            return {}
+
+        return {
+            "fat_max_g_min": fatmax_bd.fat_oxidation,
+            "fat_max_hr": fatmax_bd.hr or test.fat_max_hr,
+            "fat_max_watt": fatmax_bd.bike_power or test.fat_max_watt,
+            "fat_max_vo2": fatmax_bd.vo2,
+            "fat_max_rer": fatmax_bd.rer,
+            "fat_max_time_sec": fatmax_bd.t_sec,
+        }
+
+    def _find_vo2max_info(self, breath_data: List[BreathData], test: CPETTest) -> Dict[str, Any]:
+        """VO2MAX 상세 정보"""
+        vo2max_bd = max(
+            (bd for bd in breath_data if bd.vo2 is not None),
+            key=lambda x: x.vo2,
+            default=None
+        )
+
+        if not vo2max_bd:
+            return {}
+
+        return {
+            "vo2_max": vo2max_bd.vo2 or test.vo2_max,
+            "vo2_max_rel": vo2max_bd.vo2_rel or test.vo2_max_rel,
+            "vco2_max": vo2max_bd.vco2 or test.vco2_max,
+            "hr_max": max((bd.hr for bd in breath_data if bd.hr), default=None) or test.hr_max,
+            "rer_at_max": vo2max_bd.rer,
+            "vo2_max_time_sec": vo2max_bd.t_sec,
+        }
+
+    def _downsample_for_chart(
+        self,
+        breath_data: List[BreathData],
+        interval_sec: int = 5
+    ) -> List[Dict[str, Any]]:
+        """차트용 다운샘플링 (with kcal/day 환산)"""
+        if not breath_data:
+            return []
+
+        result = []
+        bucket = []
+        bucket_start = breath_data[0].t_sec or 0
+
+        for bd in breath_data:
+            t = bd.t_sec or 0
+            if t < bucket_start + interval_sec:
+                bucket.append(bd)
+            else:
+                if bucket:
+                    result.append(self._aggregate_for_chart(bucket, bucket_start))
+                bucket_start = (int(t / interval_sec)) * interval_sec
+                bucket = [bd]
+
+        if bucket:
+            result.append(self._aggregate_for_chart(bucket, bucket_start))
+
+        return result
+
+    def _aggregate_for_chart(
+        self,
+        bucket: List[BreathData],
+        bucket_start: float
+    ) -> Dict[str, Any]:
+        """차트용 버킷 집계 (with kcal/day 환산)"""
+        def avg(vals):
+            valid = [v for v in vals if v is not None]
+            return sum(valid) / len(valid) if valid else None
+
+        fat_ox = avg([bd.fat_oxidation for bd in bucket])
+        cho_ox = avg([bd.cho_oxidation for bd in bucket])
+
+        # g/min → kcal/day 환산
+        # Fat: 9.75 kcal/g, CHO: 4.07 kcal/g
+        # kcal/min * 60 * 24 = kcal/day
+        fat_kcal_day = fat_ox * 9.75 * 60 * 24 if fat_ox else None
+        cho_kcal_day = cho_ox * 4.07 * 60 * 24 if cho_ox else None
+
+        # 가장 많이 나타나는 phase
+        phases = [bd.phase for bd in bucket if bd.phase]
+        phase = max(set(phases), key=phases.count) if phases else None
+
+        return {
+            "time_sec": bucket_start,
+            "power": avg([bd.bike_power for bd in bucket]),
+            "hr": int(avg([bd.hr for bd in bucket])) if avg([bd.hr for bd in bucket]) else None,
+            "vo2": avg([bd.vo2 for bd in bucket]),
+            "vco2": avg([bd.vco2 for bd in bucket]),
+            "rer": round(avg([bd.rer for bd in bucket]), 3) if avg([bd.rer for bd in bucket]) else None,
+            "fat_oxidation": round(fat_ox, 4) if fat_ox else None,
+            "cho_oxidation": round(cho_ox, 4) if cho_ox else None,
+            "fat_kcal_day": round(fat_kcal_day, 1) if fat_kcal_day else None,
+            "cho_kcal_day": round(cho_kcal_day, 1) if cho_kcal_day else None,
+            "phase": phase,
+        }

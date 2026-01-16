@@ -13,7 +13,7 @@ from app.schemas import (
     TestMetricsResponse,
     TestUploadResponse,
 )
-from app.schemas.test import TimeSeriesRequest, TimeSeriesResponse
+from app.schemas.test import TimeSeriesRequest, TimeSeriesResponse, TestAnalysisResponse
 from app.services import TestService
 
 router = APIRouter(prefix="/tests", tags=["Tests"])
@@ -274,6 +274,45 @@ async def get_test_metrics(
     
     metrics = await service.get_metrics(test_id)
     return TestMetricsResponse(test_id=test_id, subject_id=test.subject_id, **metrics)
+
+
+@router.get("/{test_id}/analysis", response_model=TestAnalysisResponse)
+async def get_test_analysis(
+    test_id: UUID,
+    db: DBSession,
+    current_user: CurrentUser,
+    interval: str = Query("5s", description="시계열 다운샘플 간격 (예: 1s, 5s, 10s)"),
+):
+    """
+    테스트 분석 결과 조회 (대사 프로파일 차트용)
+
+    프론트엔드에서 대사 프로파일 차트를 그리기 위한 통합 분석 결과:
+    - **phase_boundaries**: 구간 경계 (Rest, Warm-up, Exercise, Peak, Recovery)
+    - **phase_metrics**: 구간별 평균/최대 메트릭
+    - **fatmax**: FATMAX 상세 정보 (HR, Power, VO2, 시간)
+    - **vo2max**: VO2MAX 상세 정보
+    - **timeseries**: 다운샘플된 시계열 데이터 (차트용)
+    - **통계 요약**: 총 지방/탄수화물 연소량, 평균 RER 등
+    """
+    service = TestService(db)
+
+    test = await service.get_by_id(test_id)
+    if not test:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test not found",
+        )
+
+    # 권한 확인
+    if current_user.role == "subject":
+        if test.subject_id != current_user.subject_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied",
+            )
+
+    analysis = await service.get_analysis(test_id, interval=interval)
+    return TestAnalysisResponse(**analysis)
 
 
 # Subject 하위 경로로도 테스트 조회 가능

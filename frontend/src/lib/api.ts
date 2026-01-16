@@ -146,6 +146,93 @@ export interface TestMetrics {
   fat_max?: { fat_oxidation: number; hr: number; vo2: number };
 }
 
+// Test Analysis Types (대사 프로파일 차트용)
+export interface PhaseInfo {
+  phase: string;
+  start_sec: number;
+  end_sec: number;
+}
+
+export interface PhaseBoundaries {
+  rest_end_sec?: number;
+  warmup_end_sec?: number;
+  exercise_end_sec?: number;
+  peak_sec?: number;
+  total_duration_sec?: number;
+  phases: PhaseInfo[];
+}
+
+export interface PhaseMetrics {
+  duration_sec?: number;
+  data_points?: number;
+  avg_hr?: number;
+  max_hr?: number;
+  avg_vo2?: number;
+  max_vo2?: number;
+  avg_rer?: number;
+  max_rer?: number;
+  avg_fat_oxidation?: number;
+  max_fat_oxidation?: number;
+  avg_cho_oxidation?: number;
+  max_cho_oxidation?: number;
+  avg_bike_power?: number;
+  max_bike_power?: number;
+}
+
+export interface FatMaxInfo {
+  fat_max_g_min?: number;
+  fat_max_hr?: number;
+  fat_max_watt?: number;
+  fat_max_vo2?: number;
+  fat_max_rer?: number;
+  fat_max_time_sec?: number;
+}
+
+export interface VO2MaxInfo {
+  vo2_max?: number;
+  vo2_max_rel?: number;
+  vco2_max?: number;
+  hr_max?: number;
+  rer_at_max?: number;
+  vo2_max_time_sec?: number;
+}
+
+export interface MetabolismDataPoint {
+  time_sec: number;
+  power?: number;
+  hr?: number;
+  vo2?: number;
+  vco2?: number;
+  rer?: number;
+  fat_oxidation?: number;
+  cho_oxidation?: number;
+  fat_kcal_day?: number;
+  cho_kcal_day?: number;
+  phase?: string;
+}
+
+export interface TestAnalysis {
+  test_id: string;
+  subject_id: string;
+  test_date: string;
+  protocol_type?: string;
+  calc_method: string;
+  phase_boundaries?: PhaseBoundaries;
+  phase_metrics?: Record<string, PhaseMetrics>;
+  fatmax?: FatMaxInfo;
+  vo2max?: VO2MaxInfo;
+  vt1_hr?: number;
+  vt1_vo2?: number;
+  vt2_hr?: number;
+  vt2_vo2?: number;
+  timeseries: MetabolismDataPoint[];
+  timeseries_interval: string;
+  total_fat_burned_g?: number;
+  total_cho_burned_g?: number;
+  avg_rer?: number;
+  exercise_duration_sec?: number;
+}
+
 export interface CohortSummary {
   total_subjects: number;
   total_tests: number;
@@ -511,6 +598,105 @@ export const api = {
       };
     }
     const response = await client.get(`/tests/${testId}/metrics`);
+    return response.data;
+  },
+
+  /**
+   * 테스트 분석 결과 조회 (대사 프로파일 차트용)
+   * - phase_boundaries: 구간 경계
+   * - phase_metrics: 구간별 메트릭
+   * - fatmax/vo2max: 상세 정보
+   * - timeseries: 다운샘플된 시계열 데이터
+   */
+  async getTestAnalysis(testId: string, interval: string = '5s'): Promise<TestAnalysis> {
+    if (isDemoMode()) {
+      // 데모 분석 데이터 생성
+      const timeseries: MetabolismDataPoint[] = [];
+      for (let t = 0; t <= 1500; t += 5) {
+        const progress = t / 1500;
+        const power = t < 180 ? 0 : t < 360 ? 50 + (t - 180) * 0.5 : Math.min(50 + (t - 180) * 0.3, 260);
+        const hr = 70 + progress * 120;
+        const vo2 = 300 + progress * 3500;
+        const fatOx = t < 180 ? 0.1 : Math.max(0.05, 0.6 - Math.pow(progress - 0.4, 2) * 2);
+        const choOx = t < 180 ? 0.1 : 0.2 + progress * 1.5;
+
+        let phase = 'Rest';
+        if (t >= 180 && t < 360) phase = 'Warm-up';
+        else if (t >= 360 && t < 1320) phase = 'Exercise';
+        else if (t >= 1320 && t < 1380) phase = 'Peak';
+        else if (t >= 1380) phase = 'Recovery';
+
+        timeseries.push({
+          time_sec: t,
+          power: Math.round(power),
+          hr: Math.round(hr),
+          vo2: Math.round(vo2),
+          vco2: Math.round(vo2 * 0.9),
+          rer: 0.85 + progress * 0.25,
+          fat_oxidation: fatOx,
+          cho_oxidation: choOx,
+          fat_kcal_day: fatOx * 9.75 * 60 * 24,
+          cho_kcal_day: choOx * 4.07 * 60 * 24,
+          phase,
+        });
+      }
+
+      return {
+        test_id: testId,
+        subject_id: 'demo-subject',
+        test_date: new Date().toISOString(),
+        protocol_type: 'MIX',
+        calc_method: 'Frayn',
+        phase_boundaries: {
+          rest_end_sec: 180,
+          warmup_end_sec: 360,
+          exercise_end_sec: 1320,
+          peak_sec: 1320,
+          total_duration_sec: 1500,
+          phases: [
+            { phase: 'Rest', start_sec: 0, end_sec: 180 },
+            { phase: 'Warm-up', start_sec: 180, end_sec: 360 },
+            { phase: 'Exercise', start_sec: 360, end_sec: 1320 },
+            { phase: 'Peak', start_sec: 1320, end_sec: 1380 },
+            { phase: 'Recovery', start_sec: 1380, end_sec: 1500 },
+          ],
+        },
+        phase_metrics: {
+          'Rest': { duration_sec: 180, avg_hr: 72, avg_vo2: 350, avg_rer: 0.82 },
+          'Warm-up': { duration_sec: 180, avg_hr: 105, avg_vo2: 1200, avg_rer: 0.85 },
+          'Exercise': { duration_sec: 960, avg_hr: 155, avg_vo2: 2800, avg_rer: 0.95 },
+          'Peak': { duration_sec: 60, avg_hr: 185, max_hr: 188, avg_vo2: 3800, max_vo2: 3850, avg_rer: 1.12 },
+          'Recovery': { duration_sec: 120, avg_hr: 140, avg_vo2: 1500, avg_rer: 1.0 },
+        },
+        fatmax: {
+          fat_max_g_min: 0.68,
+          fat_max_hr: 145,
+          fat_max_watt: 130,
+          fat_max_vo2: 2100,
+          fat_max_rer: 0.87,
+          fat_max_time_sec: 600,
+        },
+        vo2max: {
+          vo2_max: 3850,
+          vo2_max_rel: 52.3,
+          vco2_max: 4200,
+          hr_max: 188,
+          rer_at_max: 1.12,
+          vo2_max_time_sec: 1320,
+        },
+        vt1_hr: 135,
+        vt1_vo2: 2100,
+        vt2_hr: 165,
+        vt2_vo2: 3200,
+        timeseries,
+        timeseries_interval: interval,
+        total_fat_burned_g: 18.5,
+        total_cho_burned_g: 45.2,
+        avg_rer: 0.95,
+        exercise_duration_sec: 960,
+      };
+    }
+    const response = await client.get(`/tests/${testId}/analysis`, { params: { interval } });
     return response.data;
   },
 

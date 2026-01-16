@@ -93,6 +93,7 @@ class CPETTest(Base):
     )
     parsing_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     parsing_errors: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    phase_metrics: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # 구간별 메트릭
 
     # Other
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

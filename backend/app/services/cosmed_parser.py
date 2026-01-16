@@ -635,3 +635,466 @@ class COSMEDParser:
             result['hr_max'] = df['hr'].max()
 
         return result
+    def detect_phases(
+        self,
+        df: pd.DataFrame,
+        power_column: str = 'bike_power',
+        hr_column: str = 'hr',
+        time_column: str = 't_sec',
+    ) -> pd.DataFrame:
+        """
+        자동 운동 구간 감지 (Phase Detection)
+
+        Bike Power 기반으로 다음 구간을 자동 감지:
+        - Rest: Power < 20W (초기 안정기)
+        - Warm-up: 일정한 낮은 부하 (20-80W 범위, 안정적)
+        - Exercise: 계단식/선형 증가 (파워 증가 구간)
+        - Peak: 최대 부하 도달 시점
+        - Recovery: 부하 급감 (운동 종료 후)
+
+        Args:
+            df: 시계열 데이터프레임
+            power_column: 파워 컬럼명
+            hr_column: 심박수 컬럼명
+            time_column: 시간 컬럼명
+
+        Returns:
+            'phase' 컬럼이 추가된 DataFrame
+        """
+        df = df.copy()
+
+        # 기본값: Unknown
+        df['phase'] = 'Unknown'
+
+        # 파워 데이터 없으면 HR 기반으로 시도
+        if power_column not in df.columns or df[power_column].isna().all():
+            return self._detect_phases_by_hr(df, hr_column, time_column)
+
+        power = df[power_column].fillna(0)
+
+        # 스무딩 (노이즈 제거)
+        window = min(30, len(power) // 10) if len(power) > 30 else 5
+        power_smooth = power.rolling(window=window, center=True, min_periods=1).mean()
+
+        # 파워 변화율 계산
+        power_diff = power_smooth.diff().fillna(0)
+
+        # 임계값 설정
+        REST_THRESHOLD = 20  # W
+        WARMUP_MIN = 20
+        WARMUP_MAX = 100
+        RECOVERY_DROP_THRESHOLD = -20  # W/breath 급격한 감소
+
+        # 최대 파워 지점 찾기
+        peak_idx = power_smooth.idxmax()
+        peak_power = power_smooth.max()
+
+        # 구간별 감지
+        phases = []
+        for idx, row in df.iterrows():
+            p = power_smooth.get(idx, 0)
+            p_diff = power_diff.get(idx, 0)
+
+            if idx < peak_idx:
+                # Peak 이전
+                if p < REST_THRESHOLD:
+                    phases.append('Rest')
+                elif WARMUP_MIN <= p <= WARMUP_MAX and abs(p_diff) < 2:
+                    phases.append('Warm-up')
+                elif p_diff > 0.5 or p > WARMUP_MAX:
+                    phases.append('Exercise')
+                else:
+                    phases.append('Warm-up')
+            elif idx == peak_idx:
+                phases.append('Peak')
+            else:
+                # Peak 이후
+                if p_diff < RECOVERY_DROP_THRESHOLD or p < peak_power * 0.5:
+                    phases.append('Recovery')
+                else:
+                    phases.append('Exercise')
+
+        df['phase'] = phases
+
+        # 구간 경계 부드럽게 처리 (짧은 구간 병합)
+        df = self._smooth_phase_transitions(df)
+
+        return df
+
+    def _detect_phases_by_hr(
+        self,
+        df: pd.DataFrame,
+        hr_column: str = 'hr',
+        time_column: str = 't_sec',
+    ) -> pd.DataFrame:
+        """HR 기반 구간 감지 (파워 데이터 없을 때 대체)"""
+        if hr_column not in df.columns or df[hr_column].isna().all():
+            return df
+
+        hr = df[hr_column].fillna(method='ffill').fillna(method='bfill')
+
+        # 스무딩
+        window = min(30, len(hr) // 10) if len(hr) > 30 else 5
+        hr_smooth = hr.rolling(window=window, center=True, min_periods=1).mean()
+
+        # HR 변화율
+        hr_diff = hr_smooth.diff().fillna(0)
+
+        hr_max = hr_smooth.max()
+        hr_rest = hr_smooth.iloc[:min(60, len(hr_smooth))].mean()  # 초기 1분 평균
+
+        # 임계값
+        REST_HR_RATIO = 1.1  # 안정시 HR의 110%
+        PEAK_HR_RATIO = 0.95  # 최대 HR의 95%
+
+        phases = []
+        peak_idx = hr_smooth.idxmax()
+
+        for idx, row in df.iterrows():
+            h = hr_smooth.get(idx, hr_rest)
+
+            if idx < peak_idx:
+                if h < hr_rest * REST_HR_RATIO:
+                    phases.append('Rest')
+                elif h < hr_rest * 1.3:
+                    phases.append('Warm-up')
+                else:
+                    phases.append('Exercise')
+            elif idx == peak_idx or h >= hr_max * PEAK_HR_RATIO:
+                phases.append('Peak')
+            else:
+                phases.append('Recovery')
+
+        df['phase'] = phases
+        df = self._smooth_phase_transitions(df)
+        return df
+
+    def _smooth_phase_transitions(self, df: pd.DataFrame, min_phase_duration: int = 10) -> pd.DataFrame:
+        """
+        짧은 구간을 인접 구간에 병합하여 부드러운 전환 생성
+
+        Args:
+            df: phase 컬럼이 있는 DataFrame
+            min_phase_duration: 최소 구간 길이 (행 수)
+        """
+        if 'phase' not in df.columns:
+            return df
+
+        df = df.copy()
+        phases = df['phase'].tolist()
+
+        # Run-length encoding으로 구간 찾기
+        runs = []
+        current_phase = phases[0]
+        start_idx = 0
+
+        for i, phase in enumerate(phases):
+            if phase != current_phase:
+                runs.append((start_idx, i - 1, current_phase))
+                current_phase = phase
+                start_idx = i
+        runs.append((start_idx, len(phases) - 1, current_phase))
+
+        # 짧은 구간 병합
+        for i, (start, end, phase) in enumerate(runs):
+            duration = end - start + 1
+            if duration < min_phase_duration:
+                # 이전 또는 다음 구간으로 병합
+                if i > 0:
+                    prev_phase = runs[i - 1][2]
+                    for j in range(start, end + 1):
+                        phases[j] = prev_phase
+                elif i < len(runs) - 1:
+                    next_phase = runs[i + 1][2]
+                    for j in range(start, end + 1):
+                        phases[j] = next_phase
+
+        df['phase'] = phases
+        return df
+
+    def get_phase_boundaries(self, df: pd.DataFrame, time_column: str = 't_sec') -> Dict[str, Any]:
+        """
+        각 구간의 시작/종료 시간 추출
+
+        Returns:
+            {
+                'rest_end_sec': float,
+                'warmup_end_sec': float,
+                'exercise_end_sec': float,
+                'peak_sec': float,
+                'total_duration_sec': float,
+                'phases': [{'phase': str, 'start_sec': float, 'end_sec': float}, ...]
+            }
+        """
+        if 'phase' not in df.columns or time_column not in df.columns:
+            return {}
+
+        boundaries = {
+            'rest_end_sec': None,
+            'warmup_end_sec': None,
+            'exercise_end_sec': None,
+            'peak_sec': None,
+            'total_duration_sec': df[time_column].max(),
+            'phases': []
+        }
+
+        # 각 구간의 경계 찾기
+        phase_order = ['Rest', 'Warm-up', 'Exercise', 'Peak', 'Recovery']
+        current_phase = None
+        phase_start = None
+
+        for idx, row in df.iterrows():
+            phase = row['phase']
+            t = row[time_column]
+
+            if phase != current_phase:
+                # 이전 구간 종료
+                if current_phase is not None and phase_start is not None:
+                    boundaries['phases'].append({
+                        'phase': current_phase,
+                        'start_sec': phase_start,
+                        'end_sec': t
+                    })
+
+                    # 경계 시간 기록
+                    if current_phase == 'Rest':
+                        boundaries['rest_end_sec'] = t
+                    elif current_phase == 'Warm-up':
+                        boundaries['warmup_end_sec'] = t
+                    elif current_phase == 'Exercise':
+                        boundaries['exercise_end_sec'] = t
+
+                # 새 구간 시작
+                current_phase = phase
+                phase_start = t
+
+                if phase == 'Peak':
+                    boundaries['peak_sec'] = t
+
+        # 마지막 구간 추가
+        if current_phase is not None and phase_start is not None:
+            boundaries['phases'].append({
+                'phase': current_phase,
+                'start_sec': phase_start,
+                'end_sec': df[time_column].max()
+            })
+
+        return boundaries
+
+    def calculate_phase_metrics(
+        self,
+        df: pd.DataFrame,
+        time_column: str = 't_sec'
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        각 구간별 평균 메트릭 계산
+
+        Returns:
+            {
+                'Rest': {'avg_hr': float, 'avg_vo2': float, ...},
+                'Warm-up': {...},
+                'Exercise': {...},
+                'Peak': {...},
+                'Recovery': {...}
+            }
+        """
+        if 'phase' not in df.columns:
+            return {}
+
+        metrics_by_phase = {}
+        metric_columns = ['hr', 'vo2', 'vco2', 'rer', 'fat_oxidation', 'cho_oxidation', 'bike_power', 've', 'vo2_rel']
+
+        for phase in df['phase'].unique():
+            phase_data = df[df['phase'] == phase]
+
+            metrics = {
+                'duration_sec': phase_data[time_column].max() - phase_data[time_column].min() if time_column in phase_data.columns else len(phase_data),
+                'data_points': len(phase_data),
+            }
+
+            for col in metric_columns:
+                if col in phase_data.columns:
+                    valid_data = phase_data[col].dropna()
+                    if len(valid_data) > 0:
+                        metrics[f'avg_{col}'] = valid_data.mean()
+                        metrics[f'max_{col}'] = valid_data.max()
+                        metrics[f'min_{col}'] = valid_data.min()
+
+            metrics_by_phase[phase] = metrics
+
+        return metrics_by_phase
+
+    def detect_ventilatory_thresholds(
+        self,
+        df: pd.DataFrame,
+        method: str = 'v_slope'
+    ) -> Dict[str, Any]:
+        """
+        환기 역치 (VT1, VT2) 자동 감지
+
+        VT1 (Ventilatory Threshold 1 / Aerobic Threshold):
+        - V-slope method: VCO2 vs VO2 그래프에서 기울기 변화점
+        - 또는 VE/VO2가 증가하기 시작하면서 VE/VCO2는 아직 안정적인 지점
+
+        VT2 (Ventilatory Threshold 2 / Respiratory Compensation Point):
+        - VE/VCO2가 증가하기 시작하는 지점
+        - 또는 RER이 1.0을 초과하기 시작하는 지점
+
+        Args:
+            df: 시계열 데이터프레임 (vo2, vco2, ve, ve_vo2, ve_vco2, rer 포함)
+            method: 감지 방법 ('v_slope', 'ventilatory_equivalent', 'rer')
+
+        Returns:
+            {
+                'vt1_hr': int, 'vt1_vo2': float, 'vt1_time_sec': float,
+                'vt2_hr': int, 'vt2_vo2': float, 'vt2_time_sec': float,
+                'detection_method': str, 'confidence': float
+            }
+        """
+        result = {
+            'vt1_hr': None, 'vt1_vo2': None, 'vt1_time_sec': None,
+            'vt2_hr': None, 'vt2_vo2': None, 'vt2_time_sec': None,
+            'detection_method': method, 'confidence': 0.0
+        }
+
+        # Exercise 구간만 사용 (Rest, Warm-up 제외)
+        if 'phase' in df.columns:
+            exercise_df = df[df['phase'].isin(['Exercise', 'Peak'])].copy()
+        else:
+            # phase 없으면 전체 데이터 사용 (워밍업 구간 추정해서 제외)
+            start_idx = len(df) // 5  # 앞 20% 제외
+            exercise_df = df.iloc[start_idx:].copy()
+
+        if len(exercise_df) < 30:
+            self.warnings.append("Not enough exercise data for VT detection")
+            return result
+
+        if method == 'v_slope':
+            return self._detect_vt_v_slope(exercise_df, result)
+        elif method == 'ventilatory_equivalent':
+            return self._detect_vt_ventilatory_equivalent(exercise_df, result)
+        elif method == 'rer':
+            return self._detect_vt_rer(exercise_df, result)
+        else:
+            return result
+
+    def _detect_vt_v_slope(self, df: pd.DataFrame, result: Dict) -> Dict:
+        """V-slope 방법으로 VT1 감지"""
+        if 'vo2' not in df.columns or 'vco2' not in df.columns:
+            return result
+
+        vo2 = df['vo2'].dropna().values
+        vco2 = df['vco2'].dropna().values
+
+        if len(vo2) < 30 or len(vco2) < 30:
+            return result
+
+        # 스무딩
+        window = min(15, len(vo2) // 5)
+        vo2_smooth = pd.Series(vo2).rolling(window=window, center=True, min_periods=1).mean().values
+        vco2_smooth = pd.Series(vco2).rolling(window=window, center=True, min_periods=1).mean().values
+
+        # 기울기 변화 감지 (VCO2/VO2 ratio)
+        ratios = vco2_smooth / np.maximum(vo2_smooth, 1)
+        ratio_diff = np.diff(ratios)
+
+        # 기울기가 급격히 증가하는 지점 찾기 (VT1)
+        # 이동 평균 기울기와 비교
+        avg_slope = np.mean(ratio_diff[:len(ratio_diff)//3])  # 초기 평균
+        threshold = avg_slope + np.std(ratio_diff[:len(ratio_diff)//3]) * 2
+
+        vt1_idx = None
+        for i in range(len(ratio_diff)//3, len(ratio_diff)*2//3):
+            if ratio_diff[i] > threshold:
+                vt1_idx = i
+                break
+
+        if vt1_idx is not None:
+            vt1_row = df.iloc[vt1_idx]
+            result['vt1_vo2'] = vt1_row.get('vo2')
+            result['vt1_hr'] = int(vt1_row.get('hr')) if vt1_row.get('hr') else None
+            result['vt1_time_sec'] = vt1_row.get('t_sec')
+            result['confidence'] = 0.7
+
+        # VT2: RER이 1.0을 넘는 지점
+        if 'rer' in df.columns:
+            rer_values = df['rer'].values
+            for i, rer in enumerate(rer_values):
+                if rer and rer >= 1.0:
+                    vt2_row = df.iloc[i]
+                    result['vt2_vo2'] = vt2_row.get('vo2')
+                    result['vt2_hr'] = int(vt2_row.get('hr')) if vt2_row.get('hr') else None
+                    result['vt2_time_sec'] = vt2_row.get('t_sec')
+                    break
+
+        return result
+
+    def _detect_vt_ventilatory_equivalent(self, df: pd.DataFrame, result: Dict) -> Dict:
+        """Ventilatory Equivalent 방법으로 VT 감지"""
+        if 've_vo2' not in df.columns or 've_vco2' not in df.columns:
+            return result
+
+        ve_vo2 = df['ve_vo2'].dropna()
+        ve_vco2 = df['ve_vco2'].dropna()
+
+        if len(ve_vo2) < 30:
+            return result
+
+        # VT1: VE/VO2가 증가하기 시작하면서 VE/VCO2는 아직 안정적인 지점
+        # 이동 평균으로 스무딩
+        window = min(15, len(ve_vo2) // 5)
+        ve_vo2_smooth = ve_vo2.rolling(window=window, center=True, min_periods=1).mean()
+        ve_vco2_smooth = ve_vco2.rolling(window=window, center=True, min_periods=1).mean()
+
+        # 최소값 이후 증가 시작점
+        min_ve_vo2_idx = ve_vo2_smooth.idxmin()
+        for idx in ve_vo2_smooth.loc[min_ve_vo2_idx:].index:
+            if ve_vo2_smooth.loc[idx] > ve_vo2_smooth.loc[min_ve_vo2_idx] * 1.05:  # 5% 증가
+                vt1_row = df.loc[idx]
+                result['vt1_vo2'] = vt1_row.get('vo2')
+                result['vt1_hr'] = int(vt1_row.get('hr')) if vt1_row.get('hr') else None
+                result['vt1_time_sec'] = vt1_row.get('t_sec')
+                result['confidence'] = 0.6
+                break
+
+        # VT2: VE/VCO2도 증가하기 시작하는 지점
+        min_ve_vco2_idx = ve_vco2_smooth.idxmin()
+        for idx in ve_vco2_smooth.loc[min_ve_vco2_idx:].index:
+            if ve_vco2_smooth.loc[idx] > ve_vco2_smooth.loc[min_ve_vco2_idx] * 1.05:
+                vt2_row = df.loc[idx]
+                result['vt2_vo2'] = vt2_row.get('vo2')
+                result['vt2_hr'] = int(vt2_row.get('hr')) if vt2_row.get('hr') else None
+                result['vt2_time_sec'] = vt2_row.get('t_sec')
+                break
+
+        return result
+
+    def _detect_vt_rer(self, df: pd.DataFrame, result: Dict) -> Dict:
+        """RER 기반 VT 감지 (간단한 방법)"""
+        if 'rer' not in df.columns:
+            return result
+
+        rer = df['rer'].dropna()
+        if len(rer) < 20:
+            return result
+
+        # VT1: RER이 0.85-0.90 구간에 처음 도달하는 지점
+        for idx in rer.index:
+            if 0.85 <= rer.loc[idx] <= 0.95:
+                vt1_row = df.loc[idx]
+                result['vt1_vo2'] = vt1_row.get('vo2')
+                result['vt1_hr'] = int(vt1_row.get('hr')) if vt1_row.get('hr') else None
+                result['vt1_time_sec'] = vt1_row.get('t_sec')
+                result['confidence'] = 0.5
+                break
+
+        # VT2: RER이 1.0에 도달하는 지점
+        for idx in rer.index:
+            if rer.loc[idx] >= 1.0:
+                vt2_row = df.loc[idx]
+                result['vt2_vo2'] = vt2_row.get('vo2')
+                result['vt2_hr'] = int(vt2_row.get('hr')) if vt2_row.get('hr') else None
+                result['vt2_time_sec'] = vt2_row.get('t_sec')
+                break
+
+        return result

@@ -1,6 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { sampleSubjects, generateMetabolismData, getFatMaxPoint } from '@/utils/sampleData';
 import { Navigation } from '@/components/layout/Navigation';
+import { api, TestAnalysis, Subject as ApiSubject } from '@/lib/api';
 
 // Lazy load chart components to reduce initial bundle size
 const MetabolismChart = lazy(() => import('./MetabolismChart').then(module => ({ default: module.MetabolismChart })));
@@ -19,15 +20,65 @@ interface MetabolismPageProps {
   onNavigate: (view: string) => void;
 }
 
+// Transform API analysis data to chart format
+function transformAnalysisToChartData(analysis: TestAnalysis) {
+  // Group by power for the Power vs Calories chart
+  const powerMap = new Map<number, { fat: number[]; cho: number[]; total: number[] }>();
+
+  analysis.timeseries.forEach((point) => {
+    const power = Math.round((point.power || 0) / 10) * 10; // Round to nearest 10W
+    if (!powerMap.has(power)) {
+      powerMap.set(power, { fat: [], cho: [], total: [] });
+    }
+    const bucket = powerMap.get(power)!;
+    if (point.fat_kcal_day) bucket.fat.push(point.fat_kcal_day);
+    if (point.cho_kcal_day) bucket.cho.push(point.cho_kcal_day);
+    if (point.fat_kcal_day && point.cho_kcal_day) {
+      bucket.total.push(point.fat_kcal_day + point.cho_kcal_day);
+    }
+  });
+
+  // Calculate averages per power level
+  const chartData = Array.from(powerMap.entries())
+    .map(([power, data]) => ({
+      power,
+      fatOxidation: data.fat.length > 0 ? Math.round(data.fat.reduce((a, b) => a + b, 0) / data.fat.length) : 0,
+      choOxidation: data.cho.length > 0 ? Math.round(data.cho.reduce((a, b) => a + b, 0) / data.cho.length) : 0,
+      totalCalories: data.total.length > 0 ? Math.round(data.total.reduce((a, b) => a + b, 0) / data.total.length) : 0,
+    }))
+    .filter(d => d.power >= 50 && d.power <= 300)
+    .sort((a, b) => a.power - b.power);
+
+  return chartData;
+}
+
 export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPageProps) {
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
+  const [selectedTestId, setSelectedTestId] = useState<string | null>(null);
   const [showCohortAverage, setShowCohortAverage] = useState(false);
+  const [subjects, setSubjects] = useState<ApiSubject[]>([]);
+  const [analysis, setAnalysis] = useState<TestAnalysis | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   // For subjects, only show their own data
   const availableSubjects = user.role === 'subject' 
     ? sampleSubjects.filter(s => s.id === user.id)
     : sampleSubjects;
   
+  // Load subjects from API
+  useEffect(() => {
+    async function loadSubjects() {
+      try {
+        const response = await api.getSubjects({ page_size: 100 });
+        setSubjects(response.items);
+      } catch (err) {
+        console.warn('Failed to load subjects from API, using sample data');
+      }
+    }
+    loadSubjects();
+  }, []);
+
   // Initialize with first subject or user's subject
   useEffect(() => {
     if (user.role === 'subject' && user.id) {
@@ -36,6 +87,42 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
       setSelectedSubjectId(availableSubjects[0].id);
     }
   }, [user.role, user.id]);
+
+  // Load test analysis when subject changes
+  useEffect(() => {
+    async function loadAnalysis() {
+      if (!selectedSubjectId) return;
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        // Get the subject's latest test
+        const testsResponse = await api.getSubjectTests(selectedSubjectId, { page_size: 1 });
+        if (testsResponse.items.length > 0) {
+          const testId = testsResponse.items[0].id;
+          setSelectedTestId(testId);
+
+          // Get analysis data
+          const analysisData = await api.getTestAnalysis(testId, '5s');
+          setAnalysis(analysisData);
+        } else {
+          setAnalysis(null);
+          setError('이 피험자의 테스트 데이터가 없습니다.');
+        }
+      } catch (err: any) {
+        console.warn('Failed to load analysis from API:', err);
+        setError('분석 데이터를 불러올 수 없습니다. 샘플 데이터를 표시합니다.');
+        setAnalysis(null);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (!showCohortAverage) {
+      loadAnalysis();
+    }
+  }, [selectedSubjectId, showCohortAverage]);
   
   // Calculate cohort average data
   const calculateCohortAverage = () => {
@@ -164,8 +251,99 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                   );
                 })()}
               </div>
+            ) : loading ? (
+              <div className="mb-8 bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+                <div className="animate-pulse">
+                  <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
+                  <div className="h-96 bg-gray-100 rounded"></div>
+                </div>
+                <p className="text-center text-gray-500 mt-4">분석 데이터 로딩 중...</p>
+              </div>
+            ) : analysis ? (
+              <div className="mb-8">
+                {(() => {
+                  // Use real API data
+                  const chartData = transformAnalysisToChartData(analysis);
+                  const fatMaxPower = analysis.fatmax?.fat_max_watt || 130;
+                  const duration = analysis.exercise_duration_sec
+                    ? `${Math.floor(analysis.exercise_duration_sec / 60)}:${String(Math.floor(analysis.exercise_duration_sec % 60)).padStart(2, '0')}`
+                    : '0:00';
+                  
+                  // Find subject name
+                  const subject = availableSubjects.find(s => s.id === selectedSubjectId);
+                  const subjectName = subject ? `${subject.name} (${subject.research_id})` : selectedSubjectId;
+
+                  return (
+                    <MetabolismChart
+                      data={chartData}
+                      fatMaxPower={fatMaxPower}
+                      duration={duration}
+                      tss={89}
+                      subjectName={subjectName}
+                    />
+                  );
+                })()}
+
+                {/* Analysis Summary Card */}
+                <div className="mt-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">분석 요약</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center p-3 bg-orange-50 rounded-lg">
+                      <p className="text-sm text-gray-600">FATMAX</p>
+                      <p className="text-xl font-bold text-orange-600">
+                        {analysis.fatmax?.fat_max_watt?.toFixed(0) || '-'} W
+                      </p>
+                      <p className="text-xs text-gray-500">HR: {analysis.fatmax?.fat_max_hr || '-'} bpm</p>
+                    </div>
+                    <div className="text-center p-3 bg-blue-50 rounded-lg">
+                      <p className="text-sm text-gray-600">VO2max</p>
+                      <p className="text-xl font-bold text-blue-600">
+                        {analysis.vo2max?.vo2_max_rel?.toFixed(1) || '-'} ml/kg/min
+                      </p>
+                      <p className="text-xs text-gray-500">HR: {analysis.vo2max?.hr_max || '-'} bpm</p>
+                    </div>
+                    <div className="text-center p-3 bg-green-50 rounded-lg">
+                      <p className="text-sm text-gray-600">총 지방 연소</p>
+                      <p className="text-xl font-bold text-green-600">
+                        {analysis.total_fat_burned_g?.toFixed(1) || '-'} g
+                      </p>
+                    </div>
+                    <div className="text-center p-3 bg-purple-50 rounded-lg">
+                      <p className="text-sm text-gray-600">평균 RER</p>
+                      <p className="text-xl font-bold text-purple-600">
+                        {analysis.avg_rer?.toFixed(2) || '-'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* VT Thresholds */}
+                  {(analysis.vt1_hr || analysis.vt2_hr) && (
+                    <div className="mt-4 pt-4 border-t">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">환기 역치</h4>
+                      <div className="flex gap-6 text-sm">
+                        {analysis.vt1_hr && (
+                          <span className="text-gray-600">
+                            VT1: HR {analysis.vt1_hr} bpm / VO2 {analysis.vt1_vo2?.toFixed(0)} ml/min
+                          </span>
+                        )}
+                        {analysis.vt2_hr && (
+                          <span className="text-gray-600">
+                            VT2: HR {analysis.vt2_hr} bpm / VO2 {analysis.vt2_vo2?.toFixed(0)} ml/min
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             ) : selectedSubject ? (
               <div className="mb-8">
+                {/* Fallback to sample data */}
+                {error && (
+                  <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm">
+                    {error}
+                  </div>
+                )}
                 {(() => {
                   const metabolismData = generateMetabolismData(selectedSubject);
                   const fatMaxPoint = getFatMaxPoint(selectedSubject);
