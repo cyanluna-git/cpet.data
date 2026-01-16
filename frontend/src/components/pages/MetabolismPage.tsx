@@ -63,14 +63,22 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
   const [loading, setLoading] = useState(false);
   const [loadingTests, setLoadingTests] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Data visualization controls
-  const [dataMode, setDataMode] = useState<DataMode>('smoothed');
-  const [showRawOverlay, setShowRawOverlay] = useState(false);
-  // Processing parameter controls
-  const [loessFrac, setLoessFrac] = useState(0.25);
-  const [binSize, setBinSize] = useState(10);
-  const [aggregationMethod, setAggregationMethod] = useState<'median' | 'mean' | 'trimmed_mean'>('median');
-  const [showAdvancedControls, setShowAdvancedControls] = useState(false);
+  
+  // Consolidated analysis settings state
+  const [analysisSettings, setAnalysisSettings] = useState({
+    dataMode: 'smoothed' as DataMode,
+    showRawOverlay: false,
+    loessFrac: 0.25,
+    binSize: 10,
+    aggregationMethod: 'median' as 'median' | 'mean' | 'trimmed_mean',
+    showAdvancedControls: false,
+  });
+
+  // Debounced parameters for API calls
+  const [debouncedParams, setDebouncedParams] = useState({
+    loessFrac: analysisSettings.loessFrac,
+    binSize: analysisSettings.binSize,
+  });
   
   // Load subjects from API
   useEffect(() => {
@@ -102,6 +110,17 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
     }
     loadSubjects();
   }, [user.role, user.id]);
+
+  // Debounce loessFrac and binSize changes to prevent excessive API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedParams({
+        loessFrac: analysisSettings.loessFrac,
+        binSize: analysisSettings.binSize,
+      });
+    }, 500); // 500ms delay after user stops adjusting
+    return () => clearTimeout(timer);
+  }, [analysisSettings.loessFrac, analysisSettings.binSize]);
 
   // Available subjects: use API data if available, otherwise fallback to sample
   const availableSubjects = subjects.length > 0
@@ -156,9 +175,9 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
           selectedTestId,
           '5s',
           true,
-          loessFrac,
-          binSize,
-          aggregationMethod
+          debouncedParams.loessFrac,
+          debouncedParams.binSize,
+          analysisSettings.aggregationMethod
         );
         setAnalysis(analysisData);
       } catch (err: any) {
@@ -173,7 +192,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
     if (!showCohortAverage && selectedTestId) {
       loadAnalysis();
     }
-  }, [selectedTestId, showCohortAverage, loessFrac, binSize, aggregationMethod]);
+  }, [selectedTestId, showCohortAverage, debouncedParams, analysisSettings.aggregationMethod]);
   
   // Calculate cohort average data
   const calculateCohortAverage = () => {
@@ -310,12 +329,12 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                     <div className="border-l pl-4 flex items-center gap-2">
                       <label className="text-sm font-medium text-gray-700">데이터 표시:</label>
                       <select
-                        value={dataMode}
-                        onChange={(e) => setDataMode(e.target.value as DataMode)}
+                        value={analysisSettings.dataMode}
+                        onChange={(e) => setAnalysisSettings(prev => ({ ...prev, dataMode: e.target.value as DataMode }))}
                         className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="smoothed">Smoothed (LOESS)</option>
-                        <option value="binned">Binned ({binSize}W {aggregationMethod === 'median' ? 'Median' : aggregationMethod === 'mean' ? 'Mean' : 'Trimmed Mean'})</option>
+                        <option value="binned">Binned ({analysisSettings.binSize}W {analysisSettings.aggregationMethod === 'median' ? 'Median' : analysisSettings.aggregationMethod === 'mean' ? 'Mean' : 'Trimmed Mean'})</option>
                         <option value="raw">Raw Data</option>
                       </select>
                     </div>
@@ -324,14 +343,14 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                       <input
                         type="checkbox"
                         id="showRawOverlay"
-                        checked={showRawOverlay}
-                        onChange={(e) => setShowRawOverlay(e.target.checked)}
+                        checked={analysisSettings.showRawOverlay}
+                        onChange={(e) => setAnalysisSettings(prev => ({ ...prev, showRawOverlay: e.target.checked }))}
                         className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                        disabled={dataMode !== 'smoothed'}
+                        disabled={analysisSettings.dataMode !== 'smoothed'}
                       />
                       <label
                         htmlFor="showRawOverlay"
-                        className={`text-sm font-medium ${dataMode !== 'smoothed' ? 'text-gray-400' : 'text-gray-700'}`}
+                        className={`text-sm font-medium ${analysisSettings.dataMode !== 'smoothed' ? 'text-gray-400' : 'text-gray-700'}`}
                       >
                         Binned 데이터 오버레이
                       </label>
@@ -339,10 +358,10 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
 
                     {/* Advanced Controls Toggle */}
                     <button
-                      onClick={() => setShowAdvancedControls(!showAdvancedControls)}
+                      onClick={() => setAnalysisSettings(prev => ({ ...prev, showAdvancedControls: !prev.showAdvancedControls }))}
                       className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
                     >
-                      <span>{showAdvancedControls ? '▼' : '▶'}</span>
+                      <span>{analysisSettings.showAdvancedControls ? '▼' : '▶'}</span>
                       <span>고급 설정</span>
                     </button>
                   </>
@@ -350,21 +369,21 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
               </div>
 
               {/* Advanced Processing Controls - Collapsible */}
-              {!showCohortAverage && showAdvancedControls && (
+              {!showCohortAverage && analysisSettings.showAdvancedControls && (
                 <div className="mt-4 pt-4 border-t border-gray-200">
                   <div className="flex flex-wrap gap-6 items-end">
                     {/* LOESS Fraction Slider */}
                     <div className="flex flex-col gap-1">
                       <label className="text-xs font-medium text-gray-600">
-                        LOESS Smoothing: {loessFrac.toFixed(2)}
+                        LOESS Smoothing: {analysisSettings.loessFrac.toFixed(2)}
                       </label>
                       <input
                         type="range"
                         min="0.1"
                         max="0.5"
                         step="0.05"
-                        value={loessFrac}
-                        onChange={(e) => setLoessFrac(parseFloat(e.target.value))}
+                        value={analysisSettings.loessFrac}
+                        onChange={(e) => setAnalysisSettings(prev => ({ ...prev, loessFrac: parseFloat(e.target.value) }))}
                         className="w-32 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                       />
                       <span className="text-xs text-gray-500">0.1=날카로움, 0.5=부드러움</span>
@@ -373,11 +392,11 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                     {/* Bin Size */}
                     <div className="flex flex-col gap-1">
                       <label className="text-xs font-medium text-gray-600">
-                        Bin Size: {binSize}W
+                        Bin Size: {analysisSettings.binSize}W
                       </label>
                       <select
-                        value={binSize}
-                        onChange={(e) => setBinSize(parseInt(e.target.value))}
+                        value={analysisSettings.binSize}
+                        onChange={(e) => setAnalysisSettings(prev => ({ ...prev, binSize: parseInt(e.target.value) }))}
                         className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value={5}>5W</option>
@@ -393,8 +412,8 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                     <div className="flex flex-col gap-1">
                       <label className="text-xs font-medium text-gray-600">집계 방법</label>
                       <select
-                        value={aggregationMethod}
-                        onChange={(e) => setAggregationMethod(e.target.value as 'median' | 'mean' | 'trimmed_mean')}
+                        value={analysisSettings.aggregationMethod}
+                        onChange={(e) => setAnalysisSettings(prev => ({ ...prev, aggregationMethod: e.target.value as 'median' | 'mean' | 'trimmed_mean' }))}
                         className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="median">Median (이상치 저항)</option>
@@ -406,9 +425,12 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                     {/* Reset Button */}
                     <button
                       onClick={() => {
-                        setLoessFrac(0.25);
-                        setBinSize(10);
-                        setAggregationMethod('median');
+                        setAnalysisSettings(prev => ({
+                          ...prev,
+                          loessFrac: 0.25,
+                          binSize: 10,
+                          aggregationMethod: 'median'
+                        }));
                       }}
                       className="px-3 py-1 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md"
                     >
@@ -478,8 +500,8 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                       subjectName={subjectName}
                       processedSeries={analysis.processed_series}
                       markers={analysis.metabolic_markers}
-                      dataMode={dataMode}
-                      showRawOverlay={showRawOverlay}
+                      dataMode={analysisSettings.dataMode}
+                      showRawOverlay={analysisSettings.showRawOverlay}
                     />
                   );
                 })()}
