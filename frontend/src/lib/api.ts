@@ -84,17 +84,24 @@ export interface PaginatedResponse<T> {
 
 export interface Subject {
   id: string;
-  subject_code: string;
-  name: string;
-  birth_date?: string;
+  research_id: string;
+  encrypted_name?: string | null;
+  name?: string;
+  birth_year?: number;
   gender?: string;
+  job_category?: string;
   height_cm?: number;
   weight_kg?: number;
-  group?: string;
+  training_level?: string;
   notes?: string;
   test_count?: number;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
+
+  // Legacy/compat fields (some UI/sample data still uses these)
+  subject_code?: string;
+  birth_date?: string;
+  group?: string;
 }
 
 export interface CPETTest {
@@ -342,20 +349,31 @@ export const api = {
     return response.data;
   },
 
-  async createSubject(data: {
-    subject_code: string;
-    name: string;
-    birth_date?: string;
-    gender?: string;
-    height_cm?: number;
-    weight_kg?: number;
-    group?: string;
-    notes?: string;
-  }): Promise<Subject> {
+  async createSubject(data: Partial<Subject> & { research_id: string }): Promise<Subject> {
     if (isDemoMode()) {
-      return { id: 'demo-new-subject', ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() } as Subject;
+      return {
+        id: 'demo-new-subject',
+        ...data,
+        created_at: data.created_at || new Date().toISOString(),
+        updated_at: data.updated_at || new Date().toISOString(),
+      } as Subject;
     }
-    const response = await client.post('/subjects', data);
+
+    // Backend expects SubjectCreate schema (research_id + optional fields)
+    const payload: Record<string, any> = {
+      research_id: data.research_id,
+      encrypted_name: data.encrypted_name ?? data.name,
+      birth_year: data.birth_year,
+      gender: data.gender,
+      height_cm: data.height_cm,
+      weight_kg: data.weight_kg,
+      notes: data.notes,
+    };
+
+    // Drop undefined to keep payload clean
+    Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
+
+    const response = await client.post('/subjects', payload);
     return response.data;
   },
 

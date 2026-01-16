@@ -1,4 +1,4 @@
-"""Unit tests for API helper functions."""
+/** Unit tests for API helper functions. */
 
 import { describe, it, expect } from 'vitest';
 import { extractItems, extractPaginationInfo, getErrorMessage } from '@/utils/apiHelpers';

@@ -1,4 +1,4 @@
-"""Unit tests for environment configuration."""
+/** Unit tests for environment configuration. */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as env from '@/config/env';

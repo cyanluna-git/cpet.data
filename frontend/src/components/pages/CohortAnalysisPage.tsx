@@ -20,10 +20,14 @@ export function CohortAnalysisPage({ user, onLogout, onNavigate }: CohortAnalysi
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState<{
+    gender: string;
+    age_min?: number;
+    age_max?: number;
+  }>({
     gender: 'all',
     age_min: undefined,
-    age_max: undefined
+    age_max: undefined,
   });
 
   useEffect(() => {
@@ -57,7 +61,7 @@ export function CohortAnalysisPage({ user, onLogout, onNavigate }: CohortAnalysi
     }
   }
 
-  function applyFilter(key: string, value: any) {
+  function applyFilter(key: 'gender' | 'age_min' | 'age_max', value: any) {
     // Handle special "all" or "none" values
     if (value === 'all' || value === 'none') {
       setFilters(prev => ({ ...prev, [key]: undefined }));

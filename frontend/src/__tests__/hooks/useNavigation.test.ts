@@ -1,4 +1,4 @@
-"""Unit tests for useNavigation hook."""
+/** Unit tests for useNavigation hook. */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';

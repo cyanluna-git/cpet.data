@@ -1,17 +1,20 @@
-"""Enhanced API client with retry logic and request interceptors."""
+/** Enhanced API client with retry logic and request interceptors. */
 
 import { API_CONFIG, TIMEOUTS, ERROR_CODES, getApiUrl } from '@/config/env';
 import { logger } from '@/utils/logger';
 
 export class ApiError extends Error {
-  constructor(
-    public code: string,
-    public status: number,
-    message: string,
-    public details?: any
-  ) {
+  code: string;
+  status: number;
+  details?: any;
+
+  constructor(code: string, status: number, message: string, details?: any) {
     super(message);
     this.name = 'ApiError';
+
+    this.code = code;
+    this.status = status;
+    this.details = details;
   }
 }
 
