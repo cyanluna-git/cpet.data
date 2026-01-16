@@ -13,6 +13,11 @@ export const ROUTE_VIEWS = {
   SUBJECT_DETAIL: 'subject-detail',
   COHORT_ANALYSIS: 'cohort-analysis',
 
+  // Admin routes
+  ADMIN_DASHBOARD: 'admin-dashboard',
+  ADMIN_USERS: 'admin-users',
+  ADMIN_DATA: 'admin-data',
+
   // Subject routes
   SUBJECT_DASHBOARD: 'subject-dashboard',
 

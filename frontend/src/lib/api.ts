@@ -41,6 +41,38 @@ function isDemoMode() {
   return localStorage.getItem('demoMode') === 'true';
 }
 
+function roleFromBackend(role: string): 'admin' | 'researcher' | 'subject' {
+  if (role === 'user') return 'subject';
+  if (role === 'subject') return 'subject';
+  if (role === 'admin' || role === 'researcher') return role;
+  return 'researcher';
+}
+
+function roleToBackend(role: string): 'admin' | 'researcher' | 'user' {
+  if (role === 'subject') return 'user';
+  if (role === 'admin' || role === 'researcher' || role === 'user') return role;
+  return 'user';
+}
+
+export interface AdminUser {
+  user_id: string;
+  email: string;
+  role: 'admin' | 'researcher' | 'user';
+  subject_id?: string | null;
+  is_active: boolean;
+  last_login?: string | null;
+  created_at: string;
+}
+
+export interface AdminStats {
+  users_total: number;
+  users_active: number;
+  users_inactive: number;
+  users_by_role: Record<string, number>;
+  subjects_total: number;
+  tests_total: number;
+}
+
 // 타입 정의
 export interface PaginatedResponse<T> {
   items: T[];
@@ -163,15 +195,106 @@ export const api = {
       };
     }
     const response = await client.get('/auth/me');
-    return response.data;
+    const raw = response.data as any;
+    // backend(UserResponse): user_id/email/role/is_active/last_login/created_at
+    return {
+      id: raw.user_id ?? raw.id,
+      email: raw.email,
+      name: (raw.email || '').split('@')[0] || raw.email,
+      role: roleFromBackend(raw.role),
+    };
   },
 
   async signUp(email: string, password: string, name: string, role: string) {
     if (isDemoMode()) {
       return { success: true };
     }
-    const response = await client.post('/auth/register', { email, password, name, role });
+    // backend는 name을 저장하지 않으므로 전송하지 않음
+    const response = await client.post('/auth/register', { email, password, role: roleToBackend(role) });
     return response.data;
+  },
+
+  // =====================
+  // Admin
+  // =====================
+  async adminGetStats(): Promise<AdminStats> {
+    if (isDemoMode()) {
+      return {
+        users_total: 3,
+        users_active: 3,
+        users_inactive: 0,
+        users_by_role: { admin: 1, researcher: 1, user: 1 },
+        subjects_total: sampleSubjects.length,
+        tests_total: 1,
+      };
+    }
+    const response = await client.get('/admin/stats');
+    return response.data;
+  },
+
+  async adminListUsers(params?: {
+    page?: number;
+    page_size?: number;
+    search?: string;
+    role?: string;
+    is_active?: boolean;
+    sort_by?: 'created_at' | 'last_login' | 'email' | 'role';
+    sort_order?: 'asc' | 'desc';
+  }): Promise<PaginatedResponse<AdminUser>> {
+    if (isDemoMode()) {
+      const now = new Date().toISOString();
+      const items: AdminUser[] = [
+        { user_id: 'demo-admin-1', email: 'admin@demo.local', role: 'admin', is_active: true, created_at: now },
+        { user_id: 'demo-researcher-1', email: 'researcher@demo.local', role: 'researcher', is_active: true, created_at: now },
+        { user_id: 'demo-user-1', email: 'subject@demo.local', role: 'user', is_active: true, created_at: now },
+      ];
+      return { items, total: items.length, page: 1, page_size: 20, total_pages: 1 };
+    }
+    const response = await client.get('/admin/users', { params });
+    return response.data;
+  },
+
+  async adminCreateUser(data: { email: string; password: string; role: string; subject_id?: string | null }): Promise<AdminUser> {
+    if (isDemoMode()) {
+      return {
+        user_id: `demo-${crypto.randomUUID()}`,
+        email: data.email,
+        role: roleToBackend(data.role),
+        subject_id: data.subject_id ?? null,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        last_login: null,
+      };
+    }
+    const response = await client.post('/admin/users', {
+      ...data,
+      role: roleToBackend(data.role),
+    });
+    return response.data;
+  },
+
+  async adminUpdateUser(userId: string, data: Partial<{ email: string; password: string; role: string; is_active: boolean; subject_id: string | null }>): Promise<AdminUser> {
+    if (isDemoMode()) {
+      return {
+        user_id: userId,
+        email: data.email ?? 'demo@updated.local',
+        role: roleToBackend(data.role ?? 'user'),
+        subject_id: data.subject_id ?? null,
+        is_active: data.is_active ?? true,
+        created_at: new Date().toISOString(),
+        last_login: null,
+      };
+    }
+    const response = await client.put(`/admin/users/${userId}`, {
+      ...data,
+      role: data.role ? roleToBackend(data.role) : undefined,
+    });
+    return response.data;
+  },
+
+  async adminDeleteUser(userId: string): Promise<void> {
+    if (isDemoMode()) return;
+    await client.delete(`/admin/users/${userId}`);
   },
 
   async refreshToken() {

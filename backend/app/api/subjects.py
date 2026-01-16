@@ -3,7 +3,7 @@
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from app.api.deps import CurrentUser, ResearcherUser, DBSession
 from app.schemas import (
@@ -150,7 +150,11 @@ async def update_subject(
     return SubjectResponse.model_validate(updated)
 
 
-@router.delete("/{subject_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{subject_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
 async def delete_subject(
     subject_id: UUID,
     db: DBSession,
@@ -171,4 +175,4 @@ async def delete_subject(
         )
     
     await service.delete(subject_id)
-    return None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

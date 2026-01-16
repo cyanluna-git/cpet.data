@@ -1,4 +1,4 @@
-import { Activity, Users, LineChart, BarChart3, LogOut, User, Flame } from 'lucide-react';
+import { Activity, Users, LineChart, BarChart3, LogOut, User, Flame, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -22,13 +22,17 @@ interface NavigationProps {
 
 export function Navigation({ user, currentView, onNavigate, onLogout }: NavigationProps) {
   const isResearcher = user.role === 'researcher' || user.role === 'admin';
+  const isAdmin = user.role === 'admin';
 
   return (
     <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
       <div className="max-w-7xl mx-auto px-6">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => onNavigate(isResearcher ? 'researcher-dashboard' : 'subject-dashboard')}>
+          <div
+            className="flex items-center gap-3 cursor-pointer"
+            onClick={() => onNavigate(isAdmin ? 'admin-dashboard' : (isResearcher ? 'researcher-dashboard' : 'subject-dashboard'))}
+          >
             <div className="w-10 h-10 bg-[#2563EB] rounded-lg flex items-center justify-center">
               <Activity className="w-6 h-6 text-white" />
             </div>
@@ -40,6 +44,17 @@ export function Navigation({ user, currentView, onNavigate, onLogout }: Navigati
 
           {/* Navigation Menu */}
           <div className="flex items-center gap-1">
+            {isAdmin && (
+              <Button
+                variant={currentView === 'admin-dashboard' || currentView?.startsWith('admin-') ? 'default' : 'ghost'}
+                onClick={() => onNavigate('admin-dashboard')}
+                className="gap-2"
+              >
+                <Shield className="w-4 h-4" />
+                <span>슈퍼어드민</span>
+              </Button>
+            )}
+
             {isResearcher && (
               <>
                 <Button

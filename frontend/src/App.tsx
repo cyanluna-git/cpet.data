@@ -14,6 +14,9 @@ import { SubjectDetailPage } from '@/components/pages/SubjectDetailPage';
 import { SingleTestView } from '@/components/pages/SingleTestView';
 import { CohortAnalysisPage } from '@/components/pages/CohortAnalysisPage';
 import { MetabolismPage } from '@/components/pages/MetabolismPage';
+import { AdminDashboardPage } from '@/components/pages/AdminDashboardPage';
+import { AdminUsersPage } from '@/components/pages/AdminUsersPage';
+import { AdminDataPage } from '@/components/pages/AdminDataPage';
 
 // Styles
 import '@/styles/index.css';
@@ -216,12 +219,73 @@ function MetabolismWrapper() {
   );
 }
 
+function AdminDashboardWrapper() {
+  const { handleNavigate } = useNavigation();
+  const { user, logout } = useAuth();
+
+  async function handleLogout() {
+    await logout();
+    toast.success('로그아웃 되었습니다');
+    window.location.href = '/login';
+  }
+
+  return (
+    <AdminDashboardPage
+      user={user as User}
+      onLogout={handleLogout}
+      onNavigate={handleNavigate}
+    />
+  );
+}
+
+function AdminUsersWrapper() {
+  const { handleNavigate } = useNavigation();
+  const { user, logout } = useAuth();
+
+  async function handleLogout() {
+    await logout();
+    toast.success('로그아웃 되었습니다');
+    window.location.href = '/login';
+  }
+
+  return (
+    <AdminUsersPage
+      user={user as User}
+      onLogout={handleLogout}
+      onNavigate={handleNavigate}
+    />
+  );
+}
+
+function AdminDataWrapper() {
+  const { handleNavigate } = useNavigation();
+  const { user, logout } = useAuth();
+
+  async function handleLogout() {
+    await logout();
+    toast.success('로그아웃 되었습니다');
+    window.location.href = '/login';
+  }
+
+  return (
+    <AdminDataPage
+      user={user as User}
+      onLogout={handleLogout}
+      onNavigate={handleNavigate}
+    />
+  );
+}
+
 // Root redirect based on user role
 function RootRedirect() {
   const { user, loading } = useAuth();
 
   if (loading) return <LoadingSpinner />;
   if (!user) return <Navigate to="/login" />;
+
+  if (user.role === 'admin') {
+    return <Navigate to="/admin" />;
+  }
 
   if (user.role === 'subject') {
     return <Navigate to="/my-dashboard" />;
@@ -246,6 +310,25 @@ export default function App() {
             } />
 
             {/* Researcher routes */}
+            {/* Admin routes */}
+            <Route path="/admin" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <AdminDashboardWrapper />
+              </ProtectedRoute>
+            } />
+
+            <Route path="/admin/users" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <AdminUsersWrapper />
+              </ProtectedRoute>
+            } />
+
+            <Route path="/admin/data" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <AdminDataWrapper />
+              </ProtectedRoute>
+            } />
+
             <Route path="/subjects" element={
               <ProtectedRoute allowedRoles={['admin', 'researcher']}>
                 <SubjectListWrapper />
