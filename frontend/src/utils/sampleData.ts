@@ -1,5 +1,6 @@
 // Sample CPET test data for demonstration
 export const sampleTestData = {
+  id: "550e8400-e29b-41d4-a716-446655440000",
   test_id: "550e8400-e29b-41d4-a716-446655440000",
   subject_id: "660e8400-e29b-41d4-a716-446655440001",
   test_date: "2024-12-17T11:09:24+09:00",

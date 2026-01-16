@@ -1,24 +1,24 @@
 import { test, expect } from '@playwright/test';
+import { demoLoginAsResearcher } from './helpers/auth';
 
 test.describe('CPET Tests Management', () => {
   test.beforeEach(async ({ page }) => {
-    // Navigate to tests page
-    await page.goto('/tests');
+    await demoLoginAsResearcher(page);
+    await page.goto('/');
   });
 
   test('should display CPET tests list', async ({ page }) => {
-    const testsList = page.locator('[role="table"], [role="list"]');
-    await expect(testsList).toBeVisible({ timeout: 5000 });
+    // Dashboard shows recent tests section
+    await expect(page.getByText('최근 업로드된 테스트')).toBeVisible({ timeout: 10000 });
   });
 
   test('should open test detail view', async ({ page }) => {
-    const testRow = page.locator('[role="row"], li').first();
-    
-    if (await testRow.isVisible()) {
-      await testRow.click();
-      await page.waitForURL('**/tests/**', { timeout: 5000 });
-      expect(page.url()).toMatch(/tests\/[^/]+/);
-    }
+    // Clicking inside a test card should navigate to /tests/:id
+    const testCardTrigger = page.getByText('VO2 MAX').first();
+    await expect(testCardTrigger).toBeVisible({ timeout: 10000 });
+    await testCardTrigger.click();
+    await page.waitForURL(/\/tests\//, { timeout: 10000 });
+    expect(page.url()).toMatch(/tests\/[^/]+/);
   });
 
   test('should display test metrics and charts', async ({ page }) => {
