@@ -169,6 +169,44 @@ const CHART_COLORS = [
   '#DB2777', // pink
 ];
 
+const CHART_PRESETS = [
+  {
+    key: 'fatmax',
+    label: 'FATMAX',
+    x: 'bike_power',
+    yLeft: ['fat_oxidation', 'cho_oxidation'],
+    yRight: ['rer'],
+  },
+  {
+    key: 'rer',
+    label: 'RER Curve',
+    x: 'bike_power',
+    yLeft: ['rer'],
+    yRight: [],
+  },
+  {
+    key: 'vo2',
+    label: 'VO2 Kinetics',
+    x: 'bike_power',
+    yLeft: ['vo2', 'vco2'],
+    yRight: ['hr'],
+  },
+  {
+    key: 'vt',
+    label: 'VT Analysis',
+    x: 'vo2',
+    yLeft: ['ve_vo2', 've_vco2'],
+    yRight: [],
+  },
+  {
+    key: 'custom',
+    label: 'Custom',
+    x: 't_sec',
+    yLeft: [],
+    yRight: [],
+  },
+];
+
 const PAGE_SIZE = 50;
 
 export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerPageProps) {
@@ -258,6 +296,16 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         ? prev.filter(k => k !== key)
         : [...prev, key]
     );
+  }, []);
+
+  const applyChartPreset = useCallback((presetKey: string) => {
+    const preset = CHART_PRESETS.find(item => item.key === presetKey);
+    if (!preset) return;
+    setChartXAxis(preset.x);
+    setChartYAxisLeft(preset.yLeft);
+    setChartYAxisRight(preset.yRight);
+    setShowChartSettings(false);
+    setShowChart(true);
   }, []);
 
   // 차트 데이터 (X축 값으로 정렬, 샘플링)
@@ -510,6 +558,19 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                   데이터 차트
                 </CardTitle>
                 <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {CHART_PRESETS.map(preset => (
+                      <Button
+                        key={preset.key}
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => applyChartPreset(preset.key)}
+                      >
+                        {preset.label}
+                      </Button>
+                    ))}
+                  </div>
                   {/* 차트 설정 */}
                   <div className="relative" ref={chartSettingsRef}>
                     <Button
