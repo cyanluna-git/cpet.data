@@ -248,7 +248,37 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                     ))}
                   </select>
                 </div>
-                
+
+                {/* Test selector */}
+                {tests.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-700">테스트:</label>
+                    <select
+                      value={selectedTestId || ''}
+                      onChange={(e) => setSelectedTestId(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      disabled={showCohortAverage || loadingTests}
+                    >
+                      {tests.map(test => {
+                        const testDate = new Date(test.test_date);
+                        const dateStr = testDate.toLocaleDateString('ko-KR', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        });
+                        return (
+                          <option key={test.id} value={test.id}>
+                            {dateStr} - {(test as any).source_filename || test.protocol || test.test_type || 'Test'}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    {loadingTests && (
+                      <span className="text-sm text-gray-500">로딩중...</span>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex items-center gap-2">
                   <input
                     type="checkbox"

@@ -405,7 +405,7 @@ async def list_subject_tests(
                 detail="Access denied",
             )
     
-    tests, total = await service.list_tests(
+    tests, total = await service.get_list(
         page=page,
         page_size=page_size,
         subject_id=subject_id,
