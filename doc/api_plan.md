@@ -92,6 +92,7 @@ training_level: str    # 훈련 수준 필터
 | PATCH | `/api/tests/{id}` | 테스트 수정 | Researcher |
 | DELETE | `/api/tests/{id}` | 테스트 삭제 | Researcher |
 | GET | `/api/subjects/{id}/tests` | 피험자별 테스트 목록 | Authenticated |
+| GET | `/api/tests/{id}/processed-series` | 차트 전용 정제 시리즈 (계획) | Authenticated |
 
 ### 파일 업로드 (POST /tests/upload)
 ```
@@ -115,6 +116,28 @@ smoothing_window: int = 10  # 평활화 윈도우
   "data_points_count": 1500,
   "created_at": "2024-01-15T10:00:00Z"
 }
+
+### (계획) 정제 시리즈 응답
+```json
+{
+  "test_id": "uuid",
+  "bin_size_w": 10,
+  "series": [
+    {
+      "power_bin": 160,
+      "vo2": 2100.2,
+      "vco2": 1980.5,
+      "fat_oxidation": 0.42,
+      "cho_oxidation": 1.12,
+      "rer": 0.94
+    }
+  ],
+  "meta": {
+    "trimmed_phases": ["Rest", "Warm-up", "Recovery"],
+    "interpolation": "pchip"
+  }
+}
+```
 ```
 
 ### 프론트엔드 연동

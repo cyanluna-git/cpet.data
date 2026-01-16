@@ -520,9 +520,19 @@ class TestService:
         interval: str = "5s",
         include_processed: bool = True,
         loess_frac: float = 0.25,
+        bin_size: int = 10,
+        aggregation_method: str = "median",
     ) -> Dict[str, Any]:
         """
         테스트 분석 결과 조회 (대사 프로파일 차트용)
+
+        Args:
+            test_id: 테스트 ID
+            interval: 다운샘플 간격 (예: "5s")
+            include_processed: LOESS/binning 처리 데이터 포함 여부
+            loess_frac: LOESS smoothing fraction (0.1~0.5)
+            bin_size: Power binning 크기 (W, 5~30)
+            aggregation_method: 집계 방법 (median, mean, trimmed_mean)
 
         Returns:
             - phase_boundaries: 구간 경계
@@ -531,6 +541,8 @@ class TestService:
             - vo2max: VO2MAX 정보
             - timeseries: 다운샘플된 시계열 데이터
             - 통계 요약
+            - processed_series: 처리된 대사 데이터
+            - metabolic_markers: FatMax/Crossover 마커
         """
         test = await self.get_by_id(test_id)
         if not test:
@@ -600,7 +612,15 @@ class TestService:
         analysis_warnings = None
 
         if include_processed:
-            analyzer = MetabolismAnalyzer(loess_frac=loess_frac)
+            analyzer = MetabolismAnalyzer(
+                loess_frac=loess_frac,
+                bin_size=bin_size,
+                use_median=(aggregation_method == "median"),
+            )
+            # aggregation_method가 median이 아닌 경우 직접 설정
+            if aggregation_method in ("mean", "trimmed_mean"):
+                analyzer.config.aggregation_method = aggregation_method
+            
             analysis_result = analyzer.analyze(breath_data)
             if analysis_result:
                 processed_series = analysis_result.processed_series.to_dict()

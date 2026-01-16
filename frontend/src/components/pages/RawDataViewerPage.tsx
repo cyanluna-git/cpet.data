@@ -222,6 +222,11 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   const [loadingTests, setLoadingTests] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   
+  // 전처리 데이터 상태 추가
+  const [useProcessedData, setUseProcessedData] = useState(false);
+  const [processedData, setProcessedData] = useState<any>(null);
+  const [analysisData, setAnalysisData] = useState<any>(null);
+  
   // 컬럼 선택 상태
   const [selectedColumns, setSelectedColumns] = useState<string[]>(DEFAULT_SELECTED_COLUMNS);
   const [showColumnSelector, setShowColumnSelector] = useState(false);
@@ -229,9 +234,9 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
 
   // 차트 상태
   const [showChart, setShowChart] = useState(true);
-  const [chartXAxis, setChartXAxis] = useState('t_sec');
-  const [chartYAxisLeft, setChartYAxisLeft] = useState<string[]>([]);
-  const [chartYAxisRight, setChartYAxisRight] = useState<string[]>([]);
+  const [chartXAxis, setChartXAxis] = useState('bike_power'); // 전처리 데이터용으로 기본 X축을 power로 변경
+  const [chartYAxisLeft, setChartYAxisLeft] = useState<string[]>(['fat_oxidation', 'cho_oxidation']);
+  const [chartYAxisRight, setChartYAxisRight] = useState<string[]>(['rer']);
   const [showChartSettings, setShowChartSettings] = useState(false);
   const chartSettingsRef = useRef<HTMLDivElement>(null);
 
@@ -310,6 +315,12 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
 
   // 차트 데이터 (X축 값으로 정렬, 샘플링)
   const chartData = useMemo(() => {
+    // 전처리 데이터 사용 시
+    if (useProcessedData && processedData) {
+      return processedData.data || [];
+    }
+    
+    // Raw 데이터 사용 시
     if (!rawData) return [];
     const data = rawData.data;
     const maxPoints = 500; // 최대 표시 포인트
@@ -325,7 +336,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       }
       return 0;
     });
-  }, [rawData, chartXAxis]);
+  }, [rawData, chartXAxis, useProcessedData, processedData]);
 
   // 피험자 목록 로드
   useEffect(() => {
@@ -398,12 +409,27 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       setFilteredTests(filtered);
       setSelectedTestId('');
       setRawData(null);
+      setProcessedData(null);
+      setAnalysisData(null);
     } else {
       setFilteredTests([]);
       setSelectedTestId('');
       setRawData(null);
+      setProcessedData(null);
+      setAnalysisData(null);
     }
   }, [selectedSubjectId, tests]);
+
+  // 테스트 선택 시 자동으로 데이터 로드
+  useEffect(() => {
+    if (selectedTestId) {
+      if (useProcessedData) {
+        loadProcessedData();
+      } else {
+        loadRawData();
+      }
+    }
+  }, [selectedTestId]);
 
   // 선택한 테스트의 raw data 로드
   async function loadRawData() {
@@ -425,6 +451,44 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     } catch (error) {
       toast.error(getErrorMessage(error));
       setRawData(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // 전처리된 데이터 로드 (TestAnalysis API 사용)
+  async function loadProcessedData() {
+    if (!selectedTestId) return;
+    
+    try {
+      setLoading(true);
+      const token = getAuthToken();
+      const response = await fetch(`/api/tests/${selectedTestId}/analysis?interval=5s&include_processed=true`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.detail || 'Failed to load processed data');
+      }
+      const data = await response.json();
+      setAnalysisData(data);
+      
+      // processed_series를 차트 데이터로 변환
+      if (data.processed_series?.smoothed) {
+        const chartDataPoints = data.processed_series.smoothed.map((point: any) => ({
+          power: point.power || 0,
+          fat_oxidation: point.fat_oxidation,
+          cho_oxidation: point.cho_oxidation,
+          rer: point.rer,
+          // 추가 계산된 값
+          total_oxidation: (point.fat_oxidation || 0) + (point.cho_oxidation || 0),
+        }));
+        setProcessedData({ data: chartDataPoints });
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+      setProcessedData(null);
+      setAnalysisData(null);
     } finally {
       setLoading(false);
     }
@@ -525,21 +589,63 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
               </select>
             </div>
 
+            {/* 전처리 데이터 사용 체크박스 */}
+            <div className="flex items-center gap-2 border-l pl-4">
+              <input
+                type="checkbox"
+                id="useProcessedData"
+                checked={useProcessedData}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setUseProcessedData(checked);
+                  if (checked && selectedTestId) {
+                    loadProcessedData();
+                  } else if (selectedTestId) {
+                    loadRawData();
+                  }
+                }}
+                disabled={!selectedTestId}
+                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+              />
+              <label
+                htmlFor="useProcessedData"
+                className={`text-sm font-medium ${!selectedTestId ? 'text-gray-400' : 'text-gray-700 cursor-pointer'}`}
+              >
+                전처리된 데이터 사용 (LOESS Smoothed)
+              </label>
+            </div>
+
             {/* CSV 다운로드 */}
-            <Button variant="outline" size="sm" onClick={downloadCSV} disabled={!rawData} className="ml-auto">
+            <Button variant="outline" size="sm" onClick={downloadCSV} disabled={!rawData && !processedData} className="ml-auto">
               <Download className="w-4 h-4 mr-1" />
               CSV
             </Button>
           </div>
           
           {/* 선택된 정보 표시 */}
-          {rawData && (
-            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-4 text-sm text-gray-600">
-              <span className="font-medium text-gray-900">{rawData.source_filename}</span>
-              <span>피험자: {rawData.subject_name || 'Unknown'}</span>
-              <span>날짜: {new Date(rawData.test_date).toLocaleDateString()}</span>
-              <span>총 {rawData.total_rows.toLocaleString()}행</span>
-              <span>표시 컬럼: {displayColumns.length}개</span>
+          {(rawData || processedData) && (
+            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-4 text-sm text-gray-600 flex-wrap">
+              {rawData && !useProcessedData && (
+                <>
+                  <span className="font-medium text-gray-900">{rawData.source_filename}</span>
+                  <span>피험자: {rawData.subject_name || 'Unknown'}</span>
+                  <span>날짜: {new Date(rawData.test_date).toLocaleDateString()}</span>
+                  <span>총 {rawData.total_rows.toLocaleString()}행</span>
+                  <span>표시 컬럼: {displayColumns.length}개</span>
+                </>
+              )}
+              {processedData && useProcessedData && (
+                <>
+                  <span className="font-medium text-teal-700">✨ 전처리된 데이터 (LOESS Smoothed)</span>
+                  <span>데이터 포인트: {processedData.data?.length || 0}개</span>
+                  {analysisData?.metabolic_markers?.fat_max && (
+                    <span className="text-orange-600">FatMax: {analysisData.metabolic_markers.fat_max.power}W</span>
+                  )}
+                  {analysisData?.metabolic_markers?.crossover?.power && (
+                    <span className="text-purple-600">Crossover: {analysisData.metabolic_markers.crossover.power}W</span>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>

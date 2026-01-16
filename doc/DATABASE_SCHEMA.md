@@ -94,6 +94,12 @@ CPET 플랫폼은 PostgreSQL + TimescaleDB를 사용하여 시계열 데이터�
 | test_end_sec | INTEGER | 테스트 종료 시점 (초) |
 | phase_metrics | JSON | 구간별 메트릭 (평균, 최대, 최소) |
 
+**분석 태깅 (계획):**
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| analysis_tags | JSONB | 테스트 유형/패턴 태깅 (Ramp/Step/Mixed 등) |
+| processed_version | INTEGER | 정제 데이터셋 버전 |
+
 **파일 추적:**
 | 컬럼 | 타입 | 설명 |
 |------|------|------|
@@ -183,6 +189,29 @@ CPET 플랫폼은 PostgreSQL + TimescaleDB를 사용하여 시계열 데이터�
 **TimescaleDB 파티셔닝:**
 - 하이퍼테이블로 자동 시간 기반 파티셔닝
 - 5개 청크로 분할 (데이터량에 따라 자동 조정)
+
+---
+
+### 4. breath_data_processed (차트 전용 정제 데이터셋) — 계획
+
+Raw 데이터에서 전처리/빈닝/보간을 거친 차트 전용 시계열을 저장합니다.
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| id | UUID | Primary Key |
+| test_id | UUID | FK → cpet_tests.test_id |
+| power_bin | INTEGER | Power bin (W) |
+| t_sec | DOUBLE | 대표 시간(초) |
+| vo2 | DOUBLE | 보간/정제된 VO2 |
+| vco2 | DOUBLE | 보간/정제된 VCO2 |
+| fat_oxidation | DOUBLE | 정제된 지방 산화율 |
+| cho_oxidation | DOUBLE | 정제된 탄수화물 산화율 |
+| rer | DOUBLE | 정제된 RER |
+| ve | DOUBLE | 정제된 VE |
+| vt | DOUBLE | 정제된 VT |
+| hr | DOUBLE | 정제된 HR |
+| cadence | DOUBLE | 정제된 Cadence |
+| meta | JSONB | 전처리 메타데이터 (bin_size, method 등) |
 
 ---
 
