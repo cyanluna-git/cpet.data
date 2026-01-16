@@ -1,4 +1,4 @@
-"""Frontend environment configuration and constants."""
+/** Frontend environment configuration and constants. */
 
 // API Configuration
 export const API_CONFIG = {

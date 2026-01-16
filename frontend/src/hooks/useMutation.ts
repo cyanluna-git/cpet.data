@@ -1,4 +1,4 @@
-"""Custom hook for handling async mutations (POST, PUT, DELETE) with loading and error states."""
+/** Custom hook for handling async mutations (POST, PUT, DELETE) with loading and error states. */
 
 import { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';

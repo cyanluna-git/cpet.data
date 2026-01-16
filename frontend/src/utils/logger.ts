@@ -1,4 +1,4 @@
-"""Centralized logging utility with different log levels."""
+/** Centralized logging utility with different log levels. */
 
 import { LOG_LEVEL, LOG_LEVELS } from '@/config/env';
 

@@ -1,4 +1,4 @@
-"""Unit tests for useFetch hook."""
+/** Unit tests for useFetch hook. */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';

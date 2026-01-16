@@ -3,7 +3,7 @@ import { AuthProvider, useAuth, type User } from '@/hooks/useAuth';
 import { useNavigation } from '@/hooks/useNavigation';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { toast, Toaster } from 'sonner';
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 // Pages
 import { LoginPage } from '@/components/pages/LoginPage';

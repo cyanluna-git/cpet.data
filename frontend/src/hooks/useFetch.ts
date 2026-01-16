@@ -1,4 +1,4 @@
-"""Custom hook for handling async data fetching with automatic cleanup and cancellation."""
+/** Custom hook for handling async data fetching with automatic cleanup and cancellation. */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';

@@ -20,8 +20,8 @@ import { getNavigationPath } from '@/utils/navigationConfig';
 export function useNavigation() {
   const navigate = useNavigate();
 
-  const handleNavigate = (view: View, params?: NavigationParams) => {
-    const path = getNavigationPath(view, params);
+  const handleNavigate = (view: View | string, params?: NavigationParams | any) => {
+    const path = getNavigationPath(view as View, params as NavigationParams);
     navigate(path);
   };
 

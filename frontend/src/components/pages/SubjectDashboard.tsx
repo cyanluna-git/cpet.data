@@ -27,13 +27,13 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
     try {
       // Get all subjects and find the one associated with this user
       const subjectsResponse = await api.getSubjects();
-      const subjectsData = extractItems(subjectsResponse);
-      const userSubject = subjectsData[0]; // Simplified - in real app, match by user_id
+      const subjectsData = extractItems<any>(subjectsResponse);
+      const userSubject = subjectsData[0] as any; // Simplified - in real app, match by user_id
       
       if (userSubject) {
         setSubject(userSubject);
         const testsResponse = await api.getTests();
-        const testsData = extractItems(testsResponse);
+        const testsData = extractItems<any>(testsResponse);
         const userTests = testsData.filter((t: any) => t.subject_id === userSubject.id);
         setTests(userTests);
       }
