@@ -6,14 +6,16 @@ import { Database, Download, ChevronLeft, ChevronRight, Settings2, Check, User, 
 import { toast } from 'sonner';
 import { getErrorMessage, getAuthToken } from '@/utils/apiHelpers';
 import {
-  LineChart as RechartsLineChart,
+  ComposedChart,
   Line,
+  Scatter,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
   ResponsiveContainer,
+  ZAxis,
 } from 'recharts';
 
 interface RawDataViewerPageProps {
@@ -190,8 +192,8 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   // 차트 상태
   const [showChart, setShowChart] = useState(true);
   const [chartXAxis, setChartXAxis] = useState('t_sec');
-  const [chartYAxisLeft, setChartYAxisLeft] = useState<string[]>(['hr', 'bike_power']);
-  const [chartYAxisRight, setChartYAxisRight] = useState<string[]>(['vo2']);
+  const [chartYAxisLeft, setChartYAxisLeft] = useState<string[]>([]);
+  const [chartYAxisRight, setChartYAxisRight] = useState<string[]>([]);
   const [showChartSettings, setShowChartSettings] = useState(false);
   const chartSettingsRef = useRef<HTMLDivElement>(null);
 
@@ -258,14 +260,24 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     );
   }, []);
 
-  // 차트 데이터 (모든 데이터를 간격을 두고 샘플링)
+  // 차트 데이터 (X축 값으로 정렬, 샘플링)
   const chartData = useMemo(() => {
     if (!rawData) return [];
     const data = rawData.data;
     const maxPoints = 500; // 최대 표시 포인트
     const step = Math.max(1, Math.floor(data.length / maxPoints));
-    return data.filter((_, i) => i % step === 0);
-  }, [rawData]);
+    const sampled = data.filter((_, i) => i % step === 0);
+    
+    // X축 값으로 정렬 (숫자형일 경우)
+    return [...sampled].sort((a, b) => {
+      const aVal = (a as any)[chartXAxis];
+      const bVal = (b as any)[chartXAxis];
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return aVal - bVal;
+      }
+      return 0;
+    });
+  }, [rawData, chartXAxis]);
 
   // 피험자 목록 로드
   useEffect(() => {
@@ -605,17 +617,37 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
               </div>
             </CardHeader>
             <CardContent className="pt-0">
+              {/* Y축이 비어있으면 안내 메시지 표시 */}
+              {chartYAxisLeft.length === 0 && chartYAxisRight.length === 0 ? (
+                <div className="h-80 flex items-center justify-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                  <div className="text-center text-gray-500">
+                    <LineChart className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p className="font-medium">Y축 변수를 선택하세요</p>
+                    <p className="text-sm mt-1">우측 상단의 "축 설정" 버튼을 눌러 차트에 표시할 변수를 선택하세요</p>
+                  </div>
+                </div>
+              ) : (
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
-                  <RechartsLineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                  <ComposedChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis 
-                      dataKey={chartXAxis} 
+                      dataKey={chartXAxis}
+                      type="number"
+                      domain={['dataMin', 'dataMax']}
                       tick={{ fontSize: 11 }}
                       tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
+                      label={{
+                        value: CHART_COLUMNS.find(c => c.key === chartXAxis)?.label || chartXAxis, 
+                        position: 'insideBottom', 
+                        offset: -5,
+                        fontSize: 11 
+                      }}
                     />
                     <YAxis 
                       yAxisId="left"
+                      type="number"
+                      domain={['auto', 'auto']}
                       tick={{ fontSize: 11 }}
                       tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
                     />
@@ -623,57 +655,62 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                       <YAxis 
                         yAxisId="right" 
                         orientation="right"
+                        type="number"
+                        domain={['auto', 'auto']}
                         tick={{ fontSize: 11 }}
                         tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
                       />
                     )}
+                    <ZAxis range={[20, 20]} />
                     <Tooltip 
                       contentStyle={{ fontSize: 12 }}
                       formatter={(value: any, name: string) => {
                         const col = CHART_COLUMNS.find(c => c.key === name);
                         return [typeof value === 'number' ? value.toFixed(2) : value, col?.label || name];
                       }}
+                      labelFormatter={(label) => `${CHART_COLUMNS.find(c => c.key === chartXAxis)?.label || chartXAxis}: ${typeof label === 'number' ? label.toFixed(1) : label}`}
                     />
                     <Legend />
                     {chartYAxisLeft.map((key, idx) => {
                       const col = CHART_COLUMNS.find(c => c.key === key);
                       return (
-                        <Line
+                        <Scatter
                           key={key}
                           yAxisId="left"
-                          type="monotone"
                           dataKey={key}
                           name={col?.label || key}
-                          stroke={CHART_COLORS[idx % CHART_COLORS.length]}
-                          dot={false}
-                          strokeWidth={1.5}
+                          fill={CHART_COLORS[idx % CHART_COLORS.length]}
+                          line={{ stroke: CHART_COLORS[idx % CHART_COLORS.length], strokeWidth: 1 }}
+                          lineType="joint"
                         />
                       );
                     })}
                     {chartYAxisRight.map((key, idx) => {
                       const col = CHART_COLUMNS.find(c => c.key === key);
                       return (
-                        <Line
+                        <Scatter
                           key={key}
                           yAxisId="right"
-                          type="monotone"
                           dataKey={key}
                           name={col?.label || key}
-                          stroke={CHART_COLORS[(chartYAxisLeft.length + idx) % CHART_COLORS.length]}
-                          dot={false}
-                          strokeWidth={1.5}
-                          strokeDasharray="5 5"
+                          fill={CHART_COLORS[(chartYAxisLeft.length + idx) % CHART_COLORS.length]}
+                          line={{ stroke: CHART_COLORS[(chartYAxisLeft.length + idx) % CHART_COLORS.length], strokeWidth: 1, strokeDasharray: '5 5' }}
+                          lineType="joint"
+                          shape="cross"
                         />
                       );
                     })}
-                  </RechartsLineChart>
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
+              )}
+              {(chartYAxisLeft.length > 0 || chartYAxisRight.length > 0) && (
               <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">
                 <span>X축: {CHART_COLUMNS.find(c => c.key === chartXAxis)?.label}</span>
-                <span>왼쪽 Y축 (실선): {chartYAxisLeft.map(k => CHART_COLUMNS.find(c => c.key === k)?.label).join(', ') || '없음'}</span>
-                <span>오른쪽 Y축 (점선): {chartYAxisRight.map(k => CHART_COLUMNS.find(c => c.key === k)?.label).join(', ') || '없음'}</span>
+                <span>왼쪽 Y축 (●): {chartYAxisLeft.map(k => CHART_COLUMNS.find(c => c.key === k)?.label).join(', ') || '없음'}</span>
+                <span>오른쪽 Y축 (✕): {chartYAxisRight.map(k => CHART_COLUMNS.find(c => c.key === k)?.label).join(', ') || '없음'}</span>
               </div>
+              )}
             </CardContent>
           </Card>
         ) : rawData && !showChart ? (
