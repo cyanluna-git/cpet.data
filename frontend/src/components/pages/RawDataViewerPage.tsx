@@ -207,6 +207,8 @@ const CHART_PRESETS = [
   },
 ];
 
+const QUAD_PRESETS = CHART_PRESETS.filter((preset) => preset.key !== 'custom');
+
 const PAGE_SIZE = 50;
 
 export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerPageProps) {
@@ -226,6 +228,9 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   const [useProcessedData, setUseProcessedData] = useState(false);
   const [processedData, setProcessedData] = useState<any>(null);
   const [analysisData, setAnalysisData] = useState<any>(null);
+  const [loessFrac, setLoessFrac] = useState(0.25);
+  const [binSize, setBinSize] = useState(10);
+  const [aggregationMethod, setAggregationMethod] = useState<'median' | 'mean' | 'trimmed_mean'>('median');
   
   // 컬럼 선택 상태
   const [selectedColumns, setSelectedColumns] = useState<string[]>(DEFAULT_SELECTED_COLUMNS);
@@ -234,20 +239,13 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
 
   // 차트 상태
   const [showChart, setShowChart] = useState(true);
-  const [chartXAxis, setChartXAxis] = useState('bike_power'); // 전처리 데이터용으로 기본 X축을 power로 변경
-  const [chartYAxisLeft, setChartYAxisLeft] = useState<string[]>(['fat_oxidation', 'cho_oxidation']);
-  const [chartYAxisRight, setChartYAxisRight] = useState<string[]>(['rer']);
-  const [showChartSettings, setShowChartSettings] = useState(false);
-  const chartSettingsRef = useRef<HTMLDivElement>(null);
+  const [showRawTable, setShowRawTable] = useState(false);
 
   // 외부 클릭 시 컬럼 선택기 닫기
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (columnSelectorRef.current && !columnSelectorRef.current.contains(event.target as Node)) {
         setShowColumnSelector(false);
-      }
-      if (chartSettingsRef.current && !chartSettingsRef.current.contains(event.target as Node)) {
-        setShowChartSettings(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -281,62 +279,41 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     ...SELECTABLE_COLUMNS.filter(c => selectedColumns.includes(c.key))
   ];
 
-  // 차트 Y축 토글 (왼쪽 축)
-  const toggleChartYAxisLeft = useCallback((key: string) => {
-    // 오른쪽 축에서 제거
-    setChartYAxisRight(prev => prev.filter(k => k !== key));
-    setChartYAxisLeft(prev => 
-      prev.includes(key) 
-        ? prev.filter(k => k !== key)
-        : [...prev, key]
-    );
-  }, []);
-
-  // 차트 Y축 토글 (오른쪽 축)
-  const toggleChartYAxisRight = useCallback((key: string) => {
-    // 왼쪽 축에서 제거
-    setChartYAxisLeft(prev => prev.filter(k => k !== key));
-    setChartYAxisRight(prev => 
-      prev.includes(key) 
-        ? prev.filter(k => k !== key)
-        : [...prev, key]
-    );
-  }, []);
-
-  const applyChartPreset = useCallback((presetKey: string) => {
-    const preset = CHART_PRESETS.find(item => item.key === presetKey);
-    if (!preset) return;
-    setChartXAxis(preset.x);
-    setChartYAxisLeft(preset.yLeft);
-    setChartYAxisRight(preset.yRight);
-    setShowChartSettings(false);
-    setShowChart(true);
-  }, []);
-
-  // 차트 데이터 (X축 값으로 정렬, 샘플링)
-  const chartData = useMemo(() => {
-    // 전처리 데이터 사용 시
-    if (useProcessedData && processedData) {
-      return processedData.data || [];
-    }
-    
-    // Raw 데이터 사용 시
+  const rawChartData = useMemo(() => {
     if (!rawData) return [];
     const data = rawData.data;
-    const maxPoints = 500; // 최대 표시 포인트
+    const maxPoints = 500;
     const step = Math.max(1, Math.floor(data.length / maxPoints));
-    const sampled = data.filter((_, i) => i % step === 0);
-    
-    // X축 값으로 정렬 (숫자형일 경우)
-    return [...sampled].sort((a, b) => {
-      const aVal = (a as any)[chartXAxis];
-      const bVal = (b as any)[chartXAxis];
-      if (typeof aVal === 'number' && typeof bVal === 'number') {
-        return aVal - bVal;
-      }
-      return 0;
-    });
-  }, [rawData, chartXAxis, useProcessedData, processedData]);
+    return data.filter((_, i) => i % step === 0);
+  }, [rawData]);
+
+  const processedChartData = useMemo(() => {
+    return processedData?.data || [];
+  }, [processedData]);
+
+  const getChartDataForPreset = useCallback(
+    (xKey: string, yLeft: string[], yRight: string[]) => {
+      const requiredKeys = [xKey, ...yLeft, ...yRight];
+      const processedHasKeys =
+        processedChartData.length > 0 &&
+        requiredKeys.every((key) => key in processedChartData[0]);
+      const source = useProcessedData && processedHasKeys ? processedChartData : rawChartData;
+
+      return [...source].sort((a, b) => {
+        const aVal = (a as any)[xKey];
+        const bVal = (b as any)[xKey];
+        if (typeof aVal === 'number' && typeof bVal === 'number') {
+          return aVal - bVal;
+        }
+        return 0;
+      });
+    },
+    [processedChartData, rawChartData, useProcessedData]
+  );
+
+  const hasChartData = useMemo(() => {
+    return useProcessedData ? processedChartData.length > 0 : rawChartData.length > 0;
+  }, [processedChartData, rawChartData, useProcessedData]);
 
   // 피험자 목록 로드
   useEffect(() => {
@@ -423,13 +400,17 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   // 테스트 선택 시 자동으로 데이터 로드
   useEffect(() => {
     if (selectedTestId) {
-      if (useProcessedData) {
-        loadProcessedData();
-      } else {
+      if (!useProcessedData) {
         loadRawData();
       }
     }
-  }, [selectedTestId]);
+  }, [selectedTestId, useProcessedData]);
+
+  useEffect(() => {
+    if (selectedTestId && useProcessedData) {
+      loadProcessedData();
+    }
+  }, [selectedTestId, useProcessedData, loessFrac, binSize, aggregationMethod]);
 
   // 선택한 테스트의 raw data 로드
   async function loadRawData() {
@@ -463,7 +444,9 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     try {
       setLoading(true);
       const token = getAuthToken();
-      const response = await fetch(`/api/tests/${selectedTestId}/analysis?interval=5s&include_processed=true`, {
+      const response = await fetch(
+        `/api/tests/${selectedTestId}/analysis?interval=5s&include_processed=true&loess_frac=${loessFrac}&bin_size=${binSize}&aggregation_method=${aggregationMethod}`,
+        {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) {
@@ -488,13 +471,6 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         }));
         console.log('📈 Chart Data Points:', chartDataPoints.length, 'Sample:', chartDataPoints[0]);
         setProcessedData({ data: chartDataPoints });
-        
-        // 차트 설정 자동 전환: X축을 bike_power로, Y축을 metabolism 관련으로
-        setChartXAxis('bike_power');
-        if (chartYAxisLeft.length === 0 && chartYAxisRight.length === 0) {
-          setChartYAxisLeft(['fat_oxidation', 'cho_oxidation']);
-          setChartYAxisRight(['rer']);
-        }
         setShowChart(true);
       } else {
         console.warn('⚠️ No processed_series.smoothed in response');
@@ -631,6 +607,55 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
               </label>
             </div>
 
+            {/* 전처리 파라미터 컨트롤 */}
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex flex-col gap-1 min-w-[140px]">
+                <label className={`text-xs font-medium ${useProcessedData ? 'text-gray-700' : 'text-gray-400'}`}>
+                  LOESS 강도 ({loessFrac.toFixed(2)})
+                </label>
+                <input
+                  type="range"
+                  min={0.1}
+                  max={0.5}
+                  step={0.05}
+                  value={loessFrac}
+                  onChange={(e) => setLoessFrac(parseFloat(e.target.value))}
+                  disabled={!useProcessedData}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex flex-col gap-1 min-w-[140px]">
+                <label className={`text-xs font-medium ${useProcessedData ? 'text-gray-700' : 'text-gray-400'}`}>
+                  Power Bin ({binSize}W)
+                </label>
+                <input
+                  type="range"
+                  min={5}
+                  max={30}
+                  step={5}
+                  value={binSize}
+                  onChange={(e) => setBinSize(parseInt(e.target.value, 10))}
+                  disabled={!useProcessedData}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex flex-col gap-1 min-w-[160px]">
+                <label className={`text-xs font-medium ${useProcessedData ? 'text-gray-700' : 'text-gray-400'}`}>
+                  집계 방식
+                </label>
+                <select
+                  className="px-2 py-1 border border-gray-300 rounded-md text-xs"
+                  value={aggregationMethod}
+                  onChange={(e) => setAggregationMethod(e.target.value as 'median' | 'mean' | 'trimmed_mean')}
+                  disabled={!useProcessedData}
+                >
+                  <option value="median">Median</option>
+                  <option value="mean">Mean</option>
+                  <option value="trimmed_mean">Trimmed Mean</option>
+                </select>
+              </div>
+            </div>
+
             {/* CSV 다운로드 */}
             <Button variant="outline" size="sm" onClick={downloadCSV} disabled={!rawData && !processedData} className="ml-auto">
               <Download className="w-4 h-4 mr-1" />
@@ -671,124 +696,16 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
           <div className="flex justify-center py-12">
             <div className="w-16 h-16 border-4 border-[#2563EB] border-t-transparent rounded-full animate-spin"></div>
           </div>
-        ) : rawData && showChart ? (
+        ) : (rawData || processedData) && showChart ? (
           <Card className="mb-4">
             <CardHeader className="py-3">
               <div className="flex justify-between items-center">
                 <CardTitle className="text-base flex items-center gap-2">
                   <LineChart className="w-4 h-4" />
-                  데이터 차트
+                  데이터 차트 (4분할)
                 </CardTitle>
                 <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1 flex-wrap">
-                    {CHART_PRESETS.map(preset => (
-                      <Button
-                        key={preset.key}
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2 text-xs"
-                        onClick={() => applyChartPreset(preset.key)}
-                      >
-                        {preset.label}
-                      </Button>
-                    ))}
-                  </div>
-                  {/* 차트 설정 */}
-                  <div className="relative" ref={chartSettingsRef}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowChartSettings(!showChartSettings)}
-                      className="gap-1"
-                    >
-                      <Settings2 className="w-4 h-4" />
-                      축 설정
-                    </Button>
-                    
-                    {showChartSettings && (
-                      <div className="absolute right-0 top-full mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-[500px] overflow-y-auto">
-                        <div className="p-3 border-b bg-gray-50">
-                          <span className="font-medium text-sm">차트 축 설정</span>
-                        </div>
-                        
-                        {/* X축 선택 */}
-                        <div className="p-3 border-b">
-                          <label className="text-sm font-medium text-gray-700 mb-2 block">X축</label>
-                          <select
-                            className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm"
-                            value={chartXAxis}
-                            onChange={(e) => setChartXAxis(e.target.value)}
-                          >
-                            {CHART_COLUMNS.map(col => (
-                              <option key={col.key} value={col.key}>
-                                {col.label} {col.unit && `(${col.unit})`}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        
-                        {/* Y축 (왼쪽) */}
-                        <div className="p-3 border-b">
-                          <label className="text-sm font-medium text-gray-700 mb-2 block">
-                            Y축 (왼쪽) - {chartYAxisLeft.length}개 선택
-                          </label>
-                          <div className="grid grid-cols-3 gap-1 max-h-32 overflow-y-auto">
-                            {CHART_COLUMNS.filter(c => c.key !== chartXAxis).map((col, idx) => (
-                              <label
-                                key={col.key}
-                                className={`flex items-center gap-1 px-2 py-1 rounded text-xs cursor-pointer hover:bg-gray-50 ${
-                                  chartYAxisLeft.includes(col.key) ? 'bg-blue-50 text-blue-800' : ''
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={chartYAxisLeft.includes(col.key)}
-                                  onChange={() => toggleChartYAxisLeft(col.key)}
-                                  className="w-3 h-3"
-                                />
-                                <span 
-                                  className="w-2 h-2 rounded-full flex-shrink-0"
-                                  style={{ backgroundColor: chartYAxisLeft.includes(col.key) ? CHART_COLORS[chartYAxisLeft.indexOf(col.key) % CHART_COLORS.length] : '#ccc' }}
-                                />
-                                {col.label}
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                        
-                        {/* Y축 (오른쪽) */}
-                        <div className="p-3">
-                          <label className="text-sm font-medium text-gray-700 mb-2 block">
-                            Y축 (오른쪽) - {chartYAxisRight.length}개 선택
-                            <span className="text-gray-400 font-normal ml-1">(단위가 다른 데이터용)</span>
-                          </label>
-                          <div className="grid grid-cols-3 gap-1 max-h-32 overflow-y-auto">
-                            {CHART_COLUMNS.filter(c => c.key !== chartXAxis).map((col, idx) => (
-                              <label
-                                key={col.key}
-                                className={`flex items-center gap-1 px-2 py-1 rounded text-xs cursor-pointer hover:bg-gray-50 ${
-                                  chartYAxisRight.includes(col.key) ? 'bg-orange-50 text-orange-800' : ''
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={chartYAxisRight.includes(col.key)}
-                                  onChange={() => toggleChartYAxisRight(col.key)}
-                                  className="w-3 h-3"
-                                />
-                                <span 
-                                  className="w-2 h-2 rounded-full flex-shrink-0"
-                                  style={{ backgroundColor: chartYAxisRight.includes(col.key) ? CHART_COLORS[(chartYAxisLeft.length + chartYAxisRight.indexOf(col.key)) % CHART_COLORS.length] : '#ccc' }}
-                                />
-                                {col.label}
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  
+                  <span className="text-xs text-gray-500">FATMAX · RER · VO2 · VT</span>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -800,147 +717,214 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
               </div>
             </CardHeader>
             <CardContent className="pt-0">
-              {/* Y축이 비어있으면 안내 메시지 표시 */}
-              {chartYAxisLeft.length === 0 && chartYAxisRight.length === 0 ? (
-                <div className="h-80 flex items-center justify-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+              {!hasChartData ? (
+                <div className="h-64 flex items-center justify-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
                   <div className="text-center text-gray-500">
-                    <LineChart className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                    <p className="font-medium">Y축 변수를 선택하세요</p>
-                    <p className="text-sm mt-1">우측 상단의 "축 설정" 버튼을 눌러 차트에 표시할 변수를 선택하세요</p>
+                    <LineChart className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                    <p className="font-medium">차트 데이터를 불러오는 중입니다</p>
                   </div>
                 </div>
               ) : (
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis 
-                      dataKey={chartXAxis}
-                      type="number"
-                      domain={['dataMin', 'dataMax']}
-                      tick={{ fontSize: 11 }}
-                      tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
-                      label={{
-                        value: CHART_COLUMNS.find(c => c.key === chartXAxis)?.label || chartXAxis, 
-                        position: 'insideBottom', 
-                        offset: -5,
-                        fontSize: 11 
-                      }}
-                    />
-                    <YAxis 
-                      yAxisId="left"
-                      type="number"
-                      domain={['auto', 'auto']}
-                      tick={{ fontSize: 11 }}
-                      tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
-                    />
-                    {chartYAxisRight.length > 0 && (
-                      <YAxis 
-                        yAxisId="right" 
-                        orientation="right"
-                        type="number"
-                        domain={['auto', 'auto']}
-                        tick={{ fontSize: 11 }}
-                        tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
-                      />
-                    )}
-                    <ZAxis range={[20, 20]} />
-                    <Tooltip 
-                      contentStyle={{ fontSize: 12 }}
-                      formatter={(value: any, name: string) => {
-                        const col = CHART_COLUMNS.find(c => c.key === name);
-                        return [typeof value === 'number' ? value.toFixed(2) : value, col?.label || name];
-                      }}
-                      labelFormatter={(label) => `${CHART_COLUMNS.find(c => c.key === chartXAxis)?.label || chartXAxis}: ${typeof label === 'number' ? label.toFixed(1) : label}`}
-                    />
-                    <Legend />
-                    
-                    {/* 전처리 데이터: 부드러운 곡선 (Line), Raw 데이터: 점+선 (Scatter) */}
-                    {useProcessedData ? (
-                      // 전처리 데이터: 연속적인 부드러운 곡선
-                      <>
-                        {chartYAxisLeft.map((key, idx) => {
-                          const col = CHART_COLUMNS.find(c => c.key === key);
-                          return (
-                            <Line
-                              key={key}
-                              yAxisId="left"
-                              type="monotone"
-                              dataKey={key}
-                              name={col?.label || key}
-                              stroke={CHART_COLORS[idx % CHART_COLORS.length]}
-                              strokeWidth={3}
-                              dot={false}
-                              activeDot={{ r: 6 }}
-                            />
-                          );
-                        })}
-                        {chartYAxisRight.map((key, idx) => {
-                          const col = CHART_COLUMNS.find(c => c.key === key);
-                          return (
-                            <Line
-                              key={key}
-                              yAxisId="right"
-                              type="monotone"
-                              dataKey={key}
-                              name={col?.label || key}
-                              stroke={CHART_COLORS[(chartYAxisLeft.length + idx) % CHART_COLORS.length]}
-                              strokeWidth={2}
-                              strokeDasharray="5 5"
-                              dot={false}
-                              activeDot={{ r: 6 }}
-                            />
-                          );
-                        })}
-                      </>
-                    ) : (
-                      // Raw 데이터: 점과 선 (기존 Scatter)
-                      <>
-                        {chartYAxisLeft.map((key, idx) => {
-                          const col = CHART_COLUMNS.find(c => c.key === key);
-                          return (
-                            <Scatter
-                              key={key}
-                              yAxisId="left"
-                              dataKey={key}
-                              name={col?.label || key}
-                              fill={CHART_COLORS[idx % CHART_COLORS.length]}
-                              line={{ stroke: CHART_COLORS[idx % CHART_COLORS.length], strokeWidth: 1 }}
-                              lineType="joint"
-                            />
-                          );
-                        })}
-                        {chartYAxisRight.map((key, idx) => {
-                          const col = CHART_COLUMNS.find(c => c.key === key);
-                          return (
-                            <Scatter
-                              key={key}
-                              yAxisId="right"
-                              dataKey={key}
-                              name={col?.label || key}
-                              fill={CHART_COLORS[(chartYAxisLeft.length + idx) % CHART_COLORS.length]}
-                              line={{ stroke: CHART_COLORS[(chartYAxisLeft.length + idx) % CHART_COLORS.length], strokeWidth: 1, strokeDasharray: '5 5' }}
-                              lineType="joint"
-                              shape="cross"
-                            />
-                          );
-                        })}
-                      </>
-                    )}
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-              )}
-              {(chartYAxisLeft.length > 0 || chartYAxisRight.length > 0) && (
-              <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">
-                <span>X축: {CHART_COLUMNS.find(c => c.key === chartXAxis)?.label}</span>
-                <span>왼쪽 Y축 (●): {chartYAxisLeft.map(k => CHART_COLUMNS.find(c => c.key === k)?.label).join(', ') || '없음'}</span>
-                <span>오른쪽 Y축 (✕): {chartYAxisRight.map(k => CHART_COLUMNS.find(c => c.key === k)?.label).join(', ') || '없음'}</span>
-              </div>
+                <div className="space-y-3">
+                  <div className="rounded-lg border border-gray-200 bg-white p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-gray-700">테스트 개요 (시간 vs HR/Power)</span>
+                      <span className="text-[11px] text-gray-400">X: Time(s)</span>
+                    </div>
+                    <div className="h-44 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart data={rawChartData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                          <XAxis
+                            dataKey="t_sec"
+                            type="number"
+                            domain={['dataMin', 'dataMax']}
+                            tick={{ fontSize: 10 }}
+                            tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
+                          />
+                          <YAxis
+                            yAxisId="left"
+                            type="number"
+                            domain={['auto', 'auto']}
+                            tick={{ fontSize: 10 }}
+                            tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
+                          />
+                          <YAxis
+                            yAxisId="right"
+                            orientation="right"
+                            type="number"
+                            domain={['auto', 'auto']}
+                            tick={{ fontSize: 10 }}
+                            tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
+                          />
+                          <Tooltip
+                            contentStyle={{ fontSize: 11 }}
+                            formatter={(value: any, name: string) => {
+                              const col = CHART_COLUMNS.find(c => c.key === name);
+                              return [typeof value === 'number' ? value.toFixed(1) : value, col?.label || name];
+                            }}
+                            labelFormatter={(label) => `Time(s): ${typeof label === 'number' ? label.toFixed(0) : label}`}
+                          />
+                          <Line
+                            yAxisId="left"
+                            type="monotone"
+                            dataKey="hr"
+                            name="HR"
+                            stroke="#2563EB"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                          <Line
+                            yAxisId="right"
+                            type="monotone"
+                            dataKey="bike_power"
+                            name="Power"
+                            stroke="#DC2626"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  {QUAD_PRESETS.map((preset, presetIndex) => {
+                    const data = getChartDataForPreset(preset.x, preset.yLeft, preset.yRight);
+                    const xLabel = CHART_COLUMNS.find(c => c.key === preset.x)?.label || preset.x;
+                    return (
+                      <div key={preset.key} className="rounded-lg border border-gray-200 bg-white p-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-semibold text-gray-700">{preset.label}</span>
+                          <span className="text-[11px] text-gray-400">X: {xLabel}</span>
+                        </div>
+                        {data.length === 0 ? (
+                          <div className="aspect-square w-full flex items-center justify-center text-xs text-gray-400">
+                            데이터 없음
+                          </div>
+                        ) : (
+                          <div className="aspect-[4/3] w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <ComposedChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                <XAxis
+                                  dataKey={preset.x}
+                                  type="number"
+                                  domain={['dataMin', 'dataMax']}
+                                  tick={{ fontSize: 10 }}
+                                  tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
+                                />
+                                <YAxis
+                                  yAxisId="left"
+                                  type="number"
+                                  domain={['auto', 'auto']}
+                                  tick={{ fontSize: 10 }}
+                                  tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
+                                />
+                                {preset.yRight.length > 0 && (
+                                  <YAxis
+                                    yAxisId="right"
+                                    orientation="right"
+                                    type="number"
+                                    domain={['auto', 'auto']}
+                                    tick={{ fontSize: 10 }}
+                                    tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
+                                  />
+                                )}
+                                <ZAxis range={[20, 20]} />
+                                <Tooltip
+                                  contentStyle={{ fontSize: 11 }}
+                                  formatter={(value: any, name: string) => {
+                                    const col = CHART_COLUMNS.find(c => c.key === name);
+                                    return [typeof value === 'number' ? value.toFixed(2) : value, col?.label || name];
+                                  }}
+                                  labelFormatter={(label) => `${xLabel}: ${typeof label === 'number' ? label.toFixed(1) : label}`}
+                                />
+                                {useProcessedData ? (
+                                  <>
+                                    {preset.yLeft.map((key, idx) => {
+                                      const col = CHART_COLUMNS.find(c => c.key === key);
+                                      return (
+                                        <Line
+                                          key={`${preset.key}-left-${key}`}
+                                          yAxisId="left"
+                                          type="monotone"
+                                          dataKey={key}
+                                          name={col?.label || key}
+                                          stroke={CHART_COLORS[(presetIndex + idx) % CHART_COLORS.length]}
+                                          strokeWidth={2.5}
+                                          dot={false}
+                                        />
+                                      );
+                                    })}
+                                    {preset.yRight.map((key, idx) => {
+                                      const col = CHART_COLUMNS.find(c => c.key === key);
+                                      return (
+                                        <Line
+                                          key={`${preset.key}-right-${key}`}
+                                          yAxisId="right"
+                                          type="monotone"
+                                          dataKey={key}
+                                          name={col?.label || key}
+                                          stroke={CHART_COLORS[(presetIndex + preset.yLeft.length + idx) % CHART_COLORS.length]}
+                                          strokeWidth={2}
+                                          strokeDasharray="5 5"
+                                          dot={false}
+                                        />
+                                      );
+                                    })}
+                                  </>
+                                ) : (
+                                  <>
+                                    {preset.yLeft.map((key, idx) => {
+                                      const col = CHART_COLUMNS.find(c => c.key === key);
+                                      return (
+                                        <Scatter
+                                          key={`${preset.key}-left-${key}`}
+                                          yAxisId="left"
+                                          dataKey={key}
+                                          name={col?.label || key}
+                                          fill={CHART_COLORS[(presetIndex + idx) % CHART_COLORS.length]}
+                                          line={{ stroke: CHART_COLORS[(presetIndex + idx) % CHART_COLORS.length], strokeWidth: 1 }}
+                                          lineType="joint"
+                                        />
+                                      );
+                                    })}
+                                    {preset.yRight.map((key, idx) => {
+                                      const col = CHART_COLUMNS.find(c => c.key === key);
+                                      return (
+                                        <Scatter
+                                          key={`${preset.key}-right-${key}`}
+                                          yAxisId="right"
+                                          dataKey={key}
+                                          name={col?.label || key}
+                                          fill={CHART_COLORS[(presetIndex + preset.yLeft.length + idx) % CHART_COLORS.length]}
+                                          line={{ stroke: CHART_COLORS[(presetIndex + preset.yLeft.length + idx) % CHART_COLORS.length], strokeWidth: 1, strokeDasharray: '5 5' }}
+                                          lineType="joint"
+                                          shape="cross"
+                                        />
+                                      );
+                                    })}
+                                  </>
+                                )}
+                              </ComposedChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+                        <div className="mt-2 text-[11px] text-gray-400">
+                          Y-left: {preset.yLeft.map(k => CHART_COLUMNS.find(c => c.key === k)?.label).join(', ')}
+                          {preset.yRight.length > 0 && (
+                            <> · Y-right: {preset.yRight.map(k => CHART_COLUMNS.find(c => c.key === k)?.label).join(', ')}</>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>
-        ) : rawData && !showChart ? (
+        ) : (rawData || processedData) && !showChart ? (
           <div className="mb-4">
             <Button variant="outline" size="sm" onClick={() => setShowChart(true)}>
               <LineChart className="w-4 h-4 mr-1" />
@@ -959,6 +943,15 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                   Breath Data
                 </CardTitle>
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowRawTable((prev) => !prev)}
+                  >
+                    {showRawTable ? '표 숨기기' : '표 보기'}
+                  </Button>
+                  {showRawTable && (
+                    <>
                   {/* 컬럼 선택기 */}
                   <div className="relative" ref={columnSelectorRef}>
                     <Button
@@ -1055,77 +1048,81 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                   >
                     <ChevronRight className="w-4 h-4" />
                   </Button>
+                    </>
+                  )}
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="p-0">
-              {/* 고정 컬럼 + 스크롤 가능 테이블 */}
-              <div className="flex">
-                {/* 왼쪽 고정 컬럼 (#, Time, Phase) */}
-                <div className="flex-shrink-0 border-r border-gray-200 bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                  <table className="text-sm">
-                    <thead>
-                      <tr className="border-b bg-gray-50">
-                        <th className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">#</th>
-                        {FIXED_COLUMNS.map(col => (
-                          <th key={col.key} className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">
-                            {col.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedData.map((row, idx) => (
-                        <tr key={row.id} className="border-b hover:bg-gray-50">
-                          <td className="px-3 py-1.5 text-gray-400 whitespace-nowrap">
-                            {(currentPage - 1) * PAGE_SIZE + idx + 1}
-                          </td>
+            {showRawTable && (
+              <CardContent className="p-0">
+                {/* 고정 컬럼 + 스크롤 가능 테이블 */}
+                <div className="flex">
+                  {/* 왼쪽 고정 컬럼 (#, Time, Phase) */}
+                  <div className="flex-shrink-0 border-r border-gray-200 bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                    <table className="text-sm">
+                      <thead>
+                        <tr className="border-b bg-gray-50">
+                          <th className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">#</th>
                           {FIXED_COLUMNS.map(col => (
-                            <td key={col.key} className="px-3 py-1.5 text-gray-900 font-mono text-xs whitespace-nowrap">
-                              {col.format((row as any)[col.key])}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                
-                {/* 오른쪽 스크롤 가능 영역 */}
-                <div className="overflow-x-auto flex-1">
-                  <table className="text-sm w-full">
-                    <thead>
-                      <tr className="border-b bg-gray-50">
-                        {SELECTABLE_COLUMNS.filter(c => selectedColumns.includes(c.key)).map(col => (
-                          <th key={col.key} className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">
-                            <span className="flex items-center gap-1">
+                            <th key={col.key} className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">
                               {col.label}
-                              <span className={`w-2 h-2 rounded-full ${
-                                col.group === 'basic' ? 'bg-blue-400' :
-                                col.group === 'respiratory' ? 'bg-green-400' :
-                                col.group === 'metabolic' ? 'bg-orange-400' :
-                                'bg-purple-400'
-                              }`} title={COLUMN_GROUPS[col.group as keyof typeof COLUMN_GROUPS].label} />
-                            </span>
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedData.map((row) => (
-                        <tr key={row.id} className="border-b hover:bg-gray-50">
-                          {SELECTABLE_COLUMNS.filter(c => selectedColumns.includes(c.key)).map(col => (
-                            <td key={col.key} className="px-3 py-1.5 text-gray-900 font-mono text-xs whitespace-nowrap">
-                              {col.format((row as any)[col.key])}
-                            </td>
+                            </th>
                           ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {paginatedData.map((row, idx) => (
+                          <tr key={row.id} className="border-b hover:bg-gray-50">
+                            <td className="px-3 py-1.5 text-gray-400 whitespace-nowrap">
+                              {(currentPage - 1) * PAGE_SIZE + idx + 1}
+                            </td>
+                            {FIXED_COLUMNS.map(col => (
+                              <td key={col.key} className="px-3 py-1.5 text-gray-900 font-mono text-xs whitespace-nowrap">
+                                {col.format((row as any)[col.key])}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  
+                  {/* 오른쪽 스크롤 가능 영역 */}
+                  <div className="overflow-x-auto flex-1">
+                    <table className="text-sm w-full">
+                      <thead>
+                        <tr className="border-b bg-gray-50">
+                          {SELECTABLE_COLUMNS.filter(c => selectedColumns.includes(c.key)).map(col => (
+                            <th key={col.key} className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">
+                              <span className="flex items-center gap-1">
+                                {col.label}
+                                <span className={`w-2 h-2 rounded-full ${
+                                  col.group === 'basic' ? 'bg-blue-400' :
+                                  col.group === 'respiratory' ? 'bg-green-400' :
+                                  col.group === 'metabolic' ? 'bg-orange-400' :
+                                  'bg-purple-400'
+                                }`} title={COLUMN_GROUPS[col.group as keyof typeof COLUMN_GROUPS].label} />
+                              </span>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paginatedData.map((row) => (
+                          <tr key={row.id} className="border-b hover:bg-gray-50">
+                            {SELECTABLE_COLUMNS.filter(c => selectedColumns.includes(c.key)).map(col => (
+                              <td key={col.key} className="px-3 py-1.5 text-gray-900 font-mono text-xs whitespace-nowrap">
+                                {col.format((row as any)[col.key])}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
+              </CardContent>
+            )}
           </Card>
         ) : null}
         
