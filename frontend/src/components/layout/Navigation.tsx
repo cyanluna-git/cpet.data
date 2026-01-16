@@ -1,4 +1,4 @@
-import { Activity, Users, LineChart, BarChart3, LogOut, User, Flame, Shield } from 'lucide-react';
+import { Activity, Users, LineChart, BarChart3, LogOut, User, Flame, Shield, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -108,6 +108,18 @@ export function Navigation({ user, currentView, onNavigate, onLogout }: Navigati
               <Flame className="w-4 h-4" />
               <span>메타볼리즘</span>
             </Button>
+
+            {/* Raw Data - Admin/Researcher only */}
+            {isResearcher && (
+              <Button
+                variant={currentView === 'raw-data' ? 'default' : 'ghost'}
+                onClick={() => onNavigate('raw-data')}
+                className="gap-2"
+              >
+                <Database className="w-4 h-4" />
+                <span>Raw Data</span>
+              </Button>
+            )}
 
             {/* User Profile Dropdown */}
             <DropdownMenu>

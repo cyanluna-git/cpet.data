@@ -17,6 +17,7 @@ export const ROUTE_VIEWS = {
   ADMIN_DASHBOARD: 'admin-dashboard',
   ADMIN_USERS: 'admin-users',
   ADMIN_DATA: 'admin-data',
+  RAW_DATA: 'raw-data',
 
   // Subject routes
   SUBJECT_DASHBOARD: 'subject-dashboard',

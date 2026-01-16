@@ -283,3 +283,47 @@ class TestAnalysisResponse(BaseModel):
     total_cho_burned_g: Optional[float] = None
     avg_rer: Optional[float] = None
     exercise_duration_sec: Optional[float] = None
+
+
+class RawBreathDataRow(BaseModel):
+    """Raw breath data 행 스키마"""
+    id: int
+    time: datetime
+    t_sec: Optional[float] = None
+    rf: Optional[float] = None
+    vt: Optional[float] = None
+    vo2: Optional[float] = None
+    vco2: Optional[float] = None
+    ve: Optional[float] = None
+    hr: Optional[int] = None
+    vo2_hr: Optional[float] = None
+    bike_power: Optional[int] = None
+    bike_torque: Optional[float] = None
+    cadence: Optional[int] = None
+    feo2: Optional[float] = None
+    feco2: Optional[float] = None
+    feto2: Optional[float] = None
+    fetco2: Optional[float] = None
+    ve_vo2: Optional[float] = None
+    ve_vco2: Optional[float] = None
+    rer: Optional[float] = None
+    fat_oxidation: Optional[float] = None
+    cho_oxidation: Optional[float] = None
+    vo2_rel: Optional[float] = None
+    mets: Optional[float] = None
+    ee_total: Optional[float] = None
+    phase: Optional[str] = None
+    data_source: Optional[str] = None
+    is_valid: bool = True
+
+    model_config = {"from_attributes": True}
+
+
+class RawBreathDataResponse(BaseModel):
+    """Raw breath data 응답 스키마"""
+    test_id: UUID
+    source_filename: Optional[str] = None
+    test_date: datetime
+    subject_name: Optional[str] = None
+    total_rows: int
+    data: List[RawBreathDataRow]

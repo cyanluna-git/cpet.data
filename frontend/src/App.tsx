@@ -17,6 +17,7 @@ import { MetabolismPage } from '@/components/pages/MetabolismPage';
 import { AdminDashboardPage } from '@/components/pages/AdminDashboardPage';
 import { AdminUsersPage } from '@/components/pages/AdminUsersPage';
 import { AdminDataPage } from '@/components/pages/AdminDataPage';
+import { RawDataViewerPage } from '@/components/pages/RawDataViewerPage';
 
 // Styles
 import '@/styles/index.css';
@@ -276,6 +277,25 @@ function AdminDataWrapper() {
   );
 }
 
+function RawDataViewerWrapper() {
+  const { handleNavigate } = useNavigation();
+  const { user, logout } = useAuth();
+
+  async function handleLogout() {
+    await logout();
+    toast.success('로그아웃 되었습니다');
+    window.location.href = '/login';
+  }
+
+  return (
+    <RawDataViewerPage
+      user={user as User}
+      onLogout={handleLogout}
+      onNavigate={handleNavigate}
+    />
+  );
+}
+
 // Root redirect based on user role
 function RootRedirect() {
   const { user, loading } = useAuth();
@@ -326,6 +346,12 @@ export default function App() {
             <Route path="/admin/data" element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <AdminDataWrapper />
+              </ProtectedRoute>
+            } />
+
+            <Route path="/raw-data" element={
+              <ProtectedRoute allowedRoles={['admin', 'researcher']}>
+                <RawDataViewerWrapper />
               </ProtectedRoute>
             } />
 
