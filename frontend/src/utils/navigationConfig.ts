@@ -13,6 +13,9 @@ export const navigationConfig: Record<
   View,
   (params?: { testId?: string; subjectId?: string }) => string
 > = {
+  'admin-dashboard': () => '/admin',
+  'admin-users': () => '/admin/users',
+  'admin-data': () => '/admin/data',
   'researcher-dashboard': () => '/',
   'subject-dashboard': () => '/my-dashboard',
   'subject-list': () => '/subjects',

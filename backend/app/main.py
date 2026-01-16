@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api import (
     auth_router,
+    admin_router,
     subjects_router,
     tests_router,
     subject_tests_router,
@@ -48,6 +49,7 @@ async def health_check():
 
 # Include routers with /api prefix
 app.include_router(auth_router, prefix="/api")
+app.include_router(admin_router, prefix="/api")
 app.include_router(subjects_router, prefix="/api")
 app.include_router(tests_router, prefix="/api")
 app.include_router(subject_tests_router, prefix="/api")

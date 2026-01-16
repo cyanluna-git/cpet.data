@@ -3,7 +3,7 @@
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, status
+from fastapi import APIRouter, HTTPException, Query, Response, UploadFile, File, Form, status
 
 from app.api.deps import CurrentUser, ResearcherUser, DBSession
 from app.schemas import (
@@ -168,7 +168,11 @@ async def update_test(
     return CPETTestResponse.model_validate(updated)
 
 
-@router.delete("/{test_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{test_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
 async def delete_test(
     test_id: UUID,
     db: DBSession,
@@ -187,7 +191,7 @@ async def delete_test(
         )
     
     await service.delete(test_id)
-    return None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{test_id}/series", response_model=TimeSeriesResponse)

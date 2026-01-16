@@ -3,7 +3,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.api.deps import DBSession, CurrentUser, AdminUser
@@ -123,7 +123,11 @@ async def admin_create_user(
     return UserResponse.model_validate(user)
 
 
-@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/users/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
 async def admin_delete_user(
     user_id: str,
     admin_user: AdminUser,
@@ -151,3 +155,5 @@ async def admin_delete_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
