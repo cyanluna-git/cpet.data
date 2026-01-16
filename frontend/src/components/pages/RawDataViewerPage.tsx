@@ -854,35 +854,79 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                       labelFormatter={(label) => `${CHART_COLUMNS.find(c => c.key === chartXAxis)?.label || chartXAxis}: ${typeof label === 'number' ? label.toFixed(1) : label}`}
                     />
                     <Legend />
-                    {chartYAxisLeft.map((key, idx) => {
-                      const col = CHART_COLUMNS.find(c => c.key === key);
-                      return (
-                        <Scatter
-                          key={key}
-                          yAxisId="left"
-                          dataKey={key}
-                          name={col?.label || key}
-                          fill={CHART_COLORS[idx % CHART_COLORS.length]}
-                          line={{ stroke: CHART_COLORS[idx % CHART_COLORS.length], strokeWidth: 1 }}
-                          lineType="joint"
-                        />
-                      );
-                    })}
-                    {chartYAxisRight.map((key, idx) => {
-                      const col = CHART_COLUMNS.find(c => c.key === key);
-                      return (
-                        <Scatter
-                          key={key}
-                          yAxisId="right"
-                          dataKey={key}
-                          name={col?.label || key}
-                          fill={CHART_COLORS[(chartYAxisLeft.length + idx) % CHART_COLORS.length]}
-                          line={{ stroke: CHART_COLORS[(chartYAxisLeft.length + idx) % CHART_COLORS.length], strokeWidth: 1, strokeDasharray: '5 5' }}
-                          lineType="joint"
-                          shape="cross"
-                        />
-                      );
-                    })}
+                    
+                    {/* 전처리 데이터: 부드러운 곡선 (Line), Raw 데이터: 점+선 (Scatter) */}
+                    {useProcessedData ? (
+                      // 전처리 데이터: 연속적인 부드러운 곡선
+                      <>
+                        {chartYAxisLeft.map((key, idx) => {
+                          const col = CHART_COLUMNS.find(c => c.key === key);
+                          return (
+                            <Line
+                              key={key}
+                              yAxisId="left"
+                              type="monotone"
+                              dataKey={key}
+                              name={col?.label || key}
+                              stroke={CHART_COLORS[idx % CHART_COLORS.length]}
+                              strokeWidth={3}
+                              dot={false}
+                              activeDot={{ r: 6 }}
+                            />
+                          );
+                        })}
+                        {chartYAxisRight.map((key, idx) => {
+                          const col = CHART_COLUMNS.find(c => c.key === key);
+                          return (
+                            <Line
+                              key={key}
+                              yAxisId="right"
+                              type="monotone"
+                              dataKey={key}
+                              name={col?.label || key}
+                              stroke={CHART_COLORS[(chartYAxisLeft.length + idx) % CHART_COLORS.length]}
+                              strokeWidth={2}
+                              strokeDasharray="5 5"
+                              dot={false}
+                              activeDot={{ r: 6 }}
+                            />
+                          );
+                        })}
+                      </>
+                    ) : (
+                      // Raw 데이터: 점과 선 (기존 Scatter)
+                      <>
+                        {chartYAxisLeft.map((key, idx) => {
+                          const col = CHART_COLUMNS.find(c => c.key === key);
+                          return (
+                            <Scatter
+                              key={key}
+                              yAxisId="left"
+                              dataKey={key}
+                              name={col?.label || key}
+                              fill={CHART_COLORS[idx % CHART_COLORS.length]}
+                              line={{ stroke: CHART_COLORS[idx % CHART_COLORS.length], strokeWidth: 1 }}
+                              lineType="joint"
+                            />
+                          );
+                        })}
+                        {chartYAxisRight.map((key, idx) => {
+                          const col = CHART_COLUMNS.find(c => c.key === key);
+                          return (
+                            <Scatter
+                              key={key}
+                              yAxisId="right"
+                              dataKey={key}
+                              name={col?.label || key}
+                              fill={CHART_COLORS[(chartYAxisLeft.length + idx) % CHART_COLORS.length]}
+                              line={{ stroke: CHART_COLORS[(chartYAxisLeft.length + idx) % CHART_COLORS.length], strokeWidth: 1, strokeDasharray: '5 5' }}
+                              lineType="joint"
+                              shape="cross"
+                            />
+                          );
+                        })}
+                      </>
+                    )}
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>

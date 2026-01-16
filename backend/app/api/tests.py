@@ -21,6 +21,7 @@ from app.schemas.test import (
     RawBreathDataRow,
 )
 from app.services import TestService
+from app.utils.json_sanitizer import sanitize_for_json
 
 router = APIRouter(prefix="/tests", tags=["Tests"])
 
@@ -238,6 +239,8 @@ async def get_raw_breath_data(
     for idx, row in enumerate(raw_data, start=1):
         row_dict = {c.name: getattr(row, c.name) for c in row.__table__.columns}
         row_dict["id"] = idx
+        # NaN/Inf 값을 None으로 변환
+        row_dict = sanitize_for_json(row_dict)
         data_rows.append(RawBreathDataRow.model_validate(row_dict))
 
     return RawBreathDataResponse(
@@ -394,6 +397,10 @@ async def get_test_analysis(
         bin_size=bin_size,
         aggregation_method=aggregation_method,
     )
+    
+    # NaN/Inf 값을 None으로 변환
+    analysis = sanitize_for_json(analysis)
+    
     return TestAnalysisResponse(**analysis)
 
 
