@@ -2,7 +2,12 @@ import axios, { AxiosError } from 'axios';
 import { sampleTestData, sampleSubjects } from '@/utils/sampleData';
 
 // 환경변수에서 API URL 가져오기 (기본값: /api)
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+// - 상대경로('/api')면 Vite proxy를 사용
+// - 절대 URL('http://host:port')이면 FastAPI가 /api prefix를 쓰므로 '/api'를 자동으로 붙임
+const RAW_API_BASE: string = import.meta.env.VITE_API_URL || '/api';
+const API_BASE = RAW_API_BASE === '/api' || RAW_API_BASE.endsWith('/api')
+  ? RAW_API_BASE
+  : `${RAW_API_BASE.replace(/\/+$/, '')}/api`;
 
 // axios 인스턴스 생성
 const client = axios.create({
