@@ -1,7 +1,8 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { sampleSubjects, generateMetabolismData, getFatMaxPoint } from '@/utils/sampleData';
 import { Navigation } from '@/components/layout/Navigation';
-import { api, type TestAnalysis, type Subject as ApiSubject } from '@/lib/api';
+import { api, type TestAnalysis, type Subject as ApiSubject, type CPETTest } from '@/lib/api';
+import type { DataMode } from './MetabolismChart';
 
 // Lazy load chart components to reduce initial bundle size
 const MetabolismChart = lazy(() => import('./MetabolismChart').then(module => ({ default: module.MetabolismChart })));
@@ -57,14 +58,14 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
   const [selectedTestId, setSelectedTestId] = useState<string | null>(null);
   const [showCohortAverage, setShowCohortAverage] = useState(false);
   const [subjects, setSubjects] = useState<ApiSubject[]>([]);
+  const [tests, setTests] = useState<CPETTest[]>([]);
   const [analysis, setAnalysis] = useState<TestAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingTests, setLoadingTests] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  // For subjects, only show their own data
-  const availableSubjects = user.role === 'subject' 
-    ? sampleSubjects.filter(s => s.id === user.id)
-    : sampleSubjects;
+  // Data visualization controls
+  const [dataMode, setDataMode] = useState<DataMode>('smoothed');
+  const [showRawOverlay, setShowRawOverlay] = useState(false);
   
   // Load subjects from API
   useEffect(() => {
@@ -72,44 +73,82 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
       try {
         const response = await api.getSubjects({ page_size: 100 });
         setSubjects(response.items);
+
+        // Initialize with first subject after loading
+        if (response.items.length > 0 && !selectedSubjectId) {
+          if (user.role === 'subject' && user.id) {
+            // For subject users, find their own subject
+            const ownSubject = response.items.find(s => s.id === user.id);
+            if (ownSubject) {
+              setSelectedSubjectId(ownSubject.id);
+            }
+          } else {
+            // For researchers/admins, select first subject
+            setSelectedSubjectId(response.items[0].id);
+          }
+        }
       } catch (err) {
         console.warn('Failed to load subjects from API, using sample data');
+        // Fallback to sample data
+        if (sampleSubjects.length > 0) {
+          setSelectedSubjectId(sampleSubjects[0].id);
+        }
       }
     }
     loadSubjects();
-  }, []);
-
-  // Initialize with first subject or user's subject
-  useEffect(() => {
-    if (user.role === 'subject' && user.id) {
-      setSelectedSubjectId(user.id);
-    } else if (availableSubjects.length > 0) {
-      setSelectedSubjectId(availableSubjects[0].id);
-    }
   }, [user.role, user.id]);
 
-  // Load test analysis when subject changes
+  // Available subjects: use API data if available, otherwise fallback to sample
+  const availableSubjects = subjects.length > 0
+    ? (user.role === 'subject' ? subjects.filter(s => s.id === user.id) : subjects)
+    : (user.role === 'subject' ? sampleSubjects.filter(s => s.id === user.id) : sampleSubjects);
+
+  // Load tests when subject changes
+  useEffect(() => {
+    async function loadTests() {
+      if (!selectedSubjectId) return;
+
+      setLoadingTests(true);
+      setTests([]);
+      setSelectedTestId(null);
+      setAnalysis(null);
+      setError(null);
+
+      try {
+        // Get all tests for the subject
+        const testsResponse = await api.getSubjectTests(selectedSubjectId, { page_size: 100 });
+        if (testsResponse.items.length > 0) {
+          setTests(testsResponse.items);
+          // Auto-select the first (most recent) test
+          setSelectedTestId(testsResponse.items[0].id);
+        } else {
+          setError('이 피험자의 테스트 데이터가 없습니다.');
+        }
+      } catch (err: any) {
+        console.warn('Failed to load tests from API:', err);
+        setError('테스트 목록을 불러올 수 없습니다.');
+      } finally {
+        setLoadingTests(false);
+      }
+    }
+
+    if (!showCohortAverage) {
+      loadTests();
+    }
+  }, [selectedSubjectId, showCohortAverage]);
+
+  // Load analysis when test changes
   useEffect(() => {
     async function loadAnalysis() {
-      if (!selectedSubjectId) return;
+      if (!selectedTestId) return;
 
       setLoading(true);
       setError(null);
 
       try {
-        // Get the subject's latest test
-        const testsResponse = await api.getSubjectTests(selectedSubjectId, { page_size: 1 });
-        if (testsResponse.items.length > 0) {
-          const testId = testsResponse.items[0].id;
-          setSelectedTestId(testId);
-
-          // Get analysis data
-          const analysisData = await api.getTestAnalysis(testId, '5s');
-          setAnalysis(analysisData);
-        } else {
-          setAnalysis(null);
-          setError('이 피험자의 테스트 데이터가 없습니다.');
-        }
+        // Get analysis data for selected test
+        const analysisData = await api.getTestAnalysis(selectedTestId, '5s');
+        setAnalysis(analysisData);
       } catch (err: any) {
         console.warn('Failed to load analysis from API:', err);
         setError('분석 데이터를 불러올 수 없습니다. 샘플 데이터를 표시합니다.');
@@ -119,10 +158,10 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
       }
     }
 
-    if (!showCohortAverage) {
+    if (!showCohortAverage && selectedTestId) {
       loadAnalysis();
     }
-  }, [selectedSubjectId, showCohortAverage]);
+  }, [selectedTestId, showCohortAverage]);
   
   // Calculate cohort average data
   const calculateCohortAverage = () => {
@@ -204,7 +243,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                   >
                     {availableSubjects.map(subject => (
                       <option key={subject.id} value={subject.id}>
-                        {subject.name} ({subject.research_id})
+                        {(subject as any).encrypted_name || subject.name || subject.research_id} ({subject.research_id})
                       </option>
                     ))}
                   </select>
@@ -222,6 +261,41 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                     코호트 평균 표시
                   </label>
                 </div>
+
+                {/* Data visualization controls */}
+                {!showCohortAverage && analysis?.processed_series && (
+                  <>
+                    <div className="border-l pl-4 flex items-center gap-2">
+                      <label className="text-sm font-medium text-gray-700">데이터 표시:</label>
+                      <select
+                        value={dataMode}
+                        onChange={(e) => setDataMode(e.target.value as DataMode)}
+                        className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="smoothed">Smoothed (LOESS)</option>
+                        <option value="binned">Binned (10W Median)</option>
+                        <option value="raw">Raw Data</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="showRawOverlay"
+                        checked={showRawOverlay}
+                        onChange={(e) => setShowRawOverlay(e.target.checked)}
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                        disabled={dataMode !== 'smoothed'}
+                      />
+                      <label
+                        htmlFor="showRawOverlay"
+                        className={`text-sm font-medium ${dataMode !== 'smoothed' ? 'text-gray-400' : 'text-gray-700'}`}
+                      >
+                        Binned 데이터 오버레이
+                      </label>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -271,7 +345,9 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                   
                   // Find subject name
                   const subject = availableSubjects.find(s => s.id === selectedSubjectId);
-                  const subjectName = subject ? `${subject.name} (${subject.research_id})` : selectedSubjectId;
+                  const subjectName = subject
+                    ? `${(subject as any).encrypted_name || subject.name || subject.research_id} (${subject.research_id})`
+                    : selectedSubjectId ?? '';
 
                   return (
                     <MetabolismChart
@@ -280,6 +356,10 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                       duration={duration}
                       tss={89}
                       subjectName={subjectName}
+                      processedSeries={analysis.processed_series}
+                      markers={analysis.metabolic_markers}
+                      dataMode={dataMode}
+                      showRawOverlay={showRawOverlay}
                     />
                   );
                 })()}
@@ -291,9 +371,45 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                     <div className="text-center p-3 bg-orange-50 rounded-lg">
                       <p className="text-sm text-gray-600">FATMAX</p>
                       <p className="text-xl font-bold text-orange-600">
-                        {analysis.fatmax?.fat_max_watt?.toFixed(0) || '-'} W
+                        {analysis.metabolic_markers?.fat_max?.power || analysis.fatmax?.fat_max_watt?.toFixed(0) || '-'} W
                       </p>
                       <p className="text-xs text-gray-500">HR: {analysis.fatmax?.fat_max_hr || '-'} bpm</p>
+                      {analysis.metabolic_markers?.fat_max?.mfo && (
+                        <p className="text-xs text-orange-500 mt-1">
+                          MFO: {analysis.metabolic_markers.fat_max.mfo.toFixed(2)} g/min
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-center p-3 bg-amber-50 rounded-lg">
+                      <p className="text-sm text-gray-600">FatMax Zone</p>
+                      {analysis.metabolic_markers?.fat_max ? (
+                        <>
+                          <p className="text-xl font-bold text-amber-600">
+                            {analysis.metabolic_markers.fat_max.zone_min}-{analysis.metabolic_markers.fat_max.zone_max} W
+                          </p>
+                          <p className="text-xs text-gray-500">MFO의 90% 이상 유지</p>
+                        </>
+                      ) : (
+                        <p className="text-xl font-bold text-gray-400">-</p>
+                      )}
+                    </div>
+                    <div className="text-center p-3 bg-purple-50 rounded-lg">
+                      <p className="text-sm text-gray-600">Crossover Point</p>
+                      {analysis.metabolic_markers?.crossover?.power ? (
+                        <>
+                          <p className="text-xl font-bold text-purple-600">
+                            {analysis.metabolic_markers.crossover.power} W
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            Fat = CHO = {analysis.metabolic_markers.crossover.fat_value?.toFixed(2)} g/min
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-xl font-bold text-gray-400">-</p>
+                          <p className="text-xs text-gray-400">데이터 범위 내 없음</p>
+                        </>
+                      )}
                     </div>
                     <div className="text-center p-3 bg-blue-50 rounded-lg">
                       <p className="text-sm text-gray-600">VO2max</p>
@@ -302,15 +418,25 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                       </p>
                       <p className="text-xs text-gray-500">HR: {analysis.vo2max?.hr_max || '-'} bpm</p>
                     </div>
+                  </div>
+
+                  {/* Secondary metrics row */}
+                  <div className="grid grid-cols-3 gap-4 mt-4">
                     <div className="text-center p-3 bg-green-50 rounded-lg">
                       <p className="text-sm text-gray-600">총 지방 연소</p>
                       <p className="text-xl font-bold text-green-600">
                         {analysis.total_fat_burned_g?.toFixed(1) || '-'} g
                       </p>
                     </div>
-                    <div className="text-center p-3 bg-purple-50 rounded-lg">
+                    <div className="text-center p-3 bg-teal-50 rounded-lg">
+                      <p className="text-sm text-gray-600">총 탄수화물 연소</p>
+                      <p className="text-xl font-bold text-teal-600">
+                        {analysis.total_cho_burned_g?.toFixed(1) || '-'} g
+                      </p>
+                    </div>
+                    <div className="text-center p-3 bg-gray-50 rounded-lg">
                       <p className="text-sm text-gray-600">평균 RER</p>
-                      <p className="text-xl font-bold text-purple-600">
+                      <p className="text-xl font-bold text-gray-700">
                         {analysis.avg_rer?.toFixed(2) || '-'}
                       </p>
                     </div>
@@ -345,15 +471,15 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                   </div>
                 )}
                 {(() => {
-                  const metabolismData = generateMetabolismData(selectedSubject);
-                  const fatMaxPoint = getFatMaxPoint(selectedSubject);
+                  const metabolismData = generateMetabolismData(selectedSubject as any);
+                  const fatMaxPoint = getFatMaxPoint(selectedSubject as any);
                   return (
                     <MetabolismChart
                       data={metabolismData}
                       fatMaxPower={fatMaxPoint.power}
                       duration={fatMaxPoint.duration}
                       tss={fatMaxPoint.tss}
-                      subjectName={`${selectedSubject.name} (${selectedSubject.research_id})`}
+                      subjectName={`${(selectedSubject as any).encrypted_name || selectedSubject.name || selectedSubject.research_id} (${selectedSubject.research_id})`}
                     />
                   );
                 })()}
@@ -410,19 +536,19 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
             </div>
           )}
           
-          {/* Subject's own pattern info */}
-          {user.role === 'subject' && selectedSubject && (
+          {/* Subject's own pattern info - only show for sample data (when API subjects not loaded) */}
+          {user.role === 'subject' && selectedSubject && subjects.length === 0 && (selectedSubject as any).metabolic_pattern && (
             <div className="mt-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-4">귀하의 대사 패턴</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <MetabolismPatternChart pattern={selectedSubject.metabolic_pattern as 'Crossfit' | 'Hyrox'} />
-                
+                <MetabolismPatternChart pattern={(selectedSubject as any).metabolic_pattern as 'Crossfit' | 'Hyrox'} />
+
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
                   <h3 className="text-lg font-semibold text-blue-900 mb-3">
-                    {selectedSubject.metabolic_pattern} 패턴
+                    {(selectedSubject as any).metabolic_pattern} 패턴
                   </h3>
                   <p className="text-gray-700 leading-relaxed mb-4">
-                    {selectedSubject.metabolic_pattern === 'Crossfit' ? (
+                    {(selectedSubject as any).metabolic_pattern === 'Crossfit' ? (
                       <>
                         귀하는 <strong>Crossfit 타입</strong>의 대사 프로필을 가지고 있습니다.
                         초기에 지방을 효과적으로 연소하며, 고강도 인터벌 트레이닝에 적합합니다.
@@ -438,15 +564,15 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                     <div className="flex items-start gap-2">
                       <div className="w-2 h-2 bg-blue-600 rounded-full mt-1.5"></div>
                       <p className="text-gray-700">
-                        <strong>지방 산화:</strong> {selectedSubject.metabolic_pattern === 'Crossfit' 
-                          ? '초기 피크 후 빠른 감소' 
+                        <strong>지방 산화:</strong> {(selectedSubject as any).metabolic_pattern === 'Crossfit'
+                          ? '초기 피크 후 빠른 감소'
                           : '지속적이고 안정적인 연소'}
                       </p>
                     </div>
                     <div className="flex items-start gap-2">
                       <div className="w-2 h-2 bg-red-600 rounded-full mt-1.5"></div>
                       <p className="text-gray-700">
-                        <strong>탄수화물 산화:</strong> {selectedSubject.metabolic_pattern === 'Crossfit'
+                        <strong>탄수화물 산화:</strong> {(selectedSubject as any).metabolic_pattern === 'Crossfit'
                           ? '빠른 증가율'
                           : '완만한 증가'}
                       </p>

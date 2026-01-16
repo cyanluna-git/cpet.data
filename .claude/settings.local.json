@@ -6,7 +6,8 @@
       "Bash(pip install:*)",
       "Bash(docker-compose up:*)",
       "Bash(ls:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(xargs ls:*)"
     ]
   }
 }
