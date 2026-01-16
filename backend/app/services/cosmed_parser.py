@@ -1010,8 +1010,10 @@ class COSMEDParser:
         if 'vo2' not in df.columns or 'vco2' not in df.columns:
             return result
 
-        vo2 = df['vo2'].dropna().values
-        vco2 = df['vco2'].dropna().values
+        # 두 컬럼 모두 유효한 행만 사용 (shape mismatch 방지)
+        valid_mask = df['vo2'].notna() & df['vco2'].notna()
+        vo2 = df.loc[valid_mask, 'vo2'].values
+        vco2 = df.loc[valid_mask, 'vco2'].values
 
         if len(vo2) < 30 or len(vco2) < 30:
             return result

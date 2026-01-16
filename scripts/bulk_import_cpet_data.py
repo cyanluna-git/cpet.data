@@ -3,20 +3,22 @@ CPET_data 폴더의 모든 Excel 파일을 DB에 일괄 업로드하는 스크�
 
 사용법:
     python scripts/bulk_import_cpet_data.py [--dry-run] [--limit N]
-    
+
 옵션:
     --dry-run: 실제 업로드 없이 파일 목록만 출력
     --limit N: 처음 N개 파일만 처리
+    --delay N: 파일 업로드 사이 대기 시간 (초, 기본값: 3)
 """
 
 import argparse
 import asyncio
+import gc
 import os
 import sys
 import re
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, Set
 import json
 
 # Add backend to path
@@ -114,6 +116,48 @@ def extract_subject_info(filename: str) -> Tuple[str, str, str, Optional[datetim
             break
     
     return last_name, first_name, research_id, test_date
+
+
+async def get_existing_filenames(client: httpx.AsyncClient, token: str) -> Set[str]:
+    """
+    이미 업로드된 파일명 목록 조회 (중복 업로드 방지)
+    """
+    existing = set()
+    page = 1
+    page_size = 100
+
+    while True:
+        try:
+            response = await client.get(
+                f"{API_BASE_URL}/tests",
+                params={"page": page, "page_size": page_size},
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=30.0
+            )
+
+            if response.status_code != 200:
+                print(f"  ⚠️ 테스트 목록 조회 실패: {response.status_code}")
+                break
+
+            data = response.json()
+            items = data.get("items", [])
+
+            for item in items:
+                filename = item.get("source_filename")
+                if filename:
+                    existing.add(filename)
+
+            # 다음 페이지 확인
+            total = data.get("total", 0)
+            if page * page_size >= total:
+                break
+            page += 1
+
+        except Exception as e:
+            print(f"  ⚠️ 테스트 목록 조회 에러: {e}")
+            break
+
+    return existing
 
 
 async def get_auth_token(client: httpx.AsyncClient) -> Optional[str]:
@@ -327,6 +371,8 @@ async def main():
     parser.add_argument("--skip", type=int, default=0, help="처음 N개 파일 건너뛰기")
     parser.add_argument("--calc-method", default="Frayn", choices=["Frayn", "Peronnet", "Jeukendrup"])
     parser.add_argument("--smoothing", type=int, default=10, help="Smoothing window 크기")
+    parser.add_argument("--delay", type=float, default=3.0, help="파일 업로드 사이 대기 시간 (초)")
+    parser.add_argument("--force", action="store_true", help="이미 임포트된 파일도 다시 업로드")
     args = parser.parse_args()
     
     print("=" * 60)
@@ -403,10 +449,15 @@ async def main():
             print("❌ 로그인 실패. 관리자 계정을 확인해주세요.")
             return
         print("✅ 로그인 성공")
-        
+
+        # 이미 업로드된 파일 목록 조회
+        print("\n📋 이미 업로드된 파일 확인 중...")
+        existing_filenames = await get_existing_filenames(client, token)
+        print(f"   기존 업로드 파일: {len(existing_filenames)}개")
+
         # Subject ID 캐시 (중복 조회 방지)
         subject_cache = {}
-        
+
         # 업로드 시작
         print(f"\n📤 업로드 시작 (총 {len(excel_files)}개 파일)")
         if args.skip > 0:
@@ -433,9 +484,19 @@ async def main():
             date_str = test_date.strftime("%Y-%m-%d") if test_date else "unknown"
             
             print(f"\n[{original_idx}/{total_files}] {file_path.name}")
+
+            # 이미 업로드된 파일인지 확인
+            if not args.force and file_path.name in existing_filenames:
+                print(f"   ⏭️ 이미 업로드됨 - 스킵")
+                results["skipped"].append({
+                    "file": file_path.name,
+                    "reason": "Already uploaded"
+                })
+                continue
+
             print(f"   피험자 (Excel): {first_name} {last_name}")
             print(f"   날짜: {date_str}")
-            
+
             if not last_name or not first_name:
                 print(f"   ⚠️ Excel에서 피험자 정보를 찾을 수 없음")
                 results["skipped"].append({
@@ -470,15 +531,21 @@ async def main():
                     "subject": f"{first_name} {last_name}",
                     "date": date_str
                 })
+                # 성공 시 기존 목록에 추가 (중복 방지)
+                existing_filenames.add(file_path.name)
             else:
                 print(f"   ❌ 실패: {info}")
                 results["failed"].append({
                     "file": file_path.name,
                     "error": info
                 })
-            
-            # 서버 부하 방지를 위한 딜레이 (2초)
-            await asyncio.sleep(2.0)
+
+            # 메모리 해제 (pandas DataFrame 등)
+            gc.collect()
+
+            # 서버 부하 방지를 위한 딜레이
+            if args.delay > 0:
+                await asyncio.sleep(args.delay)
         
         # 결과 요약
         print("\n" + "=" * 60)

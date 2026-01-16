@@ -229,7 +229,22 @@ class TestService:
             base_time = test.test_date
             breath_batch = []
             batch_size = 100  # 100개씩 배치 처리
-            
+
+            # BxB 데이터의 경우 같은 t_sec에 여러 데이터가 있을 수 있음
+            # 중복 키 방지를 위해 t_sec 기준으로 그룹화하여 평균값 사용
+            if 't_sec' in df_with_phases.columns:
+                # 숫자 컬럼만 평균, 문자열 컬럼은 첫 번째 값 사용
+                numeric_cols = df_with_phases.select_dtypes(include=['number']).columns.tolist()
+                non_numeric_cols = [c for c in df_with_phases.columns if c not in numeric_cols and c != 't_sec']
+
+                agg_dict = {col: 'mean' for col in numeric_cols if col != 't_sec'}
+                for col in non_numeric_cols:
+                    agg_dict[col] = 'first'
+
+                if agg_dict:
+                    df_with_phases = df_with_phases.groupby('t_sec', as_index=False).agg(agg_dict)
+                    df_with_phases = df_with_phases.sort_values('t_sec').reset_index(drop=True)
+
             for idx, row in df_with_phases.iterrows():
                 t_sec = row.get("t_sec", idx)
                 if t_sec is None or (isinstance(t_sec, float) and t_sec != t_sec):  # NaN check
