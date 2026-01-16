@@ -177,3 +177,109 @@ class TestUploadResponse(BaseModel):
     parsing_warnings: Optional[List[str]] = None
     data_points_count: int
     created_at: datetime
+
+# =========================================
+# 분석 결과 스키마 (Analysis)
+# =========================================
+
+class PhaseInfo(BaseModel):
+    """구간 정보 스키마"""
+    phase: str
+    start_sec: float
+    end_sec: float
+
+
+class PhaseBoundaries(BaseModel):
+    """구간 경계 스키마"""
+    rest_end_sec: Optional[float] = None
+    warmup_end_sec: Optional[float] = None
+    exercise_end_sec: Optional[float] = None
+    peak_sec: Optional[float] = None
+    total_duration_sec: Optional[float] = None
+    phases: List[PhaseInfo] = []
+
+
+class PhaseMetrics(BaseModel):
+    """구간별 메트릭 스키마"""
+    duration_sec: Optional[float] = None
+    data_points: Optional[int] = None
+    avg_hr: Optional[float] = None
+    max_hr: Optional[float] = None
+    avg_vo2: Optional[float] = None
+    max_vo2: Optional[float] = None
+    avg_rer: Optional[float] = None
+    max_rer: Optional[float] = None
+    avg_fat_oxidation: Optional[float] = None
+    max_fat_oxidation: Optional[float] = None
+    avg_cho_oxidation: Optional[float] = None
+    max_cho_oxidation: Optional[float] = None
+    avg_bike_power: Optional[float] = None
+    max_bike_power: Optional[float] = None
+
+
+class FatMaxInfo(BaseModel):
+    """FATMAX 정보 스키마"""
+    fat_max_g_min: Optional[float] = None
+    fat_max_hr: Optional[int] = None
+    fat_max_watt: Optional[float] = None
+    fat_max_vo2: Optional[float] = None
+    fat_max_rer: Optional[float] = None
+    fat_max_time_sec: Optional[float] = None
+
+
+class VO2MaxInfo(BaseModel):
+    """VO2MAX 정보 스키마"""
+    vo2_max: Optional[float] = None
+    vo2_max_rel: Optional[float] = None
+    vco2_max: Optional[float] = None
+    hr_max: Optional[int] = None
+    rer_at_max: Optional[float] = None
+    vo2_max_time_sec: Optional[float] = None
+
+
+class MetabolismDataPoint(BaseModel):
+    """대사 차트 데이터 포인트"""
+    time_sec: float
+    power: Optional[float] = None
+    hr: Optional[int] = None
+    vo2: Optional[float] = None
+    vco2: Optional[float] = None
+    rer: Optional[float] = None
+    fat_oxidation: Optional[float] = None
+    cho_oxidation: Optional[float] = None
+    fat_kcal_day: Optional[float] = None  # kcal/day 환산
+    cho_kcal_day: Optional[float] = None  # kcal/day 환산
+    phase: Optional[str] = None
+
+
+class TestAnalysisResponse(BaseModel):
+    """테스트 분석 결과 응답 스키마 (대사 프로파일 차트용)"""
+    test_id: UUID
+    subject_id: UUID
+    test_date: datetime
+    protocol_type: Optional[str] = None
+    calc_method: str = "Frayn"
+
+    # 구간 정보
+    phase_boundaries: Optional[PhaseBoundaries] = None
+    phase_metrics: Optional[Dict[str, PhaseMetrics]] = None
+
+    # 주요 지표
+    fatmax: Optional[FatMaxInfo] = None
+    vo2max: Optional[VO2MaxInfo] = None
+
+    # VT 정보 (옵션)
+    vt1_hr: Optional[int] = None
+    vt1_vo2: Optional[float] = None
+    vt2_hr: Optional[int] = None
+    vt2_vo2: Optional[float] = None
+
+    # 시계열 데이터 (차트용)
+    timeseries: List[MetabolismDataPoint] = []
+    timeseries_interval: str = "5s"  # 다운샘플링 간격
+
+    # 요약 통계
+    total_fat_burned_g: Optional[float] = None
+    total_cho_burned_g: Optional[float] = None
+    avg_rer: Optional[float] = None
+    exercise_duration_sec: Optional[float] = None
