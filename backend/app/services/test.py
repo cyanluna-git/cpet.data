@@ -225,8 +225,11 @@ class TestService:
             self.db.add(test)
             await self.db.flush()
 
-            # BreathData 생성 (phase 정보 포함)
+            # BreathData 생성 (phase 정보 포함) - 배치 처리
             base_time = test.test_date
+            breath_batch = []
+            batch_size = 100  # 100개씩 배치 처리
+            
             for idx, row in df_with_phases.iterrows():
                 t_sec = row.get("t_sec", idx)
                 if t_sec is None or (isinstance(t_sec, float) and t_sec != t_sec):  # NaN check
@@ -262,15 +265,40 @@ class TestService:
                     data_source=parsed_data.protocol_type,
                     is_valid=True,
                 )
-                self.db.add(breath)
+                breath_batch.append(breath)
+                
+                # 배치 크기에 도달하면 flush
+                if len(breath_batch) >= batch_size:
+                    self.db.add_all(breath_batch)
+                    await self.db.flush()
+                    breath_batch = []
+            
+            # 남은 데이터 flush
+            if breath_batch:
+                self.db.add_all(breath_batch)
+                await self.db.flush()
 
             await self.db.commit()
             await self.db.refresh(test)
+            
+            # DataFrame 메모리 해제
+            del df_with_phases
+            del df_with_metrics
 
             return test, parsed_data.parsing_errors, parsed_data.parsing_warnings
 
         finally:
             os.unlink(tmp_path)
+
+    async def get_raw_breath_data(self, test_id: UUID) -> List[BreathData]:
+        """Raw breath data 전체 조회 (데이터 분석용)"""
+        query = (
+            select(BreathData)
+            .where(BreathData.test_id == test_id)
+            .order_by(BreathData.t_sec)
+        )
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
 
     async def get_time_series(
         self,

@@ -16,6 +16,7 @@ export const navigationConfig: Record<
   'admin-dashboard': () => '/admin',
   'admin-users': () => '/admin/users',
   'admin-data': () => '/admin/data',
+  'raw-data': () => '/raw-data',
   'researcher-dashboard': () => '/',
   'subject-dashboard': () => '/my-dashboard',
   'subject-list': () => '/subjects',

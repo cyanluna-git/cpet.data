@@ -1,6 +1,6 @@
 """Tests API Router - CPET 테스트 관련 엔드포인트"""
 
-from typing import Optional
+from typing import Optional, List
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Response, UploadFile, File, Form, status
@@ -13,7 +13,13 @@ from app.schemas import (
     TestMetricsResponse,
     TestUploadResponse,
 )
-from app.schemas.test import TimeSeriesRequest, TimeSeriesResponse, TestAnalysisResponse
+from app.schemas.test import (
+    TimeSeriesRequest, 
+    TimeSeriesResponse, 
+    TestAnalysisResponse,
+    RawBreathDataResponse,
+    RawBreathDataRow,
+)
 from app.services import TestService
 
 router = APIRouter(prefix="/tests", tags=["Tests"])
@@ -192,6 +198,49 @@ async def delete_test(
     
     await service.delete(test_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{test_id}/raw-data", response_model=RawBreathDataResponse)
+async def get_raw_breath_data(
+    test_id: UUID,
+    db: DBSession,
+    current_user: ResearcherUser,  # Admin 또는 Researcher만 접근 가능
+):
+    """
+    테스트의 Raw Breath Data 조회 (데이터 분석용)
+    
+    Admin 및 Researcher만 접근 가능.
+    breath_data 테이블의 모든 컬럼을 반환합니다.
+    """
+    service = TestService(db)
+    
+    test = await service.get_by_id(test_id)
+    if not test:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test not found",
+        )
+    
+    raw_data = await service.get_raw_breath_data(test_id)
+    
+    # 피험자 이름 조회
+    subject_name = None
+    if test.subject_id:
+        from app.models import Subject
+        from sqlalchemy import select
+        result = await db.execute(select(Subject).where(Subject.id == test.subject_id))
+        subject = result.scalar_one_or_none()
+        if subject:
+            subject_name = subject.encrypted_name
+    
+    return RawBreathDataResponse(
+        test_id=test_id,
+        source_filename=test.source_filename,
+        test_date=test.test_date,
+        subject_name=subject_name,
+        total_rows=len(raw_data),
+        data=[RawBreathDataRow.model_validate(row) for row in raw_data],
+    )
 
 
 @router.get("/{test_id}/series", response_model=TimeSeriesResponse)

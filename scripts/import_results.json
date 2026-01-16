@@ -1,0 +1,13 @@
+{
+  "success": [],
+  "failed": [
+    {
+      "file": "Cho Kwangho 20240718 CPET MIX_20240718094328.xlsx",
+      "error": {
+        "status": 500,
+        "detail": "Internal Server Error"
+      }
+    }
+  ],
+  "skipped": []
+}

@@ -10,6 +10,28 @@ import pandas as pd
 import numpy as np
 
 
+def to_native(value: Any) -> Any:
+    """numpy/pandas 타입을 Python 기본 타입으로 변환 (JSON 직렬화 가능하게)"""
+    if value is None:
+        return None
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating,)):
+        return float(value) if not np.isnan(value) else None
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, (pd.Timestamp, np.datetime64)):
+        return value.isoformat() if pd.notna(value) else None
+    if isinstance(value, float) and np.isnan(value):
+        return None
+    return value
+
+
+def to_native_dict(d: Dict[str, Any]) -> Dict[str, Any]:
+    """딕셔너리 내 모든 값을 Python 기본 타입으로 변환"""
+    return {k: to_native(v) for k, v in d.items()}
+
+
 @dataclass
 class SubjectInfo:
     """피험자 정보"""
@@ -602,7 +624,7 @@ class COSMEDParser:
         if power_column in df.columns and pd.notna(fatmax_row.get(power_column)):
             result['fat_max_watt'] = fatmax_row.get(power_column)
 
-        return result
+        return to_native_dict(result)
 
     def find_vo2max(self, df: pd.DataFrame) -> Dict[str, Any]:
         """
@@ -634,7 +656,8 @@ class COSMEDParser:
         if 'hr' in df.columns:
             result['hr_max'] = df['hr'].max()
 
-        return result
+        return to_native_dict(result)
+
     def detect_phases(
         self,
         df: pd.DataFrame,
@@ -879,7 +902,10 @@ class COSMEDParser:
                 'end_sec': df[time_column].max()
             })
 
-        return boundaries
+        # numpy 타입 변환 (중첩 구조 포함)
+        result = to_native_dict(boundaries)
+        result['phases'] = [to_native_dict(p) for p in boundaries['phases']]
+        return result
 
     def calculate_phase_metrics(
         self,
@@ -920,7 +946,8 @@ class COSMEDParser:
                         metrics[f'max_{col}'] = valid_data.max()
                         metrics[f'min_{col}'] = valid_data.min()
 
-            metrics_by_phase[phase] = metrics
+            # numpy 타입을 Python 기본 타입으로 변환 (JSON 직렬화 가능하게)
+            metrics_by_phase[phase] = to_native_dict(metrics)
 
         return metrics_by_phase
 
@@ -967,16 +994,16 @@ class COSMEDParser:
 
         if len(exercise_df) < 30:
             self.warnings.append("Not enough exercise data for VT detection")
-            return result
+            return to_native_dict(result)
 
         if method == 'v_slope':
-            return self._detect_vt_v_slope(exercise_df, result)
+            return to_native_dict(self._detect_vt_v_slope(exercise_df, result))
         elif method == 'ventilatory_equivalent':
-            return self._detect_vt_ventilatory_equivalent(exercise_df, result)
+            return to_native_dict(self._detect_vt_ventilatory_equivalent(exercise_df, result))
         elif method == 'rer':
-            return self._detect_vt_rer(exercise_df, result)
+            return to_native_dict(self._detect_vt_rer(exercise_df, result))
         else:
-            return result
+            return to_native_dict(result)
 
     def _detect_vt_v_slope(self, df: pd.DataFrame, result: Dict) -> Dict:
         """V-slope 방법으로 VT1 감지"""
