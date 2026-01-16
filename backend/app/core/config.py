@@ -19,19 +19,14 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Database - SQLite default
-    SQLITE_DB_PATH: str = "cpet.db"
-
-    # Database URL (직접 지정하거나 자동 생성)
-    DATABASE_URL: Optional[str] = None
+    # Database URL (기본: PostgreSQL 로컬 개발용)
+    DATABASE_URL: Optional[str] = "postgresql+asyncpg://cpet_user:cpet_password@localhost:5100/cpet_db"
 
     @computed_field
     @property
     def database_url(self) -> str:
-        """DATABASE_URL 생성"""
-        if self.DATABASE_URL:
-            return self.DATABASE_URL
-        return f"sqlite+aiosqlite:///./{self.SQLITE_DB_PATH}"
+        """DATABASE_URL 반환 (환경변수로 덮어쓰기 가능)"""
+        return self.DATABASE_URL
 
     # Backend Server
     BACKEND_HOST: str = "0.0.0.0"

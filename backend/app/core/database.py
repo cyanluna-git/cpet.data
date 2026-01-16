@@ -6,16 +6,11 @@ from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
 
 # Create async engine
-engine_args = {
-    "echo": settings.DEBUG,
-    "future": True,
-}
-
-# SQLite needs check_same_thread=False
-if settings.database_url.startswith("sqlite"):
-    engine_args["connect_args"] = {"check_same_thread": False}
-
-engine = create_async_engine(settings.database_url, **engine_args)
+engine = create_async_engine(
+    settings.database_url,
+    echo=settings.DEBUG,
+    future=True,
+)
 
 # Create async session factory
 AsyncSessionLocal = sessionmaker(
