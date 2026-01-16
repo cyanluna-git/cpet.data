@@ -417,6 +417,12 @@ class MetabolismAnalyzer:
                 fat_val = float(fat_smoothed[i, 1])
                 cho_val = float(cho_smoothed[i, 1])
                 
+                # NaN 체크 및 처리
+                if math.isnan(fat_val) or math.isinf(fat_val):
+                    fat_val = 0.0
+                if math.isnan(cho_val) or math.isinf(cho_val):
+                    cho_val = 0.0
+                
                 # Non-negative constraint
                 if self.config.non_negative_constraint:
                     fat_val = max(0.0, fat_val)

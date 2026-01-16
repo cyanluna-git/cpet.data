@@ -7,6 +7,7 @@ from typing import Optional, List, Tuple, Dict, Any
 from uuid import UUID
 import tempfile
 import os
+import math
 
 from sqlalchemy import select, func, desc, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -250,34 +251,50 @@ class TestService:
                 t_sec = row.get("t_sec", idx)
                 if t_sec is None or (isinstance(t_sec, float) and t_sec != t_sec):  # NaN check
                     t_sec = float(idx)
+                
+                # Helper function to safely get values and convert NaN to None
+                def safe_get(key, convert_type=None):
+                    val = row.get(key)
+                    if val is None:
+                        return None
+                    # Check for NaN or Inf
+                    if isinstance(val, float):
+                        if math.isnan(val) or math.isinf(val):
+                            return None
+                    if convert_type == int and val is not None:
+                        try:
+                            return int(val)
+                        except (ValueError, TypeError):
+                            return None
+                    return val
 
                 breath = BreathData(
                     time=base_time + timedelta(seconds=float(t_sec)),
                     test_id=test.test_id,
                     t_sec=t_sec,
-                    rf=row.get("rf"),
-                    vt=row.get("vt"),
-                    vo2=row.get("vo2"),
-                    vco2=row.get("vco2"),
-                    ve=row.get("ve"),
-                    hr=int(row.get("hr")) if row.get("hr") and not (row.get("hr") != row.get("hr")) else None,
-                    vo2_hr=row.get("vo2_hr"),
-                    bike_power=int(row.get("bike_power")) if row.get("bike_power") and not (row.get("bike_power") != row.get("bike_power")) else None,
-                    bike_torque=row.get("bike_torque"),
-                    cadence=int(row.get("cadence")) if row.get("cadence") and not (row.get("cadence") != row.get("cadence")) else None,
-                    feo2=row.get("feo2"),
-                    feco2=row.get("feco2"),
-                    feto2=row.get("feto2"),
-                    fetco2=row.get("fetco2"),
-                    ve_vo2=row.get("ve_vo2"),
-                    ve_vco2=row.get("ve_vco2"),
-                    rer=row.get("rer"),
-                    fat_oxidation=row.get("fat_oxidation"),
-                    cho_oxidation=row.get("cho_oxidation"),
-                    vo2_rel=row.get("vo2_rel"),
-                    mets=row.get("mets"),
-                    ee_total=row.get("ee_total_calc"),
-                    phase=row.get("phase"),  # 자동 감지된 구간
+                    rf=safe_get("rf"),
+                    vt=safe_get("vt"),
+                    vo2=safe_get("vo2"),
+                    vco2=safe_get("vco2"),
+                    ve=safe_get("ve"),
+                    hr=safe_get("hr", int),
+                    vo2_hr=safe_get("vo2_hr"),
+                    bike_power=safe_get("bike_power", int),
+                    bike_torque=safe_get("bike_torque"),
+                    cadence=safe_get("cadence", int),
+                    feo2=safe_get("feo2"),
+                    feco2=safe_get("feco2"),
+                    feto2=safe_get("feto2"),
+                    fetco2=safe_get("fetco2"),
+                    ve_vo2=safe_get("ve_vo2"),
+                    ve_vco2=safe_get("ve_vco2"),
+                    rer=safe_get("rer"),
+                    fat_oxidation=safe_get("fat_oxidation"),
+                    cho_oxidation=safe_get("cho_oxidation"),
+                    vo2_rel=safe_get("vo2_rel"),
+                    mets=safe_get("mets"),
+                    ee_total=safe_get("ee_total_calc"),
+                    phase=safe_get("phase"),  # 자동 감지된 구간
                     data_source=parsed_data.protocol_type,
                     is_valid=True,
                 )
