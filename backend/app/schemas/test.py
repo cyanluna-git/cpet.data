@@ -237,6 +237,46 @@ class VO2MaxInfo(BaseModel):
     vo2_max_time_sec: Optional[float] = None
 
 
+# =========================================
+# 처리된 대사 데이터 스키마 (Processed Metabolism Data)
+# =========================================
+
+class ProcessedDataPoint(BaseModel):
+    """처리된 데이터 포인트 스키마"""
+    power: float
+    fat_oxidation: Optional[float] = None
+    cho_oxidation: Optional[float] = None
+    count: Optional[int] = None  # binned data only
+
+
+class ProcessedSeries(BaseModel):
+    """처리된 시계열 데이터 스키마"""
+    raw: List[ProcessedDataPoint] = []      # 원본 데이터
+    binned: List[ProcessedDataPoint] = []   # 10W 구간 평균/중앙값
+    smoothed: List[ProcessedDataPoint] = [] # LOESS smoothed
+
+
+class FatMaxMarker(BaseModel):
+    """FatMax 마커 정보 스키마"""
+    power: int = 0           # FatMax 지점 파워 (W)
+    mfo: float = 0.0         # Maximum Fat Oxidation (g/min)
+    zone_min: int = 0        # FatMax zone 하한 (W)
+    zone_max: int = 0        # FatMax zone 상한 (W)
+
+
+class CrossoverMarker(BaseModel):
+    """Crossover 지점 마커 스키마"""
+    power: Optional[int] = None         # Crossover 지점 파워 (W), 없으면 None
+    fat_value: Optional[float] = None   # 교차 지점 FatOx 값
+    cho_value: Optional[float] = None   # 교차 지점 CHOOx 값
+
+
+class MetabolicMarkers(BaseModel):
+    """대사 마커 정보 스키마"""
+    fat_max: FatMaxMarker = FatMaxMarker()
+    crossover: CrossoverMarker = CrossoverMarker()
+
+
 class MetabolismDataPoint(BaseModel):
     """대사 차트 데이터 포인트"""
     time_sec: float
@@ -283,6 +323,11 @@ class TestAnalysisResponse(BaseModel):
     total_cho_burned_g: Optional[float] = None
     avg_rer: Optional[float] = None
     exercise_duration_sec: Optional[float] = None
+
+    # 처리된 데이터 (LOESS smoothing, binning)
+    processed_series: Optional[ProcessedSeries] = None
+    metabolic_markers: Optional[MetabolicMarkers] = None
+    analysis_warnings: Optional[List[str]] = None
 
 
 class RawBreathDataRow(BaseModel):

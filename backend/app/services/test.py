@@ -15,6 +15,7 @@ from sqlalchemy.orm import selectinload
 from app.models import CPETTest, BreathData, Subject
 from app.schemas.test import CPETTestCreate, CPETTestUpdate, TimeSeriesRequest
 from app.services.cosmed_parser import COSMEDParser, ParsedCPETData
+from app.services.metabolism_analysis import MetabolismAnalyzer
 
 
 class TestService:
@@ -517,6 +518,8 @@ class TestService:
         self,
         test_id: UUID,
         interval: str = "5s",
+        include_processed: bool = True,
+        loess_frac: float = 0.25,
     ) -> Dict[str, Any]:
         """
         테스트 분석 결과 조회 (대사 프로파일 차트용)
@@ -591,6 +594,19 @@ class TestService:
                     exercise_duration = p["end_sec"] - p["start_sec"]
                     break
 
+        # 처리된 대사 데이터 분석 (LOESS smoothing, binning, markers)
+        processed_series = None
+        metabolic_markers = None
+        analysis_warnings = None
+
+        if include_processed:
+            analyzer = MetabolismAnalyzer(loess_frac=loess_frac)
+            analysis_result = analyzer.analyze(breath_data)
+            if analysis_result:
+                processed_series = analysis_result.processed_series.to_dict()
+                metabolic_markers = analysis_result.metabolic_markers.to_dict()
+                analysis_warnings = analysis_result.warnings if analysis_result.warnings else None
+
         return {
             "test_id": test_id,
             "subject_id": test.subject_id,
@@ -611,6 +627,9 @@ class TestService:
             "total_cho_burned_g": round(total_cho_g, 2) if total_cho_g else None,
             "avg_rer": round(avg_rer, 3) if avg_rer else None,
             "exercise_duration_sec": exercise_duration,
+            "processed_series": processed_series,
+            "metabolic_markers": metabolic_markers,
+            "analysis_warnings": analysis_warnings,
         }
 
     def _calculate_phase_boundaries(self, breath_data: List[BreathData]) -> Dict[str, Any]:

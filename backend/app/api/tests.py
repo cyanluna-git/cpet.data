@@ -338,6 +338,8 @@ async def get_test_analysis(
     db: DBSession,
     current_user: CurrentUser,
     interval: str = Query("5s", description="시계열 다운샘플 간격 (예: 1s, 5s, 10s)"),
+    include_processed: bool = Query(True, description="처리된 시계열 데이터 포함 (LOESS, binning)"),
+    loess_frac: float = Query(0.25, ge=0.1, le=0.5, description="LOESS smoothing fraction (0.1~0.5)"),
 ):
     """
     테스트 분석 결과 조회 (대사 프로파일 차트용)
@@ -349,6 +351,8 @@ async def get_test_analysis(
     - **vo2max**: VO2MAX 상세 정보
     - **timeseries**: 다운샘플된 시계열 데이터 (차트용)
     - **통계 요약**: 총 지방/탄수화물 연소량, 평균 RER 등
+    - **processed_series**: LOESS smoothing, 10W binning 처리된 시계열
+    - **metabolic_markers**: FatMax zone, Crossover point 마커
     """
     service = TestService(db)
 
@@ -367,7 +371,12 @@ async def get_test_analysis(
                 detail="Access denied",
             )
 
-    analysis = await service.get_analysis(test_id, interval=interval)
+    analysis = await service.get_analysis(
+        test_id,
+        interval=interval,
+        include_processed=include_processed,
+        loess_frac=loess_frac,
+    )
     return TestAnalysisResponse(**analysis)
 
 

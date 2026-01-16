@@ -211,6 +211,38 @@ export interface MetabolismDataPoint {
   phase?: string;
 }
 
+// Processed Metabolism Data Types (LOESS smoothing, binning)
+export interface ProcessedDataPoint {
+  power: number;
+  fat_oxidation: number | null;
+  cho_oxidation: number | null;
+  count?: number;  // binned data only
+}
+
+export interface ProcessedSeries {
+  raw: ProcessedDataPoint[];
+  binned: ProcessedDataPoint[];
+  smoothed: ProcessedDataPoint[];
+}
+
+export interface FatMaxMarker {
+  power: number;           // FatMax 지점 파워 (W)
+  mfo: number;             // Maximum Fat Oxidation (g/min)
+  zone_min: number;        // FatMax zone 하한 (W)
+  zone_max: number;        // FatMax zone 상한 (W)
+}
+
+export interface CrossoverMarker {
+  power: number | null;         // Crossover 지점 파워 (W), 없으면 null
+  fat_value: number | null;     // 교차 지점 FatOx 값
+  cho_value: number | null;     // 교차 지점 CHOOx 값
+}
+
+export interface MetabolicMarkers {
+  fat_max: FatMaxMarker;
+  crossover: CrossoverMarker;
+}
+
 export interface TestAnalysis {
   test_id: string;
   subject_id: string;
@@ -231,6 +263,10 @@ export interface TestAnalysis {
   total_cho_burned_g?: number;
   avg_rer?: number;
   exercise_duration_sec?: number;
+  // Processed data (LOESS smoothing, binning)
+  processed_series?: ProcessedSeries;
+  metabolic_markers?: MetabolicMarkers;
+  analysis_warnings?: string[];
 }
 
 export interface CohortSummary {
@@ -607,8 +643,15 @@ export const api = {
    * - phase_metrics: 구간별 메트릭
    * - fatmax/vo2max: 상세 정보
    * - timeseries: 다운샘플된 시계열 데이터
+   * - processed_series: LOESS smoothing, binning 처리된 데이터
+   * - metabolic_markers: FatMax zone, Crossover point 마커
    */
-  async getTestAnalysis(testId: string, interval: string = '5s'): Promise<TestAnalysis> {
+  async getTestAnalysis(
+    testId: string,
+    interval: string = '5s',
+    include_processed: boolean = true,
+    loess_frac: number = 0.25
+  ): Promise<TestAnalysis> {
     if (isDemoMode()) {
       // 데모 분석 데이터 생성
       const timeseries: MetabolismDataPoint[] = [];
@@ -694,9 +737,60 @@ export const api = {
         total_cho_burned_g: 45.2,
         avg_rer: 0.95,
         exercise_duration_sec: 960,
+        // Processed data (demo)
+        processed_series: {
+          raw: [
+            { power: 80, fat_oxidation: 0.35, cho_oxidation: 0.22 },
+            { power: 100, fat_oxidation: 0.52, cho_oxidation: 0.35 },
+            { power: 120, fat_oxidation: 0.65, cho_oxidation: 0.48 },
+            { power: 140, fat_oxidation: 0.68, cho_oxidation: 0.62 },
+            { power: 160, fat_oxidation: 0.58, cho_oxidation: 0.85 },
+            { power: 180, fat_oxidation: 0.42, cho_oxidation: 1.15 },
+            { power: 200, fat_oxidation: 0.28, cho_oxidation: 1.52 },
+            { power: 220, fat_oxidation: 0.15, cho_oxidation: 1.95 },
+            { power: 240, fat_oxidation: 0.08, cho_oxidation: 2.35 },
+          ],
+          binned: [
+            { power: 80, fat_oxidation: 0.35, cho_oxidation: 0.22, count: 12 },
+            { power: 100, fat_oxidation: 0.52, cho_oxidation: 0.35, count: 15 },
+            { power: 120, fat_oxidation: 0.65, cho_oxidation: 0.48, count: 18 },
+            { power: 140, fat_oxidation: 0.68, cho_oxidation: 0.62, count: 20 },
+            { power: 160, fat_oxidation: 0.58, cho_oxidation: 0.85, count: 22 },
+            { power: 180, fat_oxidation: 0.42, cho_oxidation: 1.15, count: 18 },
+            { power: 200, fat_oxidation: 0.28, cho_oxidation: 1.52, count: 15 },
+            { power: 220, fat_oxidation: 0.15, cho_oxidation: 1.95, count: 10 },
+            { power: 240, fat_oxidation: 0.08, cho_oxidation: 2.35, count: 5 },
+          ],
+          smoothed: [
+            { power: 80, fat_oxidation: 0.36, cho_oxidation: 0.21 },
+            { power: 100, fat_oxidation: 0.51, cho_oxidation: 0.34 },
+            { power: 120, fat_oxidation: 0.64, cho_oxidation: 0.49 },
+            { power: 140, fat_oxidation: 0.67, cho_oxidation: 0.63 },
+            { power: 160, fat_oxidation: 0.57, cho_oxidation: 0.86 },
+            { power: 180, fat_oxidation: 0.41, cho_oxidation: 1.16 },
+            { power: 200, fat_oxidation: 0.27, cho_oxidation: 1.53 },
+            { power: 220, fat_oxidation: 0.14, cho_oxidation: 1.96 },
+            { power: 240, fat_oxidation: 0.07, cho_oxidation: 2.36 },
+          ],
+        },
+        metabolic_markers: {
+          fat_max: {
+            power: 140,
+            mfo: 0.68,
+            zone_min: 120,
+            zone_max: 160,
+          },
+          crossover: {
+            power: 165,
+            fat_value: 0.55,
+            cho_value: 0.55,
+          },
+        },
       };
     }
-    const response = await client.get(`/tests/${testId}/analysis`, { params: { interval } });
+    const response = await client.get(`/tests/${testId}/analysis`, {
+      params: { interval, include_processed, loess_frac }
+    });
     return response.data;
   },
 
