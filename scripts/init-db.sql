@@ -234,5 +234,5 @@ ON CONFLICT (email) DO NOTHING;
 
 -- Insert requested admin account: gerald.park@cpet.com / alskqp10
 INSERT INTO users (email, password_hash, role, is_active)
-VALUES ('gerald.park@cpet.com', '$2b$12$EkA2Eo4yVYE3klaIH3KBl.pF0G8HP4b7sN7RcxVNCuLMxmnyr43kW', 'admin', true)
+VALUES ('gerald.park@cpet.com', '$2b$12$Gg0gBPUraFK8Fw4L6WE0q.LVnJPQLS/hJE/0KhAr4SluQVVCqCB32', 'admin', true)
 ON CONFLICT (email) DO NOTHING;
