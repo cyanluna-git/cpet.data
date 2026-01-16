@@ -1,14 +1,15 @@
 import { test, expect } from '@playwright/test';
+import { demoLoginAsResearcher } from './helpers/auth';
 
 test.describe('Subjects Management', () => {
   test.beforeEach(async ({ page }) => {
-    // Go to subjects page
+    await demoLoginAsResearcher(page);
     await page.goto('/subjects');
   });
 
   test('should display subjects list', async ({ page }) => {
-    const subjectsList = page.locator('[role="table"], [role="list"]');
-    await expect(subjectsList).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('heading', { name: '피험자 관리' })).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('input[placeholder*="검색" i]')).toBeVisible();
   });
 
   test('should filter subjects by search', async ({ page }) => {

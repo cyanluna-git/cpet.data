@@ -1,17 +1,13 @@
 import { test, expect } from '@playwright/test';
+import { demoLoginAsResearcher } from './helpers/auth';
 
 test.describe('Error Handling', () => {
   test('should display 404 page for non-existent routes', async ({ page }) => {
-    await page.goto('/non-existent-page', { waitUntil: 'networkidle' });
-    
-    const errorMessage = page.locator('text=404, text=not found, text=Page not found');
-    const heading = page.locator('h1');
-    
-    const found = await errorMessage.first().isVisible().catch(() => false);
-    if (!found) {
-      const headingText = await heading.first().textContent();
-      expect(headingText).toBeTruthy();
-    }
+    // App uses a catch-all redirect to '/', so unknown routes should land on '/'.
+    await demoLoginAsResearcher(page);
+    await page.goto('/non-existent-page');
+    await page.waitForURL('**/');
+    await expect(page.getByRole('navigation')).toBeVisible();
   });
 
   test('should show error on API failure', async ({ page }) => {
@@ -73,14 +69,15 @@ test.describe('Error Handling', () => {
   });
 
   test('should handle empty states properly', async ({ page }) => {
+    await demoLoginAsResearcher(page);
     await page.goto('/subjects');
     
     // Check if page handles empty state
-    const emptyMessage = page.locator('text=no data, text=empty, text=no results');
-    const data = page.locator('[role="row"], li');
+    const emptyMessage = page.locator('text=피험자가 없습니다');
+    const subjectCards = page.locator('h3');
     
     const hasEmptyMessage = await emptyMessage.first().isVisible().catch(() => false);
-    const dataCount = await data.count();
+    const dataCount = await subjectCards.count();
     
     // Either shows empty message or has data
     expect(hasEmptyMessage || dataCount > 0).toBeTruthy();
