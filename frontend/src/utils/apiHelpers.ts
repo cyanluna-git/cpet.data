@@ -80,3 +80,11 @@ export function getErrorMessage(error: any): string {
 
   return '요청 처리 중 오류가 발생했습니다';
 }
+
+/**
+ * 로컬 스토리지에서 인증 토큰 가져오기
+ * @returns JWT 토큰 또는 빈 문자열
+ */
+export function getAuthToken(): string {
+  return localStorage.getItem('access_token') || '';
+}

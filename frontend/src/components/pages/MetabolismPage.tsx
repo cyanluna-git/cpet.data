@@ -1,7 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { sampleSubjects, generateMetabolismData, getFatMaxPoint } from '@/utils/sampleData';
 import { Navigation } from '@/components/layout/Navigation';
-import { api, TestAnalysis, Subject as ApiSubject } from '@/lib/api';
+import { api, type TestAnalysis, type Subject as ApiSubject } from '@/lib/api';
 
 // Lazy load chart components to reduce initial bundle size
 const MetabolismChart = lazy(() => import('./MetabolismChart').then(module => ({ default: module.MetabolismChart })));
