@@ -1,7 +1,7 @@
 # 🏗️ CPET Platform Architecture
 
-**최종 업데이트:** 2026-01-15  
-**상태:** Phase 3 완료 - 프로덕션 준비 완료
+**최종 업데이트:** 2026-01-16  
+**상태:** 분석 고도화 진행 중 (정제 데이터셋/차트 파이프라인)
 
 ---
 
@@ -86,6 +86,7 @@
 │  - subjects (participant data)                               │
 │  - cpet_tests (test records)                                 │
 │  - breath_data (time-series metabolic data)                  │
+│  - breath_data_processed (chart-ready series)                │
 │  - cohort_stats (analysis results)                           │
 │  - role_assignments (authorization)                          │
 └─────────────────────────────────────────────────────────────┘
@@ -135,6 +136,21 @@ Frontend: extractItems(response)
 Component State Update
       ↓
 Render with data
+```
+
+### 차트 전처리 플로우 (계획)
+```
+Raw Breath-by-Breath Data (breath_data)
+      ↓
+Phase Trimming + Outlier Filter
+      ↓
+Power Binning (5–10W, median/trimmed mean)
+      ↓
+Interpolation (PCHIP/Akima 또는 LOESS)
+      ↓
+Processed Series 저장 (breath_data_processed)
+      ↓
+Frontend Chart 렌더링
 ```
 
 ### 에러 처리 플로우

@@ -16,6 +16,7 @@
 | 업로드 API (Backend) | ✅ 구현 완료 |
 | 업로드 UI (Frontend) | ⚠️ 미구현 |
 | 재분석 API | ❌ 없음 |
+| 정제 데이터셋 (Processed Series) | ❌ 없음 |
 
 ### 피험자별 파일 현황
 | 피험자 | 파일 수 | 기간 |
@@ -48,6 +49,7 @@
 - [ ] 파일명에서 피험자 매칭
 - [ ] 업로드 API 호출하여 DB 저장
 - [ ] 진행률 표시 및 에러 로깅
+- [ ] API page_size 제한(≤100) 준수
 
 #### 1.2 검증 리포트 생성
 - [ ] `scripts/generate_validation_report.py` 생성
@@ -63,6 +65,12 @@
 - [ ] 73개 파일 중 95% 이상 성공적으로 로드
 - [ ] 검증 리포트 CSV 생성
 - [ ] 이상치 0건 또는 원인 파악
+
+### 안정성 메모
+- 대량 시딩 시 서버가 중단되는 이슈가 있었음.
+  - page_size 제한 초과(>100) 요청 시 422 발생
+  - 대량 요청으로 인한 메모리/커넥션 압박 가능성
+  - 시딩 시에는 --reload 비활성 권장
 
 ---
 
@@ -100,6 +108,25 @@ POST /api/admin/reanalyze-all
 - [ ] 단일 테스트 재분석 API 동작
 - [ ] 일괄 재분석 API 동작
 - [ ] 분석 버전 이력 추적 가능
+
+---
+
+## Phase 2.5: 정제 데이터셋 구축 (2일)
+
+### 목표
+- 차트 전용으로 정제/보간된 데이터셋 생성
+- Raw 데이터와 분리된 저장소를 통해 안정적인 시각화
+
+### 작업 항목
+- [ ] Phase trimming (Rest/Warm-up/Recovery 제거)
+- [ ] Power binning (5–10W, median/trimmed mean)
+- [ ] Interpolation (PCHIP/Akima 또는 LOESS)
+- [ ] `breath_data_processed` 테이블 설계 및 적재
+- [ ] 테스트 유형 자동 태깅(프로토콜/패턴 기반)
+
+### 완료 기준
+- [ ] 모든 테스트에 대해 processed series 생성
+- [ ] 메타볼릭 차트가 processed series 기준으로 동작
 
 ---
 

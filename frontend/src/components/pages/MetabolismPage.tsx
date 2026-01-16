@@ -66,6 +66,11 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
   // Data visualization controls
   const [dataMode, setDataMode] = useState<DataMode>('smoothed');
   const [showRawOverlay, setShowRawOverlay] = useState(false);
+  // Processing parameter controls
+  const [loessFrac, setLoessFrac] = useState(0.25);
+  const [binSize, setBinSize] = useState(10);
+  const [aggregationMethod, setAggregationMethod] = useState<'median' | 'mean' | 'trimmed_mean'>('median');
+  const [showAdvancedControls, setShowAdvancedControls] = useState(false);
   
   // Load subjects from API
   useEffect(() => {
@@ -137,7 +142,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
     }
   }, [selectedSubjectId, showCohortAverage]);
 
-  // Load analysis when test changes
+  // Load analysis when test changes or parameters change
   useEffect(() => {
     async function loadAnalysis() {
       if (!selectedTestId) return;
@@ -146,8 +151,15 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
       setError(null);
 
       try {
-        // Get analysis data for selected test
-        const analysisData = await api.getTestAnalysis(selectedTestId, '5s');
+        // Get analysis data for selected test with processing parameters
+        const analysisData = await api.getTestAnalysis(
+          selectedTestId,
+          '5s',
+          true,
+          loessFrac,
+          binSize,
+          aggregationMethod
+        );
         setAnalysis(analysisData);
       } catch (err: any) {
         console.warn('Failed to load analysis from API:', err);
@@ -161,7 +173,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
     if (!showCohortAverage && selectedTestId) {
       loadAnalysis();
     }
-  }, [selectedTestId, showCohortAverage]);
+  }, [selectedTestId, showCohortAverage, loessFrac, binSize, aggregationMethod]);
   
   // Calculate cohort average data
   const calculateCohortAverage = () => {
@@ -303,7 +315,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                         className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="smoothed">Smoothed (LOESS)</option>
-                        <option value="binned">Binned (10W Median)</option>
+                        <option value="binned">Binned ({binSize}W {aggregationMethod === 'median' ? 'Median' : aggregationMethod === 'mean' ? 'Mean' : 'Trimmed Mean'})</option>
                         <option value="raw">Raw Data</option>
                       </select>
                     </div>
@@ -324,9 +336,87 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                         Binned 데이터 오버레이
                       </label>
                     </div>
+
+                    {/* Advanced Controls Toggle */}
+                    <button
+                      onClick={() => setShowAdvancedControls(!showAdvancedControls)}
+                      className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                    >
+                      <span>{showAdvancedControls ? '▼' : '▶'}</span>
+                      <span>고급 설정</span>
+                    </button>
                   </>
                 )}
               </div>
+
+              {/* Advanced Processing Controls - Collapsible */}
+              {!showCohortAverage && showAdvancedControls && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="flex flex-wrap gap-6 items-end">
+                    {/* LOESS Fraction Slider */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-600">
+                        LOESS Smoothing: {loessFrac.toFixed(2)}
+                      </label>
+                      <input
+                        type="range"
+                        min="0.1"
+                        max="0.5"
+                        step="0.05"
+                        value={loessFrac}
+                        onChange={(e) => setLoessFrac(parseFloat(e.target.value))}
+                        className="w-32 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      />
+                      <span className="text-xs text-gray-500">0.1=날카로움, 0.5=부드러움</span>
+                    </div>
+
+                    {/* Bin Size */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-600">
+                        Bin Size: {binSize}W
+                      </label>
+                      <select
+                        value={binSize}
+                        onChange={(e) => setBinSize(parseInt(e.target.value))}
+                        className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value={5}>5W</option>
+                        <option value={10}>10W</option>
+                        <option value={15}>15W</option>
+                        <option value={20}>20W</option>
+                        <option value={25}>25W</option>
+                        <option value={30}>30W</option>
+                      </select>
+                    </div>
+
+                    {/* Aggregation Method */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-600">집계 방법</label>
+                      <select
+                        value={aggregationMethod}
+                        onChange={(e) => setAggregationMethod(e.target.value as 'median' | 'mean' | 'trimmed_mean')}
+                        className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="median">Median (이상치 저항)</option>
+                        <option value="mean">Mean (평균)</option>
+                        <option value="trimmed_mean">Trimmed Mean (10% 절삭)</option>
+                      </select>
+                    </div>
+
+                    {/* Reset Button */}
+                    <button
+                      onClick={() => {
+                        setLoessFrac(0.25);
+                        setBinSize(10);
+                        setAggregationMethod('median');
+                      }}
+                      className="px-3 py-1 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md"
+                    >
+                      기본값 복원
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           

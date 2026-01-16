@@ -124,6 +124,8 @@ cpet.db/
 - ✅ 인터랙티브 차트 시각화
 - ✅ 시계열 데이터 비교
 - ✅ 코호트 분석 및 통계
+- ✅ Raw Data Viewer (피험자/테스트 필터, 컬럼 선택, CSV 다운로드)
+- ✅ Raw Data 차트 프리셋 (FATMAX, RER, VO2 Kinetics, VT Analysis)
 
 ## 개발 상태
 
@@ -137,7 +139,9 @@ cpet.db/
 - [x] 기본 문서 작성 (README, SRS)
 
 ### 진행 중인 작업 🚧
-현재 Phase 1: Core Infrastructure 단계
+- 분석 전용 **정제/보간 데이터셋**(Processed Series) 설계
+- 메타볼릭 차트용 전처리 파이프라인(구간 자르기, 파워 빈닝, 보간)
+- 테스트 유형 자동 태깅
 
 ### 다음 단계
 자세한 개발 로드맵은 [TODOS.md](./TODOS.md) 참조
@@ -150,6 +154,10 @@ cpet.db/
 - `breath_data`: 호흡 데이터 (TimescaleDB Hypertable)
 - `cohort_stats`: 코호트 통계
 - `users`: 사용자 계정 및 인증
+
+추가 예정 (분석/차트 최적화용):
+- `breath_data_processed`: 차트 전용 정제 데이터셋 (구간 자르기/빈닝/보간 결과)
+- `analysis_tags`: 테스트 유형 및 분석 태깅 (cpet_tests 확장)
 
 자세한 스키마는 [scripts/init-db.sql](./scripts/init-db.sql) 참조
 
@@ -175,10 +183,16 @@ Bike Power 기반:
 - FATMAX: 지방 연소량 최대 지점
 - VO2MAX: 산소 섭취량 최대값
 
+### 4. 차트 전처리 (계획)
+- Phase trimming (Rest/Warm-up/Recovery 제거)
+- Power binning (5–10W, median/trimmed mean)
+- Shape-preserving interpolation (PCHIP/Akima) 또는 LOESS
+
 ## 문서
 
 - [요구사항 정의서 (SRS)](./doc/srs.md)
 - [개발 TODO 리스트](./TODOS.md)
+- [에이전트 가이드](./agent.md.claude.md)
 - [API 문서](http://localhost:8000/docs) (서버 실행 시)
 
 ## 기여 가이드

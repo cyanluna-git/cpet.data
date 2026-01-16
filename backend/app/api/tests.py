@@ -340,6 +340,8 @@ async def get_test_analysis(
     interval: str = Query("5s", description="시계열 다운샘플 간격 (예: 1s, 5s, 10s)"),
     include_processed: bool = Query(True, description="처리된 시계열 데이터 포함 (LOESS, binning)"),
     loess_frac: float = Query(0.25, ge=0.1, le=0.5, description="LOESS smoothing fraction (0.1~0.5)"),
+    bin_size: int = Query(10, ge=5, le=30, description="Power binning 크기 (W, 5~30)"),
+    aggregation_method: str = Query("median", description="집계 방법 (median, mean, trimmed_mean)"),
 ):
     """
     테스트 분석 결과 조회 (대사 프로파일 차트용)
@@ -351,8 +353,16 @@ async def get_test_analysis(
     - **vo2max**: VO2MAX 상세 정보
     - **timeseries**: 다운샘플된 시계열 데이터 (차트용)
     - **통계 요약**: 총 지방/탄수화물 연소량, 평균 RER 등
-    - **processed_series**: LOESS smoothing, 10W binning 처리된 시계열
+    - **processed_series**: LOESS smoothing, Power binning 처리된 시계열
     - **metabolic_markers**: FatMax zone, Crossover point 마커
+    
+    Processing Parameters:
+    - **loess_frac**: LOESS 평활화 정도 (0.1=날카로움, 0.5=부드러움)
+    - **bin_size**: 파워 구간 크기 (예: 10W → 0-10, 10-20, ...)
+    - **aggregation_method**: 구간 집계 방법
+      - median: 중앙값 (이상치에 강함, 기본값)
+      - mean: 평균
+      - trimmed_mean: 양쪽 10% 제거 후 평균
     """
     service = TestService(db)
 
@@ -371,11 +381,18 @@ async def get_test_analysis(
                 detail="Access denied",
             )
 
+    # aggregation_method 검증
+    valid_methods = ["median", "mean", "trimmed_mean"]
+    if aggregation_method not in valid_methods:
+        aggregation_method = "median"
+
     analysis = await service.get_analysis(
         test_id,
         interval=interval,
         include_processed=include_processed,
         loess_frac=loess_frac,
+        bin_size=bin_size,
+        aggregation_method=aggregation_method,
     )
     return TestAnalysisResponse(**analysis)
 

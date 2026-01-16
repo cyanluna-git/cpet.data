@@ -650,7 +650,9 @@ export const api = {
     testId: string,
     interval: string = '5s',
     include_processed: boolean = true,
-    loess_frac: number = 0.25
+    loess_frac: number = 0.25,
+    bin_size: number = 10,
+    aggregation_method: string = 'median'
   ): Promise<TestAnalysis> {
     if (isDemoMode()) {
       // 데모 분석 데이터 생성
@@ -789,7 +791,7 @@ export const api = {
       };
     }
     const response = await client.get(`/tests/${testId}/analysis`, {
-      params: { interval, include_processed, loess_frac }
+      params: { interval, include_processed, loess_frac, bin_size, aggregation_method }
     });
     return response.data;
   },
