@@ -1,10 +1,20 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Navigation } from '@/components/layout/Navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Database, Download, ChevronLeft, ChevronRight, Settings2, Check, User, Calendar } from 'lucide-react';
+import { Database, Download, ChevronLeft, ChevronRight, Settings2, Check, User, Calendar, LineChart, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { getErrorMessage, getAuthToken } from '@/utils/apiHelpers';
+import {
+  LineChart as RechartsLineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
 
 interface RawDataViewerPageProps {
   user: any;
@@ -124,6 +134,39 @@ const COLUMN_GROUPS = {
 // 기본 선택 컬럼
 const DEFAULT_SELECTED_COLUMNS = ['hr', 'vo2', 'vco2', 've', 'rer', 'fat_oxidation', 'cho_oxidation', 'bike_power', 'mets'];
 
+// 차트용 컬럼 정의 (숫자형만)
+const CHART_COLUMNS = [
+  { key: 't_sec', label: 'Time(s)', unit: 's' },
+  { key: 'hr', label: 'HR', unit: 'bpm' },
+  { key: 'bike_power', label: 'Power', unit: 'W' },
+  { key: 'cadence', label: 'Cadence', unit: 'rpm' },
+  { key: 'mets', label: 'METs', unit: '' },
+  { key: 've', label: 'VE', unit: 'L/min' },
+  { key: 'vt', label: 'VT', unit: 'L' },
+  { key: 'rf', label: 'RF', unit: '/min' },
+  { key: 'vo2', label: 'VO2', unit: 'mL/min' },
+  { key: 'vco2', label: 'VCO2', unit: 'mL/min' },
+  { key: 'rer', label: 'RER', unit: '' },
+  { key: 'fat_oxidation', label: 'Fat', unit: 'g/min' },
+  { key: 'cho_oxidation', label: 'CHO', unit: 'g/min' },
+  { key: 'vo2_rel', label: 'VO2/kg', unit: 'mL/kg/min' },
+  { key: 'vo2_hr', label: 'VO2/HR', unit: 'mL/beat' },
+  { key: 've_vo2', label: 'VE/VO2', unit: '' },
+  { key: 've_vco2', label: 'VE/VCO2', unit: '' },
+];
+
+// 차트 색상
+const CHART_COLORS = [
+  '#2563EB', // blue
+  '#DC2626', // red
+  '#16A34A', // green
+  '#CA8A04', // yellow
+  '#9333EA', // purple
+  '#0891B2', // cyan
+  '#EA580C', // orange
+  '#DB2777', // pink
+];
+
 const PAGE_SIZE = 50;
 
 export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerPageProps) {
@@ -144,11 +187,22 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const columnSelectorRef = useRef<HTMLDivElement>(null);
 
+  // 차트 상태
+  const [showChart, setShowChart] = useState(true);
+  const [chartXAxis, setChartXAxis] = useState('t_sec');
+  const [chartYAxisLeft, setChartYAxisLeft] = useState<string[]>(['hr', 'bike_power']);
+  const [chartYAxisRight, setChartYAxisRight] = useState<string[]>(['vo2']);
+  const [showChartSettings, setShowChartSettings] = useState(false);
+  const chartSettingsRef = useRef<HTMLDivElement>(null);
+
   // 외부 클릭 시 컬럼 선택기 닫기
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (columnSelectorRef.current && !columnSelectorRef.current.contains(event.target as Node)) {
         setShowColumnSelector(false);
+      }
+      if (chartSettingsRef.current && !chartSettingsRef.current.contains(event.target as Node)) {
+        setShowChartSettings(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -181,6 +235,37 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     ...FIXED_COLUMNS,
     ...SELECTABLE_COLUMNS.filter(c => selectedColumns.includes(c.key))
   ];
+
+  // 차트 Y축 토글 (왼쪽 축)
+  const toggleChartYAxisLeft = useCallback((key: string) => {
+    // 오른쪽 축에서 제거
+    setChartYAxisRight(prev => prev.filter(k => k !== key));
+    setChartYAxisLeft(prev => 
+      prev.includes(key) 
+        ? prev.filter(k => k !== key)
+        : [...prev, key]
+    );
+  }, []);
+
+  // 차트 Y축 토글 (오른쪽 축)
+  const toggleChartYAxisRight = useCallback((key: string) => {
+    // 왼쪽 축에서 제거
+    setChartYAxisLeft(prev => prev.filter(k => k !== key));
+    setChartYAxisRight(prev => 
+      prev.includes(key) 
+        ? prev.filter(k => k !== key)
+        : [...prev, key]
+    );
+  }, []);
+
+  // 차트 데이터 (모든 데이터를 간격을 두고 샘플링)
+  const chartData = useMemo(() => {
+    if (!rawData) return [];
+    const data = rawData.data;
+    const maxPoints = 500; // 최대 표시 포인트
+    const step = Math.max(1, Math.floor(data.length / maxPoints));
+    return data.filter((_, i) => i % step === 0);
+  }, [rawData]);
 
   // 피험자 목록 로드
   useEffect(() => {
@@ -399,12 +484,209 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
           )}
         </div>
 
-        {/* 데이터 테이블 */}
+        {/* 차트 영역 */}
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="w-16 h-16 border-4 border-[#2563EB] border-t-transparent rounded-full animate-spin"></div>
           </div>
-        ) : rawData ? (
+        ) : rawData && showChart ? (
+          <Card className="mb-4">
+            <CardHeader className="py-3">
+              <div className="flex justify-between items-center">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <LineChart className="w-4 h-4" />
+                  데이터 차트
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  {/* 차트 설정 */}
+                  <div className="relative" ref={chartSettingsRef}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowChartSettings(!showChartSettings)}
+                      className="gap-1"
+                    >
+                      <Settings2 className="w-4 h-4" />
+                      축 설정
+                    </Button>
+                    
+                    {showChartSettings && (
+                      <div className="absolute right-0 top-full mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-[500px] overflow-y-auto">
+                        <div className="p-3 border-b bg-gray-50">
+                          <span className="font-medium text-sm">차트 축 설정</span>
+                        </div>
+                        
+                        {/* X축 선택 */}
+                        <div className="p-3 border-b">
+                          <label className="text-sm font-medium text-gray-700 mb-2 block">X축</label>
+                          <select
+                            className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm"
+                            value={chartXAxis}
+                            onChange={(e) => setChartXAxis(e.target.value)}
+                          >
+                            {CHART_COLUMNS.map(col => (
+                              <option key={col.key} value={col.key}>
+                                {col.label} {col.unit && `(${col.unit})`}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        
+                        {/* Y축 (왼쪽) */}
+                        <div className="p-3 border-b">
+                          <label className="text-sm font-medium text-gray-700 mb-2 block">
+                            Y축 (왼쪽) - {chartYAxisLeft.length}개 선택
+                          </label>
+                          <div className="grid grid-cols-3 gap-1 max-h-32 overflow-y-auto">
+                            {CHART_COLUMNS.filter(c => c.key !== chartXAxis).map((col, idx) => (
+                              <label
+                                key={col.key}
+                                className={`flex items-center gap-1 px-2 py-1 rounded text-xs cursor-pointer hover:bg-gray-50 ${
+                                  chartYAxisLeft.includes(col.key) ? 'bg-blue-50 text-blue-800' : ''
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={chartYAxisLeft.includes(col.key)}
+                                  onChange={() => toggleChartYAxisLeft(col.key)}
+                                  className="w-3 h-3"
+                                />
+                                <span 
+                                  className="w-2 h-2 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: chartYAxisLeft.includes(col.key) ? CHART_COLORS[chartYAxisLeft.indexOf(col.key) % CHART_COLORS.length] : '#ccc' }}
+                                />
+                                {col.label}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        {/* Y축 (오른쪽) */}
+                        <div className="p-3">
+                          <label className="text-sm font-medium text-gray-700 mb-2 block">
+                            Y축 (오른쪽) - {chartYAxisRight.length}개 선택
+                            <span className="text-gray-400 font-normal ml-1">(단위가 다른 데이터용)</span>
+                          </label>
+                          <div className="grid grid-cols-3 gap-1 max-h-32 overflow-y-auto">
+                            {CHART_COLUMNS.filter(c => c.key !== chartXAxis).map((col, idx) => (
+                              <label
+                                key={col.key}
+                                className={`flex items-center gap-1 px-2 py-1 rounded text-xs cursor-pointer hover:bg-gray-50 ${
+                                  chartYAxisRight.includes(col.key) ? 'bg-orange-50 text-orange-800' : ''
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={chartYAxisRight.includes(col.key)}
+                                  onChange={() => toggleChartYAxisRight(col.key)}
+                                  className="w-3 h-3"
+                                />
+                                <span 
+                                  className="w-2 h-2 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: chartYAxisRight.includes(col.key) ? CHART_COLORS[(chartYAxisLeft.length + chartYAxisRight.indexOf(col.key)) % CHART_COLORS.length] : '#ccc' }}
+                                />
+                                {col.label}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowChart(false)}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsLineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis 
+                      dataKey={chartXAxis} 
+                      tick={{ fontSize: 11 }}
+                      tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
+                    />
+                    <YAxis 
+                      yAxisId="left"
+                      tick={{ fontSize: 11 }}
+                      tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
+                    />
+                    {chartYAxisRight.length > 0 && (
+                      <YAxis 
+                        yAxisId="right" 
+                        orientation="right"
+                        tick={{ fontSize: 11 }}
+                        tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
+                      />
+                    )}
+                    <Tooltip 
+                      contentStyle={{ fontSize: 12 }}
+                      formatter={(value: any, name: string) => {
+                        const col = CHART_COLUMNS.find(c => c.key === name);
+                        return [typeof value === 'number' ? value.toFixed(2) : value, col?.label || name];
+                      }}
+                    />
+                    <Legend />
+                    {chartYAxisLeft.map((key, idx) => {
+                      const col = CHART_COLUMNS.find(c => c.key === key);
+                      return (
+                        <Line
+                          key={key}
+                          yAxisId="left"
+                          type="monotone"
+                          dataKey={key}
+                          name={col?.label || key}
+                          stroke={CHART_COLORS[idx % CHART_COLORS.length]}
+                          dot={false}
+                          strokeWidth={1.5}
+                        />
+                      );
+                    })}
+                    {chartYAxisRight.map((key, idx) => {
+                      const col = CHART_COLUMNS.find(c => c.key === key);
+                      return (
+                        <Line
+                          key={key}
+                          yAxisId="right"
+                          type="monotone"
+                          dataKey={key}
+                          name={col?.label || key}
+                          stroke={CHART_COLORS[(chartYAxisLeft.length + idx) % CHART_COLORS.length]}
+                          dot={false}
+                          strokeWidth={1.5}
+                          strokeDasharray="5 5"
+                        />
+                      );
+                    })}
+                  </RechartsLineChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">
+                <span>X축: {CHART_COLUMNS.find(c => c.key === chartXAxis)?.label}</span>
+                <span>왼쪽 Y축 (실선): {chartYAxisLeft.map(k => CHART_COLUMNS.find(c => c.key === k)?.label).join(', ') || '없음'}</span>
+                <span>오른쪽 Y축 (점선): {chartYAxisRight.map(k => CHART_COLUMNS.find(c => c.key === k)?.label).join(', ') || '없음'}</span>
+              </div>
+            </CardContent>
+          </Card>
+        ) : rawData && !showChart ? (
+          <div className="mb-4">
+            <Button variant="outline" size="sm" onClick={() => setShowChart(true)}>
+              <LineChart className="w-4 h-4 mr-1" />
+              차트 표시
+            </Button>
+          </div>
+        ) : null}
+
+        {/* 데이터 테이블 */}
+        {!loading && rawData ? (
           <Card>
             <CardHeader className="py-3">
               <div className="flex justify-between items-center">
@@ -581,7 +863,10 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
               </div>
             </CardContent>
           </Card>
-        ) : (
+        ) : null}
+        
+        {/* 빈 상태 표시 */}
+        {!loading && !rawData && (
           <Card className="p-12 text-center text-gray-400">
             <Database className="w-12 h-12 mx-auto mb-3 opacity-50" />
             <p className="text-lg font-medium text-gray-500">피험자와 테스트를 선택하세요</p>
