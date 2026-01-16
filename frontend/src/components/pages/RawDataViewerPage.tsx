@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Navigation } from '@/components/layout/Navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Table, Database, Download, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Table, Database, Download, ChevronLeft, ChevronRight, Settings2, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { getErrorMessage, getAuthToken } from '@/utils/apiHelpers';
 
@@ -59,23 +59,63 @@ interface RawDataResponse {
   data: BreathDataRow[];
 }
 
-// 표시할 컬럼 정의
-const COLUMNS = [
-  { key: 't_sec', label: 'Time(s)', format: (v: number | null) => v?.toFixed(0) ?? '-' },
-  { key: 'phase', label: 'Phase', format: (v: string | null) => v ?? '-' },
-  { key: 'hr', label: 'HR', format: (v: number | null) => v ?? '-' },
-  { key: 'vo2', label: 'VO2', format: (v: number | null) => v?.toFixed(1) ?? '-' },
-  { key: 'vco2', label: 'VCO2', format: (v: number | null) => v?.toFixed(1) ?? '-' },
-  { key: 've', label: 'VE', format: (v: number | null) => v?.toFixed(1) ?? '-' },
-  { key: 'rer', label: 'RER', format: (v: number | null) => v?.toFixed(2) ?? '-' },
-  { key: 'fat_oxidation', label: 'Fat(g/min)', format: (v: number | null) => v?.toFixed(3) ?? '-' },
-  { key: 'cho_oxidation', label: 'CHO(g/min)', format: (v: number | null) => v?.toFixed(3) ?? '-' },
-  { key: 'bike_power', label: 'Power(W)', format: (v: number | null) => v ?? '-' },
-  { key: 'cadence', label: 'Cadence', format: (v: number | null) => v ?? '-' },
-  { key: 'rf', label: 'RF', format: (v: number | null) => v?.toFixed(1) ?? '-' },
-  { key: 'vt', label: 'VT', format: (v: number | null) => v?.toFixed(3) ?? '-' },
-  { key: 'mets', label: 'METs', format: (v: number | null) => v?.toFixed(1) ?? '-' },
+// 컬럼 그룹 정의
+interface ColumnDef {
+  key: string;
+  label: string;
+  group: 'fixed' | 'basic' | 'respiratory' | 'metabolic' | 'cardio';
+  format: (v: any) => string;
+}
+
+// 고정 컬럼 (항상 왼쪽에 표시)
+const FIXED_COLUMNS: ColumnDef[] = [
+  { key: 't_sec', label: 'Time(s)', group: 'fixed', format: (v: number | null) => v?.toFixed(0) ?? '-' },
+  { key: 'phase', label: 'Phase', group: 'fixed', format: (v: string | null) => v ?? '-' },
 ];
+
+// 선택 가능한 컬럼 (그룹별 정의)
+const SELECTABLE_COLUMNS: ColumnDef[] = [
+  // 기본 지표
+  { key: 'hr', label: 'HR', group: 'basic', format: (v: number | null) => v?.toString() ?? '-' },
+  { key: 'bike_power', label: 'Power(W)', group: 'basic', format: (v: number | null) => v?.toString() ?? '-' },
+  { key: 'cadence', label: 'Cadence', group: 'basic', format: (v: number | null) => v?.toString() ?? '-' },
+  { key: 'mets', label: 'METs', group: 'basic', format: (v: number | null) => v?.toFixed(1) ?? '-' },
+  
+  // 호흡 지표
+  { key: 've', label: 'VE', group: 'respiratory', format: (v: number | null) => v?.toFixed(1) ?? '-' },
+  { key: 'vt', label: 'VT', group: 'respiratory', format: (v: number | null) => v?.toFixed(3) ?? '-' },
+  { key: 'rf', label: 'RF', group: 'respiratory', format: (v: number | null) => v?.toFixed(1) ?? '-' },
+  { key: 'feto2', label: 'FetO2', group: 'respiratory', format: (v: number | null) => v?.toFixed(2) ?? '-' },
+  { key: 'fetco2', label: 'FetCO2', group: 'respiratory', format: (v: number | null) => v?.toFixed(2) ?? '-' },
+  { key: 'feo2', label: 'FeO2', group: 'respiratory', format: (v: number | null) => v?.toFixed(2) ?? '-' },
+  { key: 'feco2', label: 'FeCO2', group: 'respiratory', format: (v: number | null) => v?.toFixed(2) ?? '-' },
+  
+  // 대사 지표
+  { key: 'vo2', label: 'VO2', group: 'metabolic', format: (v: number | null) => v?.toFixed(1) ?? '-' },
+  { key: 'vco2', label: 'VCO2', group: 'metabolic', format: (v: number | null) => v?.toFixed(1) ?? '-' },
+  { key: 'rer', label: 'RER', group: 'metabolic', format: (v: number | null) => v?.toFixed(2) ?? '-' },
+  { key: 'fat_oxidation', label: 'Fat(g/min)', group: 'metabolic', format: (v: number | null) => v?.toFixed(3) ?? '-' },
+  { key: 'cho_oxidation', label: 'CHO(g/min)', group: 'metabolic', format: (v: number | null) => v?.toFixed(3) ?? '-' },
+  { key: 'vo2_rel', label: 'VO2/kg', group: 'metabolic', format: (v: number | null) => v?.toFixed(1) ?? '-' },
+  { key: 'ee_total', label: 'EE', group: 'metabolic', format: (v: number | null) => v?.toFixed(1) ?? '-' },
+  
+  // 심폐 지표
+  { key: 'vo2_hr', label: 'VO2/HR', group: 'cardio', format: (v: number | null) => v?.toFixed(1) ?? '-' },
+  { key: 've_vo2', label: 'VE/VO2', group: 'cardio', format: (v: number | null) => v?.toFixed(1) ?? '-' },
+  { key: 've_vco2', label: 'VE/VCO2', group: 'cardio', format: (v: number | null) => v?.toFixed(1) ?? '-' },
+  { key: 'bike_torque', label: 'Torque', group: 'cardio', format: (v: number | null) => v?.toFixed(1) ?? '-' },
+];
+
+// 그룹 정보
+const COLUMN_GROUPS = {
+  basic: { label: '기본', color: 'bg-blue-100 text-blue-800' },
+  respiratory: { label: '호흡', color: 'bg-green-100 text-green-800' },
+  metabolic: { label: '대사', color: 'bg-orange-100 text-orange-800' },
+  cardio: { label: '심폐', color: 'bg-purple-100 text-purple-800' },
+};
+
+// 기본 선택 컬럼
+const DEFAULT_SELECTED_COLUMNS = ['hr', 'vo2', 'vco2', 've', 'rer', 'fat_oxidation', 'cho_oxidation', 'bike_power', 'mets'];
 
 const PAGE_SIZE = 50;
 
@@ -86,6 +126,49 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   const [loading, setLoading] = useState(false);
   const [loadingTests, setLoadingTests] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
+  
+  // 컬럼 선택 상태
+  const [selectedColumns, setSelectedColumns] = useState<string[]>(DEFAULT_SELECTED_COLUMNS);
+  const [showColumnSelector, setShowColumnSelector] = useState(false);
+  const columnSelectorRef = useRef<HTMLDivElement>(null);
+
+  // 외부 클릭 시 컬럼 선택기 닫기
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (columnSelectorRef.current && !columnSelectorRef.current.contains(event.target as Node)) {
+        setShowColumnSelector(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // 컬럼 토글
+  const toggleColumn = useCallback((key: string) => {
+    setSelectedColumns(prev => 
+      prev.includes(key) 
+        ? prev.filter(k => k !== key)
+        : [...prev, key]
+    );
+  }, []);
+
+  // 그룹 전체 선택/해제
+  const toggleGroup = useCallback((group: string) => {
+    const groupColumns = SELECTABLE_COLUMNS.filter(c => c.group === group).map(c => c.key);
+    const allSelected = groupColumns.every(k => selectedColumns.includes(k));
+    
+    if (allSelected) {
+      setSelectedColumns(prev => prev.filter(k => !groupColumns.includes(k)));
+    } else {
+      setSelectedColumns(prev => [...new Set([...prev, ...groupColumns])]);
+    }
+  }, [selectedColumns]);
+
+  // 현재 선택된 컬럼 (고정 + 선택된 컬럼)
+  const displayColumns = [
+    ...FIXED_COLUMNS,
+    ...SELECTABLE_COLUMNS.filter(c => selectedColumns.includes(c.key))
+  ];
 
   // 테스트 목록 로드
   useEffect(() => {
@@ -161,9 +244,9 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   function downloadCSV() {
     if (!rawData) return;
     
-    const headers = COLUMNS.map(c => c.label).join(',');
+    const headers = displayColumns.map(c => c.label).join(',');
     const rows = rawData.data.map(row => 
-      COLUMNS.map(col => {
+      displayColumns.map(col => {
         const value = (row as any)[col.key];
         return value ?? '';
       }).join(',')
@@ -177,7 +260,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     a.download = `${rawData.source_filename || 'raw_data'}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success('CSV 다운로드 완료');
+    toast.success('CSV 다운로드 완료 (선택된 컬럼만)');
   }
 
   return (
@@ -258,10 +341,88 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                   <p className="text-sm text-gray-500 mt-1">
                     피험자: {rawData.subject_name || 'Unknown'} | 
                     날짜: {new Date(rawData.test_date).toLocaleDateString()} |
-                    총 {rawData.total_rows}행
+                    총 {rawData.total_rows}행 | 
+                    표시 컬럼: {displayColumns.length}개
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {/* 컬럼 선택기 */}
+                  <div className="relative" ref={columnSelectorRef}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowColumnSelector(!showColumnSelector)}
+                      className="gap-1"
+                    >
+                      <Settings2 className="w-4 h-4" />
+                      컬럼 선택
+                    </Button>
+                    
+                    {showColumnSelector && (
+                      <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto">
+                        <div className="p-3 border-b bg-gray-50">
+                          <div className="flex justify-between items-center">
+                            <span className="font-medium text-sm">표시할 컬럼 선택</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setSelectedColumns(DEFAULT_SELECTED_COLUMNS)}
+                              className="text-xs h-6 px-2"
+                            >
+                              기본값
+                            </Button>
+                          </div>
+                        </div>
+                        
+                        {(Object.keys(COLUMN_GROUPS) as Array<keyof typeof COLUMN_GROUPS>).map(group => {
+                          const groupColumns = SELECTABLE_COLUMNS.filter(c => c.group === group);
+                          const allSelected = groupColumns.every(c => selectedColumns.includes(c.key));
+                          const someSelected = groupColumns.some(c => selectedColumns.includes(c.key));
+                          
+                          return (
+                            <div key={group} className="border-b last:border-b-0">
+                              <div 
+                                className="flex items-center gap-2 p-2 bg-gray-50 cursor-pointer hover:bg-gray-100"
+                                onClick={() => toggleGroup(group)}
+                              >
+                                <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                                  allSelected ? 'bg-[#2563EB] border-[#2563EB]' : 
+                                  someSelected ? 'bg-[#2563EB]/50 border-[#2563EB]' : 'border-gray-300'
+                                }`}>
+                                  {allSelected && <Check className="w-3 h-3 text-white" />}
+                                </div>
+                                <span className={`px-2 py-0.5 text-xs rounded ${COLUMN_GROUPS[group].color}`}>
+                                  {COLUMN_GROUPS[group].label}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  ({groupColumns.filter(c => selectedColumns.includes(c.key)).length}/{groupColumns.length})
+                                </span>
+                              </div>
+                              <div className="px-3 py-2 grid grid-cols-2 gap-1">
+                                {groupColumns.map(col => (
+                                  <label 
+                                    key={col.key} 
+                                    className="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50 cursor-pointer text-sm"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedColumns.includes(col.key)}
+                                      onChange={() => toggleColumn(col.key)}
+                                      className="w-3.5 h-3.5 rounded border-gray-300 text-[#2563EB] focus:ring-[#2563EB]"
+                                    />
+                                    {col.label}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="w-px h-6 bg-gray-300" />
+                  
                   <Button
                     variant="outline"
                     size="sm"
@@ -284,33 +445,73 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-gray-50">
-                    <th className="px-2 py-2 text-left font-medium text-gray-600">#</th>
-                    {COLUMNS.map(col => (
-                      <th key={col.key} className="px-2 py-2 text-left font-medium text-gray-600">
-                        {col.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedData.map((row, idx) => (
-                    <tr key={row.id} className="border-b hover:bg-gray-50">
-                      <td className="px-2 py-1.5 text-gray-400">
-                        {(currentPage - 1) * PAGE_SIZE + idx + 1}
-                      </td>
-                      {COLUMNS.map(col => (
-                        <td key={col.key} className="px-2 py-1.5 text-gray-900 font-mono text-xs">
-                          {col.format((row as any)[col.key])}
-                        </td>
+            <CardContent className="p-0">
+              {/* 고정 컬럼 + 스크롤 가능 테이블 */}
+              <div className="flex">
+                {/* 왼쪽 고정 컬럼 (#, Time, Phase) */}
+                <div className="flex-shrink-0 border-r border-gray-200 bg-white z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                  <table className="text-sm">
+                    <thead>
+                      <tr className="border-b bg-gray-50">
+                        <th className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">#</th>
+                        {FIXED_COLUMNS.map(col => (
+                          <th key={col.key} className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">
+                            {col.label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedData.map((row, idx) => (
+                        <tr key={row.id} className="border-b hover:bg-gray-50">
+                          <td className="px-3 py-1.5 text-gray-400 whitespace-nowrap">
+                            {(currentPage - 1) * PAGE_SIZE + idx + 1}
+                          </td>
+                          {FIXED_COLUMNS.map(col => (
+                            <td key={col.key} className="px-3 py-1.5 text-gray-900 font-mono text-xs whitespace-nowrap">
+                              {col.format((row as any)[col.key])}
+                            </td>
+                          ))}
+                        </tr>
                       ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                    </tbody>
+                  </table>
+                </div>
+                
+                {/* 오른쪽 스크롤 가능 영역 */}
+                <div className="overflow-x-auto flex-1">
+                  <table className="text-sm w-full">
+                    <thead>
+                      <tr className="border-b bg-gray-50">
+                        {SELECTABLE_COLUMNS.filter(c => selectedColumns.includes(c.key)).map(col => (
+                          <th key={col.key} className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">
+                            <span className="flex items-center gap-1">
+                              {col.label}
+                              <span className={`w-2 h-2 rounded-full ${
+                                col.group === 'basic' ? 'bg-blue-400' :
+                                col.group === 'respiratory' ? 'bg-green-400' :
+                                col.group === 'metabolic' ? 'bg-orange-400' :
+                                'bg-purple-400'
+                              }`} title={COLUMN_GROUPS[col.group as keyof typeof COLUMN_GROUPS].label} />
+                            </span>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedData.map((row) => (
+                        <tr key={row.id} className="border-b hover:bg-gray-50">
+                          {SELECTABLE_COLUMNS.filter(c => selectedColumns.includes(c.key)).map(col => (
+                            <td key={col.key} className="px-3 py-1.5 text-gray-900 font-mono text-xs whitespace-nowrap">
+                              {col.format((row as any)[col.key])}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </CardContent>
           </Card>
         ) : (
