@@ -42,8 +42,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     ENCRYPTION_KEY: str = ""
 
-    # CORS
-    ALLOWED_ORIGINS: str = "http://localhost:3100"
+    # CORS - allow common local dev origins (Vite default ports)
+    # Multiple origins may be provided as a comma-separated string.
+    ALLOWED_ORIGINS: str = "http://localhost:3100,http://localhost:3101,http://127.0.0.1:3100,http://localhost:5173"
 
     @computed_field
     @property
