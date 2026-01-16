@@ -233,13 +233,20 @@ async def get_raw_breath_data(
         if subject:
             subject_name = subject.encrypted_name
     
+    # 각 row에 id 할당 (row index)
+    data_rows = []
+    for idx, row in enumerate(raw_data, start=1):
+        row_dict = {c.name: getattr(row, c.name) for c in row.__table__.columns}
+        row_dict["id"] = idx
+        data_rows.append(RawBreathDataRow.model_validate(row_dict))
+
     return RawBreathDataResponse(
         test_id=test_id,
         source_filename=test.source_filename,
         test_date=test.test_date,
         subject_name=subject_name,
         total_rows=len(raw_data),
-        data=[RawBreathDataRow.model_validate(row) for row in raw_data],
+        data=data_rows,
     )
 
 

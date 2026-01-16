@@ -287,7 +287,7 @@ class TestAnalysisResponse(BaseModel):
 
 class RawBreathDataRow(BaseModel):
     """Raw breath data 행 스키마"""
-    id: int
+    id: Optional[int] = None
     time: datetime
     t_sec: Optional[float] = None
     rf: Optional[float] = None
