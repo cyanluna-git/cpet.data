@@ -282,9 +282,28 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   const rawChartData = useMemo(() => {
     if (!rawData) return [];
     const data = rawData.data;
-    const maxPoints = 500;
-    const step = Math.max(1, Math.floor(data.length / maxPoints));
-    return data.filter((_, i) => i % step === 0);
+    
+    // Dynamic maxPoints based on data density and duration
+    // For longer tests, allow more points to preserve detail
+    const totalDuration = data.length > 0 && data[data.length - 1]?.t_sec 
+      ? data[data.length - 1].t_sec 
+      : data.length * 5; // Assume 5s intervals if no t_sec
+    
+    // Scale maxPoints with duration: 500 for 10min, up to 1000 for longer tests
+    const maxPoints = Math.min(1000, Math.max(500, Math.floor((totalDuration ?? 600) / 1.2)));
+    
+    if (data.length <= maxPoints) {
+      return data;
+    }
+    
+    // Use uniform sampling that preserves data distribution
+    const step = data.length / maxPoints;
+    const sampled = [];
+    for (let i = 0; i < maxPoints; i++) {
+      const index = Math.floor(i * step);
+      sampled.push(data[index]);
+    }
+    return sampled;
   }, [rawData]);
 
   const processedChartData = useMemo(() => {
@@ -733,7 +752,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                     </div>
                     <div className="h-44 w-full">
                       <ResponsiveContainer width="100%" height="100%">
-                        <ComposedChart data={rawChartData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
+                        <ComposedChart data={rawChartData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }} syncId="rawDataViewer">
                           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                           <XAxis
                             dataKey="t_sec"
@@ -804,7 +823,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                         ) : (
                           <div className="aspect-[4/3] w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                              <ComposedChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
+                              <ComposedChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 10 }} syncId="rawDataViewer">
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                                 <XAxis
                                   dataKey={preset.x}
