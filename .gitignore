@@ -35,9 +35,8 @@ yarn-error.log*
 .DS_Store
 
 # Database
+# Keep explicit db artifacts out of git; Postgres data directory is excluded separately
 *.db
-*.sqlite
-*.sqlite3
 
 # Docker
 postgres_data/

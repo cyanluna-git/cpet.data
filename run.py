@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
 CPET Platform 실행 스크립트
-- SQLite (기본) 또는 PostgreSQL + TimescaleDB (Docker, 선택적)
+- PostgreSQL + TimescaleDB (기본, Docker로 시작)
 - Backend (FastAPI)
 - Frontend (React + Vite)
 
 사용법: python run.py
-        python run.py --postgres  # PostgreSQL 사용
 종료: Ctrl+C
 """
 
@@ -26,7 +25,7 @@ ENV_FILE = ROOT_DIR / ".env"
 # 프로세스 관리
 processes = []
 shutting_down = False
-use_postgres = "--sqlite" not in sys.argv  # 기본값: PostgreSQL (--sqlite로 SQLite 사용 가능)
+use_postgres = True  # Always prefer PostgreSQL by default
 
 # 환경 변수 (기본값)
 config = {
@@ -281,8 +280,6 @@ def main():
     print("  CPET Platform 실행 스크립트")
     if use_postgres:
         print("  데이터베이스: PostgreSQL (Docker)")
-    else:
-        print("  데이터베이스: SQLite")
     print("  종료: Ctrl+C")
     print("=" * 60)
     print()
@@ -304,8 +301,6 @@ def main():
     if use_postgres:
         if not start_database():
             sys.exit(1)
-    else:
-        log("SQLite 사용 중 - 별도 DB 서버 불필요", "INFO")
 
     if not start_backend():
         stop_all()
