@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigation } from '@/components/layout/Navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Database, ExternalLink } from 'lucide-react';
+import { Database, ExternalLink, CheckCircle, XCircle, Activity, Filter } from 'lucide-react';
 import { api, type AdminStats } from '@/lib/api';
 import { toast } from 'sonner';
 import { getErrorMessage } from '@/utils/apiHelpers';
@@ -13,13 +13,60 @@ interface AdminDataPageProps {
   onNavigate: (view: string, params?: any) => void;
 }
 
+interface TestValidationInfo {
+  is_valid: boolean;
+  protocol_type: string;
+  quality_score: number;
+  duration_min: number;
+  max_power: number;
+  hr_dropout_rate: number;
+  gas_dropout_rate: number;
+  power_time_correlation?: number;
+  issues: string[];
+}
+
+interface AdminTestRow {
+  test_id: string;
+  test_date: string;
+  test_time?: string;
+  subject_id: string;
+  subject_name: string;
+  subject_age?: number;
+  protocol_type?: string;
+  source_filename?: string;
+  parsing_status?: string;
+  validation: TestValidationInfo;
+  vo2_max?: number;
+  fat_max_watt?: number;
+}
+
+interface AdminTestListResponse {
+  items: AdminTestRow[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
 export function AdminDataPage({ user, onLogout, onNavigate }: AdminDataPageProps) {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tests, setTests] = useState<AdminTestListResponse | null>(null);
+  const [testsLoading, setTestsLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [filterProtocol, setFilterProtocol] = useState<string>('');
+  const [filterValid, setFilterValid] = useState<string>('');
+  const [showTable, setShowTable] = useState(false);
 
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    if (showTable) {
+      loadTests();
+    }
+  }, [currentPage, filterProtocol, filterValid, showTable]);
 
   async function load() {
     try {
@@ -31,6 +78,62 @@ export function AdminDataPage({ user, onLogout, onNavigate }: AdminDataPageProps
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadTests() {
+    try {
+      setTestsLoading(true);
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        page_size: '20',
+      });
+      if (filterProtocol) params.append('protocol_type', filterProtocol);
+      if (filterValid) params.append('is_valid', filterValid);
+      
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        throw new Error('No access token found. Please login again.');
+      }
+      
+      const response = await fetch(`/api/admin/tests?${params.toString()}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Failed to load tests' }));
+        throw new Error(errorData.detail || 'Failed to load tests');
+      }
+      const data = await response.json();
+      setTests(data);
+    } catch (error) {
+      console.error('Load tests error:', error);
+      toast.error(getErrorMessage(error));
+    } finally {
+      setTestsLoading(false);
+    }
+  }
+
+  function getProtocolIcon(protocol: string) {
+    switch (protocol) {
+      case 'RAMP': return '📈';
+      case 'INTERVAL': return '📊';
+      case 'STEADY_STATE': return '📉';
+      default: return '❓';
+    }
+  }
+
+  function getQualityColor(score: number) {
+    if (score >= 0.95) return 'text-green-600';
+    if (score >= 0.80) return 'text-blue-600';
+    if (score >= 0.60) return 'text-yellow-600';
+    return 'text-red-600';
+  }
+
+  function formatDate(dateStr: string) {
+    return new Date(dateStr).toLocaleDateString('ko-KR');
   }
 
   return (
@@ -96,6 +199,178 @@ export function AdminDataPage({ user, onLogout, onNavigate }: AdminDataPageProps
                   <ExternalLink className="w-4 h-4" />
                 </Button>
               </div>
+            </Card>
+
+            {/* 전체 테스트 관리 테이블 */}
+            <Card className="p-6 mt-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-1">전체 테스트 데이터</h2>
+                  <p className="text-sm text-gray-600">데이터 소스 현황 및 검증 상태</p>
+                </div>
+                <Button 
+                  className="bg-[#2563EB]" 
+                  onClick={() => setShowTable(!showTable)}
+                >
+                  {showTable ? '테이블 숨기기' : '테이블 보기'}
+                </Button>
+              </div>
+
+              {showTable && (
+                <>
+                  {/* 필터 */}
+                  <div className="flex gap-2 mb-4 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Filter className="w-4 h-4 text-gray-500" />
+                      <select 
+                        className="px-3 py-1 border border-gray-300 rounded-md text-sm"
+                        value={filterProtocol}
+                        onChange={(e) => {
+                          setFilterProtocol(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                      >
+                        <option value="">모든 프로토콜</option>
+                        <option value="RAMP">RAMP</option>
+                        <option value="INTERVAL">INTERVAL</option>
+                        <option value="STEADY_STATE">STEADY_STATE</option>
+                        <option value="UNKNOWN">UNKNOWN</option>
+                      </select>
+                      
+                      <select 
+                        className="px-3 py-1 border border-gray-300 rounded-md text-sm"
+                        value={filterValid}
+                        onChange={(e) => {
+                          setFilterValid(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                      >
+                        <option value="">모든 유효성</option>
+                        <option value="true">유효</option>
+                        <option value="false">무효</option>
+                      </select>
+
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => {
+                          setFilterProtocol('');
+                          setFilterValid('');
+                          setCurrentPage(1);
+                        }}
+                      >
+                        초기화
+                      </Button>
+                    </div>
+                  </div>
+
+                  {testsLoading ? (
+                    <div className="flex justify-center py-12">
+                      <div className="w-8 h-8 border-4 border-[#2563EB] border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                  ) : tests && tests.items.length > 0 ? (
+                    <>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-50 border-b">
+                            <tr>
+                              <th className="px-4 py-3 text-left font-medium text-gray-700">피험자</th>
+                              <th className="px-4 py-3 text-left font-medium text-gray-700">나이</th>
+                              <th className="px-4 py-3 text-left font-medium text-gray-700">수행일</th>
+                              <th className="px-4 py-3 text-left font-medium text-gray-700">프로토콜</th>
+                              <th className="px-4 py-3 text-left font-medium text-gray-700">길이</th>
+                              <th className="px-4 py-3 text-left font-medium text-gray-700">최대파워</th>
+                              <th className="px-4 py-3 text-left font-medium text-gray-700">품질</th>
+                              <th className="px-4 py-3 text-left font-medium text-gray-700">유효성</th>
+                              <th className="px-4 py-3 text-left font-medium text-gray-700">파일명</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {tests.items.map((test) => (
+                              <tr key={test.test_id} className="hover:bg-gray-50">
+                                <td className="px-4 py-3">{test.subject_name}</td>
+                                <td className="px-4 py-3 text-gray-600">
+                                  {test.subject_age ? `${test.subject_age}세` : '-'}
+                                </td>
+                                <td className="px-4 py-3 text-gray-600">
+                                  {formatDate(test.test_date)}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className="inline-flex items-center gap-1">
+                                    {getProtocolIcon(test.validation.protocol_type)}
+                                    <span className="text-xs font-medium">
+                                      {test.validation.protocol_type}
+                                    </span>
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-gray-600">
+                                  {test.validation.duration_min.toFixed(1)}분
+                                </td>
+                                <td className="px-4 py-3 text-gray-600">
+                                  {test.validation.max_power > 0 
+                                    ? `${test.validation.max_power.toFixed(0)}W`
+                                    : '-'
+                                  }
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className={`font-medium ${getQualityColor(test.validation.quality_score)}`}>
+                                    {test.validation.quality_score.toFixed(2)}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3">
+                                  {test.validation.is_valid ? (
+                                    <span className="inline-flex items-center gap-1 text-green-600">
+                                      <CheckCircle className="w-4 h-4" />
+                                      <span className="text-xs font-medium">유효</span>
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-red-600">
+                                      <XCircle className="w-4 h-4" />
+                                      <span className="text-xs font-medium">무효</span>
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-xs text-gray-500 max-w-xs truncate">
+                                  {test.source_filename || '-'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* 페이지네이션 */}
+                      <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                        <div className="text-sm text-gray-600">
+                          총 {tests.total}개 테스트 (페이지 {tests.page} / {tests.total_pages})
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={currentPage === 1}
+                            onClick={() => setCurrentPage(currentPage - 1)}
+                          >
+                            이전
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={currentPage >= tests.total_pages}
+                            onClick={() => setCurrentPage(currentPage + 1)}
+                          >
+                            다음
+                          </Button>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center py-12 text-gray-500">
+                      테스트 데이터가 없습니다.
+                    </div>
+                  )}
+                </>
+              )}
             </Card>
 
             <Card className="p-6 mt-6 border-red-200">
