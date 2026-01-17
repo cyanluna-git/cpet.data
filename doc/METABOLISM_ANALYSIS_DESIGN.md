@@ -516,7 +516,7 @@ TestService.get_analysis()
 
 ---
 
-## 6. 테스트 결과
+## 6. 테스트 및 검증
 
 ### 6.1 단위 테스트 (8개 통과)
 
@@ -532,7 +532,52 @@ tests/test_metabolism_analysis.py
 └── test_fatmax_detection               ✓
 ```
 
-### 6.2 실제 데이터 검증
+### 6.2 데이터 파이프라인 정합성 검증 ✅
+
+**검증 스크립트**: `tests/validate_data_integrity.py`  
+**검증 일자**: 2026-01-17  
+**테스트 대상**: Park Yongdoo (c91339b9-c0ce-434d-b4ad-3c77452ed928)
+
+#### 6.2.1 검증 항목 및 결과
+
+| 검증 항목 | 결과 | 상세 |
+|----------|------|------|
+| **1. Frayn 공식 정확도** | ✅ 통과 | 평균 오차: 0.000000 g/min, 최대 오차: 0.000000 g/min |
+| **2. Phase Detection** | ✅ 통과 | 2회 전환 (Warm-up → Exercise at t=519s) |
+| **3. Power Binning Integrity** | ✅ 통과 | 데이터 손실: 0개 (0.0%), 469개 → 469개 보존 |
+| **4. LOESS Smoothing 적절성** | ✅ 통과 | 피크 손실: 3.8% (< 20% 기준), MFO 유지율 96.2% |
+| **5. Polynomial Trend Fit** | ✅ 통과 | R² = 0.9453 (> 0.7 기준), 높은 적합도 |
+| **6. FatMax 마커 타당성** | ✅ 통과 | 170W (데이터 범위 20-270W 내), Zone: 120-190W |
+
+#### 6.2.2 처리 단계별 데이터 크기
+
+```
+Raw (Phase Trimming 후): 469개
+    ↓ Power Binning (10W)
+Binned: 20개 (count 합계: 469 ✓)
+    ↓ LOESS Smoothing (frac=0.25)
+Smoothed: 20개 (피크 손실 3.8%)
+    ↓ Polynomial Fit (3차/2차)
+Trend: 26개 (R² = 0.9453)
+```
+
+#### 6.2.3 검증 메트릭 상세
+
+**Frayn 공식 검증**:
+- VO2/VCO2 → Fat/CHO 재계산하여 DB 저장값과 비교
+- Exercise phase 첫 10개 데이터: 완벽 일치 (오차 < 0.000001 g/min)
+
+**LOESS Smoothing 보존율**:
+- Binned FatOx 최대: 1.1921 g/min
+- Smoothed FatOx 최대: 1.1468 g/min
+- 보존율: 96.2% (생리학적 피크 유지)
+
+**Polynomial Trend 적합도**:
+- Fat/CHO Oxidation: 3차 다항식 (역 U자 패턴)
+- R² = 0.9453 → 원본 데이터의 94.5% 분산 설명
+- 외삽 범위: 20-270W (데이터 범위와 일치)
+
+### 6.3 실제 데이터 검증
 
 **테스트 파일**: `Hong Changsun 20241119 CPET Ramp_20241119131037.xlsx`
 
@@ -544,6 +589,64 @@ tests/test_metabolism_analysis.py
 | VO2MAX | 1693 | ml/min |
 | VT1 HR | 126 | bpm |
 | VT2 HR | 148 | bpm |
+
+### 6.4 생리학적 개형 검증 ✅
+
+**검증 스크립트**: `tests/validate_physiological_patterns.py`  
+**검증 일자**: 2026-01-17  
+**테스트 대상**: Park Yongdoo (c91339b9-c0ce-434d-b4ad-3c77452ed928)
+
+#### 6.4.1 검증 항목 및 결과
+
+| 검증 항목 | 결과 | 상세 |
+|----------|------|------|
+| **1. FatMax 위치** | ⚠️ 주의 | 72.7% VO2max (권장: 40-70%), 파워 위치는 정상 |
+| **2. Fat/CHO Crossover** | ⚠️ 주의 | 75W에서 존재, RER 0.762 (낮음, 권장: 0.85-1.0) |
+| **3. RER 추이** | ⚠️ 주의 | Rest 0.923 (높음), Peak 0.874 (낮음) |
+| **4. 산화율 패턴** | ✅ 통과 | Fat: 역U자형, CHO: 4.7배 지수증가 |
+
+#### 6.4.2 발견된 이슈 분석
+
+**1. FatMax 위치 (72.7% VO2max)**
+- **일반 범위**: 40-65% VO2max
+- **현재 데이터**: 170W (2901 ml/min), VO2max 3991 ml/min
+- **가능 원인**:
+  - 고도로 훈련된 선수 (FatMax가 더 높은 강도에서 나타남)
+  - 또는 VO2max 측정 과소평가 (최대 노력 미달)
+
+**2. RER 패턴 이상**
+- **Rest RER**: 0.923 (정상: 0.7-0.85)
+  - **원인**: 측정 전 과호흡, 불안, 또는 최근 식사
+- **Peak RER**: 0.874 (기대: >1.0)
+  - **원인**: 최대 노력 미달 또는 조기 종료
+- **Crossover RER**: 0.762 (기대: 0.85-1.0)
+  - **원인**: 전반적으로 RER이 낮게 측정됨 (센서 캘리브레이션 이슈 가능)
+
+**3. 정상 패턴 (산화율)**
+- ✅ Fat Oxidation: 명확한 역 U자형 (피크 45% 지점)
+- ✅ CHO Oxidation: 4.7배 지수 증가
+
+#### 6.4.3 권장 조치
+
+1. **VO2/VCO2 센서 캘리브레이션 확인**
+   - RER이 전반적으로 낮음 → VCO2 under-reading 가능성
+   
+2. **테스트 프로토콜 검토**
+   - 피험자가 진정한 VO2max까지 도달했는지 확인
+   - Peak HR, RPE (자각 운동강도) 함께 평가 필요
+
+3. **사전 조건 표준화**
+   - 테스트 전 최소 2시간 공복
+   - 측정 전 5분 안정 Rest (과호흡 방지)
+
+### 6.5 Edge Cases 테스트 (향후)
+
+- [ ] 짧은 테스트 (< 50 포인트)
+- [ ] 일정 파워 구간 (Steady-state)
+- [ ] 비정상 RER (> 1.5 또는 < 0.6)
+- [ ] 대량 결측값 (> 30%)
+- [ ] 매우 낮은 FatOx (< 0.1 g/min)
+- [ ] 급격한 파워 변화 (Ramp 아닌 Step 프로토콜)
 
 ---
 
