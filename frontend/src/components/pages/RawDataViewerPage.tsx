@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Database, Download, ChevronLeft, ChevronRight, Settings2, Check, User, Calendar, LineChart, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { getErrorMessage, getAuthToken } from '@/utils/apiHelpers';
+import { useDebounce } from '@/hooks/useDebounce';
 import {
   ComposedChart,
   Line,
@@ -16,6 +17,9 @@ import {
   Legend,
   ResponsiveContainer,
   ZAxis,
+  ReferenceLine,
+  ReferenceArea,
+  Label,
 } from 'recharts';
 
 interface RawDataViewerPageProps {
@@ -228,9 +232,22 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   const [useProcessedData, setUseProcessedData] = useState(false);
   const [processedData, setProcessedData] = useState<any>(null);
   const [analysisData, setAnalysisData] = useState<any>(null);
-  const [loessFrac, setLoessFrac] = useState(0.25);
-  const [binSize, setBinSize] = useState(10);
-  const [aggregationMethod, setAggregationMethod] = useState<'median' | 'mean' | 'trimmed_mean'>('median');
+
+  // Analysis settings consolidated into a single object
+  interface AnalysisSettings {
+    loess: number;
+    bin: number;
+    method: 'median' | 'mean' | 'trimmed_mean';
+  }
+  const [analysisSettings, setAnalysisSettings] = useState<AnalysisSettings>({
+    loess: 0.25,
+    bin: 10,
+    method: 'median',
+  });
+
+  // Debounced values for API calls (prevents excessive requests during slider drag)
+  const debouncedLoess = useDebounce(analysisSettings.loess, 500);
+  const debouncedBin = useDebounce(analysisSettings.bin, 500);
   
   // 컬럼 선택 상태
   const [selectedColumns, setSelectedColumns] = useState<string[]>(DEFAULT_SELECTED_COLUMNS);
@@ -429,7 +446,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     if (selectedTestId && useProcessedData) {
       loadProcessedData();
     }
-  }, [selectedTestId, useProcessedData, loessFrac, binSize, aggregationMethod]);
+  }, [selectedTestId, useProcessedData, debouncedLoess, debouncedBin, analysisSettings.method]);
 
   // 선택한 테스트의 raw data 로드
   async function loadRawData() {
@@ -464,10 +481,11 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       setLoading(true);
       const token = getAuthToken();
       const response = await fetch(
-        `/api/tests/${selectedTestId}/analysis?interval=5s&include_processed=true&loess_frac=${loessFrac}&bin_size=${binSize}&aggregation_method=${aggregationMethod}`,
+        `/api/tests/${selectedTestId}/analysis?interval=5s&include_processed=true&loess_frac=${debouncedLoess}&bin_size=${debouncedBin}&aggregation_method=${analysisSettings.method}`,
         {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
       if (!response.ok) {
         const err = await response.json();
         throw new Error(err.detail || 'Failed to load processed data');
@@ -630,30 +648,30 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
             <div className="flex items-center gap-4 flex-wrap">
               <div className="flex flex-col gap-1 min-w-[140px]">
                 <label className={`text-xs font-medium ${useProcessedData ? 'text-gray-700' : 'text-gray-400'}`}>
-                  LOESS 강도 ({loessFrac.toFixed(2)})
+                  LOESS 강도 ({analysisSettings.loess.toFixed(2)})
                 </label>
                 <input
                   type="range"
                   min={0.1}
                   max={0.5}
                   step={0.05}
-                  value={loessFrac}
-                  onChange={(e) => setLoessFrac(parseFloat(e.target.value))}
+                  value={analysisSettings.loess}
+                  onChange={(e) => setAnalysisSettings(prev => ({ ...prev, loess: parseFloat(e.target.value) }))}
                   disabled={!useProcessedData}
                   className="w-full"
                 />
               </div>
               <div className="flex flex-col gap-1 min-w-[140px]">
                 <label className={`text-xs font-medium ${useProcessedData ? 'text-gray-700' : 'text-gray-400'}`}>
-                  Power Bin ({binSize}W)
+                  Power Bin ({analysisSettings.bin}W)
                 </label>
                 <input
                   type="range"
                   min={5}
                   max={30}
                   step={5}
-                  value={binSize}
-                  onChange={(e) => setBinSize(parseInt(e.target.value, 10))}
+                  value={analysisSettings.bin}
+                  onChange={(e) => setAnalysisSettings(prev => ({ ...prev, bin: parseInt(e.target.value, 10) }))}
                   disabled={!useProcessedData}
                   className="w-full"
                 />
@@ -664,8 +682,8 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                 </label>
                 <select
                   className="px-2 py-1 border border-gray-300 rounded-md text-xs"
-                  value={aggregationMethod}
-                  onChange={(e) => setAggregationMethod(e.target.value as 'median' | 'mean' | 'trimmed_mean')}
+                  value={analysisSettings.method}
+                  onChange={(e) => setAnalysisSettings(prev => ({ ...prev, method: e.target.value as 'median' | 'mean' | 'trimmed_mean' }))}
                   disabled={!useProcessedData}
                 >
                   <option value="median">Median</option>
@@ -835,9 +853,10 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                                 <YAxis
                                   yAxisId="left"
                                   type="number"
-                                  domain={['auto', 'auto']}
+                                  domain={preset.key === 'rer' ? [0.6, 1.2] : ['auto', 'auto']}
+                                  allowDataOverflow={preset.key === 'rer'}
                                   tick={{ fontSize: 10 }}
-                                  tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
+                                  tickFormatter={(v) => typeof v === 'number' ? (preset.key === 'rer' ? v.toFixed(2) : v.toFixed(0)) : v}
                                 />
                                 {preset.yRight.length > 0 && (
                                   <YAxis
@@ -858,6 +877,81 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                                   }}
                                   labelFormatter={(label) => `${xLabel}: ${typeof label === 'number' ? label.toFixed(1) : label}`}
                                 />
+                                {/* FatMax Zone (90% MFO range) - render as subtle background area */}
+                                {analysisData?.metabolic_markers?.fat_max?.zone_min &&
+                                 analysisData?.metabolic_markers?.fat_max?.zone_max &&
+                                 preset.key === 'fatmax' && (
+                                  <ReferenceArea
+                                    x1={analysisData.metabolic_markers.fat_max.zone_min}
+                                    x2={analysisData.metabolic_markers.fat_max.zone_max}
+                                    yAxisId="left"
+                                    fill="#3B82F6"
+                                    fillOpacity={0.1}
+                                    stroke="#3B82F6"
+                                    strokeOpacity={0.3}
+                                    strokeDasharray="3 3"
+                                  />
+                                )}
+                                {/* FatMax line with label at top */}
+                                {analysisData?.metabolic_markers?.fat_max?.power && preset.key === 'fatmax' && (
+                                  <ReferenceLine
+                                    x={analysisData.metabolic_markers.fat_max.power}
+                                    yAxisId="left"
+                                    stroke="#DC2626"
+                                    strokeDasharray="5 5"
+                                    strokeWidth={2}
+                                  >
+                                    <Label
+                                      value={`FatMax ${analysisData.metabolic_markers.fat_max.power}W`}
+                                      position="top"
+                                      dy={-5}
+                                      fill="#DC2626"
+                                      fontSize={11}
+                                      fontWeight={600}
+                                    />
+                                  </ReferenceLine>
+                                )}
+                                {/* Crossover line with label staggered lower to avoid overlap */}
+                                {analysisData?.metabolic_markers?.crossover?.power && preset.key === 'fatmax' && (
+                                  <ReferenceLine
+                                    x={analysisData.metabolic_markers.crossover.power}
+                                    yAxisId="left"
+                                    stroke="#8B5CF6"
+                                    strokeDasharray="3 3"
+                                    strokeWidth={2}
+                                  >
+                                    <Label
+                                      value={`Crossover ${analysisData.metabolic_markers.crossover.power}W`}
+                                      position="insideTop"
+                                      dy={15}
+                                      fill="#8B5CF6"
+                                      fontSize={10}
+                                    />
+                                  </ReferenceLine>
+                                )}
+                                {/* VT1 and VT2 reference lines for VT Analysis chart */}
+                                {analysisData?.vt1_vo2 && preset.key === 'vt' && (
+                                  <ReferenceLine
+                                    x={analysisData.vt1_vo2}
+                                    yAxisId="left"
+                                    stroke="#22C55E"
+                                    strokeDasharray="4 4"
+                                    strokeWidth={2}
+                                  >
+                                    <Label value="VT1" position="top" fill="#22C55E" fontSize={11} />
+                                  </ReferenceLine>
+                                )}
+                                {analysisData?.vt2_vo2 && preset.key === 'vt' && (
+                                  <ReferenceLine
+                                    x={analysisData.vt2_vo2}
+                                    yAxisId="left"
+                                    stroke="#EF4444"
+                                    strokeDasharray="4 4"
+                                    strokeWidth={2}
+                                  >
+                                    <Label value="VT2" position="top" fill="#EF4444" fontSize={11} />
+                                  </ReferenceLine>
+                                )}
                                 {useProcessedData ? (
                                   <>
                                     {preset.yLeft.map((key, idx) => {
