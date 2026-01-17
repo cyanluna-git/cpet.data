@@ -463,7 +463,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     if (selectedTestId && useProcessedData) {
       loadProcessedData();
     }
-  }, [selectedTestId, useProcessedData, debouncedLoess, debouncedBin, analysisSettings.method]);
+  }, [selectedTestId, useProcessedData, dataMode, debouncedLoess, debouncedBin, analysisSettings.method]);
 
   // 선택한 테스트의 raw data 로드
   async function loadRawData() {
@@ -491,8 +491,11 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   }
 
   // 전처리된 데이터 로드 (TestAnalysis API 사용)
-  async function loadProcessedData() {
+  async function loadProcessedData(overrideMode?: 'smoothed' | 'trend') {
     if (!selectedTestId) return;
+
+    // 명시적으로 전달된 mode를 우선 사용, 없으면 현재 state 사용
+    const currentMode = overrideMode || dataMode;
 
     try {
       setLoading(true);
@@ -509,11 +512,14 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       }
       const data = await response.json();
       console.log('📊 Analysis API Response:', data);
+      console.log('📊 Available keys in processed_series:', Object.keys(data.processed_series || {}));
+      console.log(`📊 trend data length: ${data.processed_series?.trend?.length || 0}`);
       setAnalysisData(data);
 
-      // dataMode에 따라 적절한 데이터 소스 선택
-      const sourceKey = dataMode === 'trend' ? 'trend' : 'smoothed';
+      // currentMode에 따라 적절한 데이터 소스 선택
+      const sourceKey = currentMode === 'trend' ? 'trend' : 'smoothed';
       const sourceData = data.processed_series?.[sourceKey] || data.processed_series?.smoothed;
+      console.log(`🎯 Requested mode: ${currentMode}, sourceKey: ${sourceKey}, data length: ${sourceData?.length || 0}`);
 
       if (sourceData && sourceData.length > 0) {
         console.log(`✨ Using ${sourceKey} data:`, sourceData.length, 'points');
@@ -539,7 +545,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         setShowChart(true);
       } else {
         console.warn(`⚠️ No ${sourceKey} data in response, falling back...`);
-        if (dataMode === 'trend' && !data.processed_series?.trend) {
+        if (currentMode === 'trend' && !data.processed_series?.trend) {
           toast.warning('Trend 데이터가 없습니다. Smooth 모드를 사용하세요.');
         } else {
           toast.warning('전처리 데이터가 없습니다. Raw 데이터를 확인하세요.');
@@ -672,7 +678,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                   type="button"
                   onClick={() => {
                     setDataMode('smoothed');
-                    if (selectedTestId) loadProcessedData();
+                    if (selectedTestId) loadProcessedData('smoothed');
                   }}
                   disabled={!selectedTestId}
                   className={`px-3 py-1.5 text-sm font-medium border-t border-b ${dataMode === 'smoothed'
@@ -686,7 +692,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                   type="button"
                   onClick={() => {
                     setDataMode('trend');
-                    if (selectedTestId) loadProcessedData();
+                    if (selectedTestId) loadProcessedData('trend');
                   }}
                   disabled={!selectedTestId}
                   className={`px-3 py-1.5 text-sm font-medium border ${dataMode === 'trend'
@@ -769,7 +775,11 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
               )}
               {processedData && useProcessedData && (
                 <>
-                  <span className="font-medium text-teal-700">✨ 전처리된 데이터 (LOESS Smoothed)</span>
+                  <span className={`font-medium ${dataMode === 'trend' ? 'text-purple-700' : 'text-teal-700'}`}>
+                    {dataMode === 'trend'
+                      ? '📈 Polynomial Trend (2차 전처리)'
+                      : '✨ LOESS Smoothed (1차 전처리)'}
+                  </span>
                   <span>데이터 포인트: {processedData.data?.length || 0}개</span>
                   {analysisData?.metabolic_markers?.fat_max && (
                     <span className="text-orange-600">FatMax: {analysisData.metabolic_markers.fat_max.power}W</span>
