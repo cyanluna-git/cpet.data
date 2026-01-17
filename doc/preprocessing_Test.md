@@ -2,24 +2,27 @@
 
 ### 문제 분석 및 해결
 
-#### 1. VO2/VCO2 None 처리 문제
-**문제**: API 응답의 raw 데이터에 vo2, vco2, hr 등의 필드가 포함되지 않음
+#### 1. VO2/VCO2 데이터 흐름 검증 완료 ✅
 
-**원인 분석**:
-- DB에는 vo2/vco2 데이터가 정상적으로 존재함 (✅ 확인)
-- `ProcessedDataPoint.to_dict()`는 모든 필드를 반환함 (✅ 확인)
-- **근본 원인**: FastAPI가 `None` 값을 가진 dict 키를 JSON 직렬화 시 자동 제거
-  - Python dict에는 키가 존재하지만 값이 `None`이면 FastAPI/Pydantic이 응답에서 제외
+**검증 경로**: Excel → cosmed_parser.py → BreathData (DB) → MetabolismAnalyzer → API 응답
 
-**해결**:
-```python
-# backend/app/api/tests.py
-@router.get(
-    "/{test_id}/analysis",
-    response_model=TestAnalysisResponse,
-    response_model_exclude_none=False,  # ✅ 추가
-)
-```
+**검증 결과**:
+1. **Excel 원본**: VO2/VCO2 컬럼 존재 확인 (사용자 제공 스크린샷)
+2. **cosmed_parser.py**: COLUMN_MAPPING에 `'VO2': 'vo2', 'VCO2': 'vco2'` 정상 매핑 ✅
+3. **BreathData (DB)**: 
+   - Park Yongdoo 테스트: 470개 Exercise 데이터 모두 vo2/vco2 존재
+   - None 값 0개, 데이터 손실 없음 ✅
+4. **MetabolismAnalyzer**:
+   - `_apply_phase_trimming()`: 118개 필터링 후 vo2/vco2 유지 ✅
+   - `_extract_raw_points()`: `getattr(bd, 'vo2')` 정상 작동, 934.13 등 실제 값 추출 ✅
+   - `ProcessedDataPoint`: vo2/vco2 필드 정상 저장 ✅
+5. **API 응답**: `response_model_exclude_none=False` 설정으로 None 값도 포함 ✅
+
+**결론**: **Excel → DB → API 전체 파이프라인에서 vo2/vco2 데이터 손실 없음**
+
+**이전 혼동 원인**:
+- Trend 필드 누락 문제와 혼동하여 vo2/vco2도 문제가 있다고 오인
+- 실제로는 vo2/vco2는 정상적으로 처리되고 있었음
 
 #### 2. Trend 데이터 누락 문제
 **문제**: 백엔드 로그에는 "Polynomial fit complete: 26 trend points generated"가 보이지만 API 응답에 trend 없음
