@@ -598,9 +598,13 @@ class MetabolismAnalyzer:
         """
         if len(smoothed_points) < 4:
             self.warnings.append("Not enough data points for polynomial fit")
+            print(f"⚠️ Polynomial fit skipped: only {len(smoothed_points)} points")
             return []
 
         try:
+            print(
+                f"🔬 Starting polynomial fit with {len(smoothed_points)} smoothed points"
+            )
             # 데이터 추출
             powers = np.array([p.power for p in smoothed_points])
             fat_ox = np.array(
@@ -679,10 +683,14 @@ class MetabolismAnalyzer:
                     )
                 )
 
+            print(
+                f"✅ Polynomial fit complete: {len(trend_points)} trend points generated"
+            )
             return trend_points
 
         except Exception as e:
             self.warnings.append(f"Polynomial fit failed: {str(e)}")
+            print(f"❌ Polynomial fit failed: {str(e)}")
             return []
 
     def _calculate_fatmax(
