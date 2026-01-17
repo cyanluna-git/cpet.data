@@ -38,7 +38,7 @@ class ProcessedDataPoint:
     count: Optional[int] = None  # binned data only
     vo2: Optional[float] = None  # VO2 for relative calculations and VO2 Kinetics chart
     rer: Optional[float] = None  # RER
-    vco2: Optional[float] = None  # VCO2 for VO2 Kinetics chart
+    vco2: Optional[float] = None  #lrmad VCO2 for VO2 Kinetics chart
     hr: Optional[float] = None  # HR for VO2 Kinetics chart
     ve_vo2: Optional[float] = None  # VE/VO2 for VT Analysis chart
     ve_vco2: Optional[float] = None  # VE/VCO2 for VT Analysis chart
@@ -121,14 +121,12 @@ class ProcessedSeries:
     trend: List[ProcessedDataPoint] = field(default_factory=list)  # Polynomial fit
 
     def to_dict(self) -> Dict[str, Any]:
-        result = {
+        return {
             "raw": [p.to_dict() for p in self.raw],
             "binned": [p.to_dict() for p in self.binned],
             "smoothed": [p.to_dict() for p in self.smoothed],
+            "trend": [p.to_dict() for p in self.trend],  # 항상 포함 (빈 리스트도 포함)
         }
-        if self.trend:
-            result["trend"] = [p.to_dict() for p in self.trend]
-        return result
 
 
 @dataclass
@@ -167,18 +165,6 @@ class AnalysisConfig:
     initial_time_threshold: float = 120.0  # seconds - first 2 minutes
     initial_power_threshold: int = 40  # watts - exclude low power data during startup
 
-    # === NEW: Advanced Physiological Corrections ===
-    # Gas Transport Lag Correction (muscle → breath delay)
-    gas_delay_seconds: float = 15.0  # Typical range: 10-20 seconds
-    # Rolling IQR Outlier Detection
-    outlier_window_size: int = 30  # Rolling window in seconds
-    outlier_iqr_multiplier: float = (
-        2.0  # Values outside Median ± IQR*multiplier are filtered
-    )
-    # Sparse Data Handling for Trend Lines
-    min_points_for_trend: int = 3  # Minimum binned points required in range
-    trend_gap_threshold_watts: int = 30  # Max gap before breaking trend line
-
     def to_dict(self) -> Dict[str, Any]:
         return {
             "loess_frac": self.loess_frac,
@@ -194,12 +180,6 @@ class AnalysisConfig:
             "exclude_initial_hyperventilation": self.exclude_initial_hyperventilation,
             "initial_time_threshold": self.initial_time_threshold,
             "initial_power_threshold": self.initial_power_threshold,
-            # New parameters
-            "gas_delay_seconds": self.gas_delay_seconds,
-            "outlier_window_size": self.outlier_window_size,
-            "outlier_iqr_multiplier": self.outlier_iqr_multiplier,
-            "min_points_for_trend": self.min_points_for_trend,
-            "trend_gap_threshold_watts": self.trend_gap_threshold_watts,
         }
 
 
@@ -261,16 +241,6 @@ class MetabolismAnalyzer:
                 f"Insufficient exercise data for analysis: {len(filtered_data)} points"
             )
             return None
-
-        # === NEW: Advanced Preprocessing Pipeline ===
-        # Step 0a: Gas Transport Lag Correction (shift VO2/VCO2 backward in time)
-        filtered_data = self._apply_gas_transport_delay(filtered_data)
-
-        # Step 0b: Rolling IQR Outlier Detection (remove breath-by-breath spikes)
-        filtered_data = self._filter_local_outliers(filtered_data)
-
-        # Step 0c: Recalculate Fat/CHO oxidation from cleaned VO2/VCO2 (Frayn equation)
-        filtered_data = self._recalculate_oxidation_rates(filtered_data)
 
         # 1. Raw 데이터 추출
         raw_points = self._extract_raw_points(filtered_data)
@@ -366,231 +336,8 @@ class MetabolismAnalyzer:
 
         return filtered
 
-    def _apply_gas_transport_delay(self, breath_data: List[Any]) -> List[Any]:
-        """
-        Gas Transport Lag Correction (시간 지연 보정)
-
-        Physiology: Changes in muscle metabolism (Power) take ~10-20 seconds
-        to be reflected in breath gas exchange (VO2/VCO2).
-
-        Action: Shift gas metrics backward in time relative to power by
-        config.gas_delay_seconds (default: 15s).
-        """
-        delay_sec = self.config.gas_delay_seconds
-        if delay_sec <= 0 or len(breath_data) < 5:
-            return breath_data
-
-        print(f"🔬 Applying gas transport delay: {delay_sec}s")
-
-        # Convert to lists for processing
-        times = [getattr(bd, "t_sec", i) for i, bd in enumerate(breath_data)]
-        vo2_vals = [getattr(bd, "vo2", None) for bd in breath_data]
-        vco2_vals = [getattr(bd, "vco2", None) for bd in breath_data]
-        rer_vals = [getattr(bd, "rer", None) for bd in breath_data]
-        ve_vals = [getattr(bd, "ve", None) for bd in breath_data]
-
-        # Create interpolation functions for gas metrics
-        valid_vo2 = [(t, v) for t, v in zip(times, vo2_vals) if v is not None]
-        valid_vco2 = [(t, v) for t, v in zip(times, vco2_vals) if v is not None]
-        valid_rer = [(t, v) for t, v in zip(times, rer_vals) if v is not None]
-
-        if len(valid_vo2) < 5 or len(valid_vco2) < 5:
-            self.warnings.append("Insufficient data for gas transport delay correction")
-            return breath_data
-
-        try:
-            vo2_interp = interp1d(
-                [t for t, v in valid_vo2],
-                [v for t, v in valid_vo2],
-                kind="linear",
-                bounds_error=False,
-                fill_value="extrapolate",
-            )
-            vco2_interp = interp1d(
-                [t for t, v in valid_vco2],
-                [v for t, v in valid_vco2],
-                kind="linear",
-                bounds_error=False,
-                fill_value="extrapolate",
-            )
-            rer_interp = None
-            if len(valid_rer) >= 5:
-                rer_interp = interp1d(
-                    [t for t, v in valid_rer],
-                    [v for t, v in valid_rer],
-                    kind="linear",
-                    bounds_error=False,
-                    fill_value="extrapolate",
-                )
-
-            # Apply delay: for each time point, get gas values from delay_sec earlier
-            for i, bd in enumerate(breath_data):
-                t = times[i]
-                shifted_t = t - delay_sec
-
-                # Update gas values with shifted interpolation
-                new_vo2 = float(vo2_interp(shifted_t))
-                new_vco2 = float(vco2_interp(shifted_t))
-
-                if not (math.isnan(new_vo2) or math.isinf(new_vo2)):
-                    bd.vo2 = new_vo2
-                if not (math.isnan(new_vco2) or math.isinf(new_vco2)):
-                    bd.vco2 = new_vco2
-
-                if rer_interp is not None:
-                    new_rer = float(rer_interp(shifted_t))
-                    if not (math.isnan(new_rer) or math.isinf(new_rer)):
-                        bd.rer = new_rer
-
-        except Exception as e:
-            self.warnings.append(f"Gas transport delay failed: {str(e)}")
-
-        return breath_data
-
-    def _filter_local_outliers(self, breath_data: List[Any]) -> List[Any]:
-        """
-        Rolling IQR Outlier Detection (국소 이상치 필터링)
-
-        Problem: Coughs, swallows, or equipment spikes cause single-breath
-        distortions that skew the average.
-
-        Solution: Use a rolling window (default: 30s) to calculate local
-        median and IQR. Replace values outside Median ± IQR*multiplier with None.
-        """
-        window_sec = self.config.outlier_window_size
-        iqr_mult = self.config.outlier_iqr_multiplier
-
-        if window_sec <= 0 or len(breath_data) < 10:
-            return breath_data
-
-        print(
-            f"🔬 Filtering outliers with {window_sec}s window, IQR multiplier: {iqr_mult}"
-        )
-
-        # Get time array
-        times = np.array([getattr(bd, "t_sec", i) for i, bd in enumerate(breath_data)])
-        vo2_vals = np.array(
-            [
-                (
-                    getattr(bd, "vo2", np.nan)
-                    if getattr(bd, "vo2", None) is not None
-                    else np.nan
-                )
-                for bd in breath_data
-            ]
-        )
-        vco2_vals = np.array(
-            [
-                (
-                    getattr(bd, "vco2", np.nan)
-                    if getattr(bd, "vco2", None) is not None
-                    else np.nan
-                )
-                for bd in breath_data
-            ]
-        )
-
-        outliers_removed = 0
-
-        for i in range(len(breath_data)):
-            t = times[i]
-            # Find indices within window
-            mask = (times >= t - window_sec / 2) & (times <= t + window_sec / 2)
-
-            # Check VO2
-            local_vo2 = vo2_vals[mask]
-            local_vo2 = local_vo2[~np.isnan(local_vo2)]
-            if len(local_vo2) >= 5 and not np.isnan(vo2_vals[i]):
-                q1, median, q3 = np.percentile(local_vo2, [25, 50, 75])
-                iqr = q3 - q1
-                lower = median - iqr_mult * iqr
-                upper = median + iqr_mult * iqr
-                if vo2_vals[i] < lower or vo2_vals[i] > upper:
-                    breath_data[i].vo2 = None
-                    outliers_removed += 1
-
-            # Check VCO2
-            local_vco2 = vco2_vals[mask]
-            local_vco2 = local_vco2[~np.isnan(local_vco2)]
-            if len(local_vco2) >= 5 and not np.isnan(vco2_vals[i]):
-                q1, median, q3 = np.percentile(local_vco2, [25, 50, 75])
-                iqr = q3 - q1
-                lower = median - iqr_mult * iqr
-                upper = median + iqr_mult * iqr
-                if vco2_vals[i] < lower or vco2_vals[i] > upper:
-                    breath_data[i].vco2 = None
-                    outliers_removed += 1
-
-        if outliers_removed > 0:
-            print(f"🔬 Filtered {outliers_removed} outlier values using rolling IQR")
-
-        return breath_data
-
-    def _recalculate_oxidation_rates(self, breath_data: List[Any]) -> List[Any]:
-        """
-        Recalculate Fat/CHO Oxidation Rates using Frayn Equation
-
-        Critical Step: After gas delay and outlier filtering, VO2/VCO2 values
-        have been modified. Fat/CHO oxidation must be recalculated to reflect
-        these cleaned values.
-
-        Frayn Equations (input VO2/VCO2 in L/min):
-        - Fat (g/min) = 1.67 * VO2 - 1.67 * VCO2
-        - CHO (g/min) = 4.55 * VCO2 - 3.21 * VO2
-
-        Note: Input VO2/VCO2 are typically in mL/min, so divide by 1000.
-        """
-        if len(breath_data) < 5:
-            return breath_data
-
-        print(f"🔬 Recalculating Fat/CHO oxidation rates from cleaned VO2/VCO2...")
-
-        recalculated = 0
-        set_to_none = 0
-
-        for bd in breath_data:
-            vo2 = getattr(bd, "vo2", None)
-            vco2 = getattr(bd, "vco2", None)
-
-            # If VO2 or VCO2 were filtered out (set to None), set oxidation to None too
-            if vo2 is None or vco2 is None:
-                bd.fat_oxidation = None
-                bd.cho_oxidation = None
-                set_to_none += 1
-                continue
-
-            try:
-                # Convert mL/min to L/min
-                vo2_l = vo2 / 1000.0
-                vco2_l = vco2 / 1000.0
-
-                # Frayn Equations
-                fat_ox = 1.67 * vo2_l - 1.67 * vco2_l
-                cho_ox = 4.55 * vco2_l - 3.21 * vo2_l
-
-                # Non-negative constraint (physiologically, can't have negative oxidation)
-                if self.config.non_negative_constraint:
-                    fat_ox = max(0.0, fat_ox)
-                    cho_ox = max(0.0, cho_ox)
-
-                bd.fat_oxidation = fat_ox
-                bd.cho_oxidation = cho_ox
-                recalculated += 1
-
-            except (TypeError, ValueError) as e:
-                bd.fat_oxidation = None
-                bd.cho_oxidation = None
-                set_to_none += 1
-
-        print(
-            f"🔬 Recalculated {recalculated} points, {set_to_none} points set to None (filtered)"
-        )
-
-        return breath_data
-
     def _extract_raw_points(self, breath_data: List[Any]) -> List[ProcessedDataPoint]:
         """호흡 데이터에서 raw 포인트 추출"""
-
         # Helper to safely convert to float (handles None, NaN, and 0 correctly)
         def safe_float(val):
             if val is None:
@@ -611,11 +358,11 @@ class MetabolismAnalyzer:
                     fat_oxidation=safe_float(bd.fat_oxidation),
                     cho_oxidation=safe_float(bd.cho_oxidation),
                     rer=safe_float(bd.rer),
-                    vo2=safe_float(getattr(bd, "vo2", None)),
-                    vco2=safe_float(getattr(bd, "vco2", None)),
-                    hr=safe_float(getattr(bd, "hr", None)),
-                    ve_vo2=safe_float(getattr(bd, "ve_vo2", None)),
-                    ve_vco2=safe_float(getattr(bd, "ve_vco2", None)),
+                    vo2=safe_float(getattr(bd, 'vo2', None)),
+                    vco2=safe_float(getattr(bd, 'vco2', None)),
+                    hr=safe_float(getattr(bd, 'hr', None)),
+                    ve_vo2=safe_float(getattr(bd, 've_vo2', None)),
+                    ve_vco2=safe_float(getattr(bd, 've_vco2', None)),
                     count=1,
                 )
             )
@@ -656,16 +403,7 @@ class MetabolismAnalyzer:
         df["power_bin"] = (df["power"] / bin_size).round() * bin_size
 
         # 집계할 필드 목록
-        numeric_fields = [
-            "fat_oxidation",
-            "cho_oxidation",
-            "rer",
-            "vo2",
-            "vco2",
-            "hr",
-            "ve_vo2",
-            "ve_vco2",
-        ]
+        numeric_fields = ["fat_oxidation", "cho_oxidation", "rer", "vo2", "vco2", "hr", "ve_vo2", "ve_vco2"]
 
         # 집계 방법에 따른 그룹화
         agg_method = self.config.aggregation_method
@@ -702,12 +440,8 @@ class MetabolismAnalyzer:
         # 결과 변환
         binned_points = []
         for _, row in agg_df.iterrows():
-            fat_ox = (
-                float(row["fat_oxidation"]) if pd.notna(row["fat_oxidation"]) else None
-            )
-            cho_ox = (
-                float(row["cho_oxidation"]) if pd.notna(row["cho_oxidation"]) else None
-            )
+            fat_ox = float(row["fat_oxidation"]) if pd.notna(row["fat_oxidation"]) else None
+            cho_ox = float(row["cho_oxidation"]) if pd.notna(row["cho_oxidation"]) else None
             rer_val = float(row["rer"]) if pd.notna(row["rer"]) else None
             vo2_val = float(row["vo2"]) if pd.notna(row["vo2"]) else None
             vco2_val = float(row["vco2"]) if pd.notna(row["vco2"]) else None
@@ -765,36 +499,14 @@ class MetabolismAnalyzer:
 
         # 데이터 추출
         powers = np.array([p.power for p in binned_points])
-        fat_ox = np.array(
-            [
-                p.fat_oxidation if p.fat_oxidation is not None else 0
-                for p in binned_points
-            ]
-        )
-        cho_ox = np.array(
-            [
-                p.cho_oxidation if p.cho_oxidation is not None else 0
-                for p in binned_points
-            ]
-        )
-        rer_vals = np.array(
-            [p.rer if p.rer is not None else np.nan for p in binned_points]
-        )
-        vo2_vals = np.array(
-            [p.vo2 if p.vo2 is not None else np.nan for p in binned_points]
-        )
-        vco2_vals = np.array(
-            [p.vco2 if p.vco2 is not None else np.nan for p in binned_points]
-        )
-        hr_vals = np.array(
-            [p.hr if p.hr is not None else np.nan for p in binned_points]
-        )
-        ve_vo2_vals = np.array(
-            [p.ve_vo2 if p.ve_vo2 is not None else np.nan for p in binned_points]
-        )
-        ve_vco2_vals = np.array(
-            [p.ve_vco2 if p.ve_vco2 is not None else np.nan for p in binned_points]
-        )
+        fat_ox = np.array([p.fat_oxidation if p.fat_oxidation is not None else 0 for p in binned_points])
+        cho_ox = np.array([p.cho_oxidation if p.cho_oxidation is not None else 0 for p in binned_points])
+        rer_vals = np.array([p.rer if p.rer is not None else np.nan for p in binned_points])
+        vo2_vals = np.array([p.vo2 if p.vo2 is not None else np.nan for p in binned_points])
+        vco2_vals = np.array([p.vco2 if p.vco2 is not None else np.nan for p in binned_points])
+        hr_vals = np.array([p.hr if p.hr is not None else np.nan for p in binned_points])
+        ve_vo2_vals = np.array([p.ve_vo2 if p.ve_vo2 is not None else np.nan for p in binned_points])
+        ve_vco2_vals = np.array([p.ve_vco2 if p.ve_vco2 is not None else np.nan for p in binned_points])
 
         # LOESS smoothing
         try:
@@ -811,12 +523,7 @@ class MetabolismAnalyzer:
                     return None
                 valid_idx = ~np.isnan(vals)
                 if np.sum(valid_idx) >= min_points:
-                    return lowess(
-                        vals[valid_idx],
-                        powers[valid_idx],
-                        frac=frac,
-                        return_sorted=True,
-                    )
+                    return lowess(vals[valid_idx], powers[valid_idx], frac=frac, return_sorted=True)
                 return None
 
             rer_smoothed = smooth_optional(rer_vals, powers, frac)
@@ -906,43 +613,21 @@ class MetabolismAnalyzer:
 
             # 데이터 추출
             powers = np.array([p.power for p in binned_points])
-            fat_ox = np.array(
-                [
-                    p.fat_oxidation if p.fat_oxidation is not None else 0
-                    for p in binned_points
-                ]
-            )
-            cho_ox = np.array(
-                [
-                    p.cho_oxidation if p.cho_oxidation is not None else 0
-                    for p in binned_points
-                ]
-            )
-            rer_vals = np.array(
-                [p.rer if p.rer is not None else np.nan for p in binned_points]
-            )
-            vo2_vals = np.array(
-                [p.vo2 if p.vo2 is not None else np.nan for p in binned_points]
-            )
-            vco2_vals = np.array(
-                [p.vco2 if p.vco2 is not None else np.nan for p in binned_points]
-            )
-            hr_vals = np.array(
-                [p.hr if p.hr is not None else np.nan for p in binned_points]
-            )
-            ve_vo2_vals = np.array(
-                [p.ve_vo2 if p.ve_vo2 is not None else np.nan for p in binned_points]
-            )
-            ve_vco2_vals = np.array(
-                [p.ve_vco2 if p.ve_vco2 is not None else np.nan for p in binned_points]
-            )
+            fat_ox = np.array([p.fat_oxidation if p.fat_oxidation is not None else 0 for p in binned_points])
+            cho_ox = np.array([p.cho_oxidation if p.cho_oxidation is not None else 0 for p in binned_points])
+            rer_vals = np.array([p.rer if p.rer is not None else np.nan for p in binned_points])
+            vo2_vals = np.array([p.vo2 if p.vo2 is not None else np.nan for p in binned_points])
+            vco2_vals = np.array([p.vco2 if p.vco2 is not None else np.nan for p in binned_points])
+            hr_vals = np.array([p.hr if p.hr is not None else np.nan for p in binned_points])
+            ve_vo2_vals = np.array([p.ve_vo2 if p.ve_vo2 is not None else np.nan for p in binned_points])
+            ve_vco2_vals = np.array([p.ve_vco2 if p.ve_vco2 is not None else np.nan for p in binned_points])
 
             # Polynomial degrees per metric type
             DEGREE_FAT_CHO = 3  # Inverted U-shape for Fat, J-curve for CHO
-            DEGREE_RER = 3  # Slight dip at start, exponential rise at end
-            DEGREE_VO2_VCO2 = 2  # Linear efficiency (slight curve)
-            DEGREE_HR = 2  # Linear response
-            DEGREE_VT = 2  # U-shape for nadir detection
+            DEGREE_RER = 3      # Slight dip at start, exponential rise at end
+            DEGREE_VO2_VCO2 = 2 # Linear efficiency (slight curve)
+            DEGREE_HR = 2       # Linear response
+            DEGREE_VT = 2       # U-shape for nadir detection
 
             # Helper function for fitting polynomial with NaN handling
             def fit_poly(vals, powers, degree, min_points=4):
@@ -952,9 +637,7 @@ class MetabolismAnalyzer:
                 if np.sum(valid_idx) >= min_points:
                     # Limit degree if not enough points
                     effective_degree = min(degree, np.sum(valid_idx) - 1)
-                    coeffs = np.polyfit(
-                        powers[valid_idx], vals[valid_idx], effective_degree
-                    )
+                    coeffs = np.polyfit(powers[valid_idx], vals[valid_idx], effective_degree)
                     return np.poly1d(coeffs)
                 return None
 
@@ -968,36 +651,10 @@ class MetabolismAnalyzer:
             ve_vo2_poly = fit_poly(ve_vo2_vals, powers, DEGREE_VT)
             ve_vco2_poly = fit_poly(ve_vco2_vals, powers, DEGREE_VT)
 
-            # Trend 포인트 생성 (10W 간격) - with Sparse Data Handling
+            # Trend 포인트 생성 (10W 간격)
             power_min = int(np.floor(powers.min() / 10) * 10)
             power_max = int(np.ceil(powers.max() / 10) * 10)
             trend_powers = np.arange(power_min, power_max + 1, 10)
-
-            # === Sparse Data Handling: Detect gaps in binned data ===
-            gap_threshold = self.config.trend_gap_threshold_watts
-            sorted_powers = np.sort(powers)
-            gaps = []
-            for i in range(1, len(sorted_powers)):
-                gap_size = sorted_powers[i] - sorted_powers[i - 1]
-                if gap_size > gap_threshold:
-                    gaps.append((sorted_powers[i - 1], sorted_powers[i]))
-
-            if gaps:
-                print(f"🔬 Detected {len(gaps)} data gap(s) > {gap_threshold}W: {gaps}")
-
-            def is_in_gap(p):
-                """Check if power value falls within a data gap."""
-                for gap_start, gap_end in gaps:
-                    if gap_start < p < gap_end:
-                        return True
-                return False
-
-            # Helper to check if enough data exists near this power
-            def has_nearby_data(p, threshold=None):
-                """Check if binned data exists within threshold of power p."""
-                if threshold is None:
-                    threshold = gap_threshold / 2
-                return np.any(np.abs(sorted_powers - p) <= threshold)
 
             # Helper to safely evaluate polynomial
             def eval_poly(poly, p, constraint=None, default=None):
@@ -1011,18 +668,7 @@ class MetabolismAnalyzer:
                 return val
 
             trend_points = []
-            skipped_count = 0
             for p in trend_powers:
-                # Skip trend points in data gaps (sparse regions)
-                if is_in_gap(p):
-                    skipped_count += 1
-                    continue
-
-                # Skip trend points too far from any binned data
-                if not has_nearby_data(p):
-                    skipped_count += 1
-                    continue
-
                 fat_val = eval_poly(fat_poly, p, default=0.0)
                 cho_val = eval_poly(cho_poly, p, default=0.0)
 
@@ -1046,12 +692,7 @@ class MetabolismAnalyzer:
                     )
                 )
 
-            if skipped_count > 0:
-                print(f"🔬 Skipped {skipped_count} trend points in sparse regions")
-
-            print(
-                f"✅ Polynomial fit complete: {len(trend_points)} trend points generated"
-            )
+            print(f"✅ Polynomial fit complete: {len(trend_points)} trend points generated")
             return trend_points
 
         except Exception as e:
