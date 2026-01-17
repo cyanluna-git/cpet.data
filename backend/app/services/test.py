@@ -14,9 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import CPETTest, BreathData, Subject
-from app.schemas.test import CPETTestCreate, CPETTestUpdate, TimeSeriesRequest
+from app.schemas.test import CPETTestCreate, CPETTestUpdate, TimeSeriesRequest, ProtocolType
 from app.services.cosmed_parser import COSMEDParser, ParsedCPETData
 from app.services.metabolism_analysis import MetabolismAnalyzer
+from app.services.data_validator import DataValidator
 
 
 class TestService:
@@ -161,6 +162,104 @@ class TestService:
             parser = COSMEDParser()
             parsed_data = parser.parse_file(tmp_path)
 
+            # ========================================
+            # DATA VALIDATION & PROTOCOL CLASSIFICATION
+            # ========================================
+            validator = DataValidator()
+            validation_result = validator.validate(parsed_data.breath_data_df)
+            
+            # Log validation summary
+            print(validator.get_validation_summary(validation_result))
+            
+            # 검증 실패 시 조기 반환 (데이터 저장은 하되 분석은 스킵)
+            if not validation_result.is_valid:
+                test = CPETTest(
+                    subject_id=subject_id,
+                    test_date=parsed_data.test.test_date or datetime.now(),
+                    test_time=parsed_data.test.test_time,
+                    protocol_name=parsed_data.test.protocol,
+                    protocol_type=validation_result.protocol_type.value,
+                    test_type=parsed_data.test.test_type or "Maximal",
+                    source_filename=filename,
+                    file_upload_timestamp=datetime.utcnow(),
+                    parsing_status="validation_failed",
+                    parsing_errors={
+                        "validation_errors": validation_result.reason,
+                        "quality_score": validation_result.quality_score,
+                        "metadata": validation_result.metadata
+                    },
+                    data_quality_score=validation_result.quality_score,
+                )
+                self.db.add(test)
+                await self.db.commit()
+                await self.db.refresh(test)
+                
+                errors = validation_result.reason
+                warnings = ["Data validation failed - test saved but not analyzed"]
+                return test, errors, warnings
+            
+            # 프로토콜 타입이 RAMP가 아니면 분석 스킵
+            if validation_result.protocol_type != ProtocolType.RAMP:
+                test = CPETTest(
+                    subject_id=subject_id,
+                    test_date=parsed_data.test.test_date or datetime.now(),
+                    test_time=parsed_data.test.test_time,
+                    protocol_name=parsed_data.test.protocol,
+                    protocol_type=validation_result.protocol_type.value,
+                    test_type=parsed_data.test.test_type or "Maximal",
+                    source_filename=filename,
+                    file_upload_timestamp=datetime.utcnow(),
+                    parsing_status="skipped_protocol_mismatch",
+                    parsing_errors={
+                        "protocol_type": validation_result.protocol_type.value,
+                        "reason": f"Protocol type {validation_result.protocol_type.value} is not suitable for standard analysis (FatMax/VT). Only RAMP protocols are supported.",
+                        "quality_score": validation_result.quality_score,
+                        "metadata": validation_result.metadata
+                    },
+                    data_quality_score=validation_result.quality_score,
+                )
+                self.db.add(test)
+                await self.db.flush()
+                
+                # BreathData는 저장 (나중에 다른 분석 가능)
+                base_time = test.test_date
+                breath_batch = []
+                for idx, row in parsed_data.breath_data_df.iterrows():
+                    t_sec = row.get('t_sec') or row.get('t') or 0
+                    timestamp = base_time + timedelta(seconds=float(t_sec))
+                    
+                    breath = BreathData(
+                        test_id=test.test_id,
+                        time=timestamp,
+                        t_sec=float(t_sec) if pd.notna(t_sec) else None,
+                        vo2=float(row.get('vo2')) if pd.notna(row.get('vo2')) else None,
+                        vco2=float(row.get('vco2')) if pd.notna(row.get('vco2')) else None,
+                        hr=int(row.get('hr')) if pd.notna(row.get('hr')) else None,
+                        bike_power=int(row.get('bike_power')) if pd.notna(row.get('bike_power')) else None,
+                    )
+                    breath_batch.append(breath)
+                    
+                    if len(breath_batch) >= 100:
+                        self.db.add_all(breath_batch)
+                        await self.db.flush()
+                        breath_batch = []
+                
+                if breath_batch:
+                    self.db.add_all(breath_batch)
+                
+                await self.db.commit()
+                await self.db.refresh(test)
+                
+                warnings = [
+                    f"Protocol type {validation_result.protocol_type.value} detected - standard analysis skipped",
+                    "Only raw data saved. RAMP protocol required for FatMax/VT analysis."
+                ]
+                return test, [], warnings
+            
+            # ========================================
+            # PROCEED WITH STANDARD ANALYSIS (RAMP)
+            # ========================================
+
             # 대사 지표 계산
             df_with_metrics = parser.calculate_metabolic_metrics(
                 parsed_data,
@@ -221,6 +320,7 @@ class TestService:
                 file_upload_timestamp=datetime.utcnow(),
                 parsing_status="success" if not parsed_data.parsing_errors else "warning",
                 parsing_errors={"errors": parsed_data.parsing_errors} if parsed_data.parsing_errors else None,
+                data_quality_score=validation_result.quality_score,
                 # 구간별 메트릭 저장 (JSON)
                 phase_metrics=phase_metrics if phase_metrics else None,
             )
