@@ -345,6 +345,7 @@ async def get_test_analysis(
     loess_frac: float = Query(0.25, ge=0.1, le=0.5, description="LOESS smoothing fraction (0.1~0.5)"),
     bin_size: int = Query(10, ge=5, le=30, description="Power binning 크기 (W, 5~30)"),
     aggregation_method: str = Query("median", description="집계 방법 (median, mean, trimmed_mean)"),
+    min_power_threshold: int = Query(0, ge=0, le=200, description="최소 파워 임계값 (W, 이하 데이터 제외)"),
 ):
     """
     테스트 분석 결과 조회 (대사 프로파일 차트용)
@@ -366,6 +367,9 @@ async def get_test_analysis(
       - median: 중앙값 (이상치에 강함, 기본값)
       - mean: 평균
       - trimmed_mean: 양쪽 10% 제거 후 평균
+    - **min_power_threshold**: 최소 파워 임계값 (W, 이하 데이터 제외)
+      - 0: 제외 없음 (기본값)
+      - 80: 80W 미만 데이터 제외 (웜업 아티팩트 제거에 유용)
     """
     service = TestService(db)
 
@@ -396,6 +400,7 @@ async def get_test_analysis(
         loess_frac=loess_frac,
         bin_size=bin_size,
         aggregation_method=aggregation_method,
+        min_power_threshold=min_power_threshold if min_power_threshold > 0 else None,
     )
     
     # NaN/Inf 값을 None으로 변환

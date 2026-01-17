@@ -539,6 +539,7 @@ class TestService:
         loess_frac: float = 0.25,
         bin_size: int = 10,
         aggregation_method: str = "median",
+        min_power_threshold: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         테스트 분석 결과 조회 (대사 프로파일 차트용)
@@ -550,6 +551,7 @@ class TestService:
             loess_frac: LOESS smoothing fraction (0.1~0.5)
             bin_size: Power binning 크기 (W, 5~30)
             aggregation_method: 집계 방법 (median, mean, trimmed_mean)
+            min_power_threshold: 최소 파워 임계값 (W, 이하 데이터 제외)
 
         Returns:
             - phase_boundaries: 구간 경계
@@ -637,6 +639,9 @@ class TestService:
             # aggregation_method가 median이 아닌 경우 직접 설정
             if aggregation_method in ("mean", "trimmed_mean"):
                 analyzer.config.aggregation_method = aggregation_method
+            # min_power_threshold 설정
+            if min_power_threshold is not None:
+                analyzer.config.min_power_threshold = min_power_threshold
             
             analysis_result = analyzer.analyze(breath_data)
             if analysis_result:

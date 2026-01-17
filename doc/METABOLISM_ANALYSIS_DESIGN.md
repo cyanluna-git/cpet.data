@@ -324,29 +324,101 @@ GET /api/tests/{test_id}/analysis
 
 ---
 
-## 4. 차트 전처리 & 보간 (추가)
+## 4. 전처리 알고리즘 (현재 구현)
 
-### 4.1 Phase Trimming
-- Rest/Warm-up/Recovery 구간 제거
-- Exercise/Main 구간만 분석 대상으로 유지
+> 구현 위치: backend/app/services/metabolism_analysis.py
 
-### 4.2 이상치 제거 (Robust Filter)
-- RER, VO2, VCO2의 비정상 범위 제거
-- Rolling median (7–15 breath) 후 Rolling mean (15–30 sec)
+### 4.1 입력 데이터 스펙
+- 필수: `bike_power`, `fat_oxidation`, `cho_oxidation`
+- 옵션: `rer`, `vo2`, `vco2`, `hr`, `ve_vo2`, `ve_vco2`, `t_sec`, `phase`
 
-### 4.3 Power Binning
-- 5–10W 단위로 binning
-- 각 bin의 median 또는 trimmed mean 사용
-- bin count 저장 → 신뢰도 표시 가능
+### 4.2 처리 순서 (요약)
+1. Phase/초기 구간 필터링
+2. Raw 포인트 추출 및 값 정리
+3. Power Binning (집계)
+4. LOESS Smoothing
+5. Polynomial Trend Fit (옵션 트렌드)
+6. FatMax & Crossover 마커 계산
+7. 결과 패키징 + 경고 기록
 
-### 4.4 보간 (Interpolation)
-- Shape-preserving: PCHIP 또는 Akima (권장)
-- Smooth curve: LOESS (옵션)
-- 음수 값 클램프 (Fat/CHO ≥ 0)
+### 4.3 단계별 목적 및 상세
 
-### 4.5 테스트 유형 태깅
-- Ramp vs Step vs Mixed 패턴 감지
-- cpet_tests에 `analysis_tags` 또는 `test_type` 보강 저장
+#### 4.3.1 Phase/초기 구간 필터링
+**목적**: 분석 대상에서 비운동 구간과 초기 과호흡 구간을 제거하여 신뢰도 확보.
+
+- Rest/Warm-up/Recovery 제외 옵션
+- 초기 과호흡 필터링
+    - `t_sec < initial_time_threshold` AND `bike_power < initial_power_threshold`이면 제외
+- `min_power_threshold`, `max_power_threshold`로 파워 범위 제한
+
+#### 4.3.2 Raw 포인트 추출 및 값 정리
+**목적**: 입력 데이터의 결측/비정상 값을 안전하게 처리하여 이후 집계가 깨지지 않도록 보장.
+
+- 각 필드에 대해 `safe_float` 적용
+- `NaN`/`Inf`는 `None`으로 치환
+- 필요한 필드가 없으면 해당 포인트 스킵
+
+#### 4.3.3 Power Binning (집계)
+**목적**: 호흡-호흡 변동을 완화하고 강도별 대표값을 얻기 위한 단계.
+
+- `power_bin = round(power / bin_size) * bin_size`
+- 집계 방식 선택:
+    - `median` (기본)
+    - `mean`
+    - `trimmed_mean` (양쪽 비율 절삭 평균)
+- `count` 저장 → 데이터 신뢰도 표현
+- 산화율 값 음수는 `0`으로 클램핑 (`non_negative_constraint`)
+
+#### 4.3.4 LOESS Smoothing
+**목적**: binning된 데이터의 국소 변동을 더 매끄럽게 보정.
+
+- statsmodels의 `lowess` 사용
+- 데이터가 적거나 statsmodels 미설치 시 binned 데이터 그대로 사용
+- `loess_frac` 자동 하한 0.15 적용
+- RER/VO2/VCO2/HR/VE 관련 값은 충분한 유효 포인트가 있을 때만 스무딩
+
+#### 4.3.5 Polynomial Trend Fit (옵션 트렌드)
+**목적**: 생리학적 패턴에 맞춘 안정적인 트렌드 곡선 제공.
+
+- Fat/CHO: 3차 (역 U 또는 J 패턴)
+- RER: 3차
+- VO2/VCO2/HR/VE: 2차
+- 10W 간격의 trend 포인트 생성
+
+#### 4.3.6 FatMax & Crossover 계산
+**목적**: 대사 해석의 핵심 지점을 도출.
+
+- **FatMax**: smoothed fat oxidation 최대 지점
+- **Zone**: MFO의 `fatmax_zone_threshold` 이상 유지 구간
+- **Crossover**: smoothed fat = cho 교차점 (선형 보간)
+
+### 4.4 다이어그램 (Pipeline)
+
+```mermaid
+flowchart TD
+        A[BreathData 리스트] --> B{필수 필드 존재?}
+        B -- 아니오 --> X[포인트 제외]
+        B -- 예 --> C[Phase/초기 구간 필터링]
+        C --> D[Raw 포인트 추출 + safe_float]
+        D --> E[Power Binning
+        - median/mean/trimmed_mean
+        - count 기록
+        - 음수 클램프]
+        E --> F{statsmodels 사용 가능?}
+        F -- 아니오 --> G[Smoothed = Binned]
+        F -- 예 --> H[LOESS Smoothing]
+        G --> I[Polynomial Trend Fit]
+        H --> I
+        I --> J[FatMax 계산]
+        I --> K[Crossover 계산]
+        J --> L[ProcessedSeries + Markers]
+        K --> L
+        L --> M[API 응답 + warnings]
+```
+
+### 4.5 실패/경고 처리
+- 데이터가 부족하면 경고 메시지 기록 후 `None` 또는 부분 결과 반환
+- LOESS 실패 시 binned 데이터로 자동 폴백
 
 ---
 
