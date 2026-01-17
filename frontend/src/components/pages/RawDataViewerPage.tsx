@@ -260,16 +260,19 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     loess: number;
     bin: number;
     method: 'median' | 'mean' | 'trimmed_mean';
+    minPower: number;
   }
   const [analysisSettings, setAnalysisSettings] = useState<AnalysisSettings>({
     loess: 0.25,
     bin: 10,
     method: 'median',
+    minPower: 0,
   });
 
   // Debounced values for API calls (prevents excessive requests during slider drag)
   const debouncedLoess = useDebounce(analysisSettings.loess, 500);
   const debouncedBin = useDebounce(analysisSettings.bin, 500);
+  const debouncedMinPower = useDebounce(analysisSettings.minPower, 500);
 
   // 컬럼 선택 상태
   const [selectedColumns, setSelectedColumns] = useState<string[]>(DEFAULT_SELECTED_COLUMNS);
@@ -474,7 +477,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     if (selectedTestId && useProcessedData) {
       loadProcessedData();
     }
-  }, [selectedTestId, useProcessedData, dataMode, debouncedLoess, debouncedBin, analysisSettings.method]);
+  }, [selectedTestId, useProcessedData, dataMode, debouncedLoess, debouncedBin, debouncedMinPower, analysisSettings.method]);
 
   // 선택한 테스트의 raw data 로드
   async function loadRawData() {
@@ -512,7 +515,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       setLoading(true);
       const token = getAuthToken();
       const response = await fetch(
-        `/api/tests/${selectedTestId}/analysis?interval=5s&include_processed=true&loess_frac=${debouncedLoess}&bin_size=${debouncedBin}&aggregation_method=${analysisSettings.method}`,
+        `/api/tests/${selectedTestId}/analysis?interval=5s&include_processed=true&loess_frac=${debouncedLoess}&bin_size=${debouncedBin}&aggregation_method=${analysisSettings.method}&min_power_threshold=${debouncedMinPower}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -784,7 +787,22 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                   className="w-full"
                 />
               </div>
-              <div className="flex flex-col gap-1 min-w-[160px]">
+              <div className="flex flex-col gap-1 min-w-[140px]">
+                <label className={`text-xs font-medium ${useProcessedData ? 'text-gray-700' : 'text-gray-400'}`}>
+                  Min Power ({analysisSettings.minPower}W)
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={200}
+                  step={10}
+                  value={analysisSettings.minPower}
+                  onChange={(e) => setAnalysisSettings(prev => ({ ...prev, minPower: parseInt(e.target.value, 10) }))}
+                  disabled={!useProcessedData}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex flex-col gap-1 min-w-[120px]">
                 <label className={`text-xs font-medium ${useProcessedData ? 'text-gray-700' : 'text-gray-400'}`}>
                   집계 방식
                 </label>
