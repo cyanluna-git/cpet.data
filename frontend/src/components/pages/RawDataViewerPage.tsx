@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Navigation } from '@/components/layout/Navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -182,7 +182,8 @@ const CHART_PRESETS = [
     yRight: ['rer'],
     xUnit: 'W',
     yLeftUnit: 'g/min',
-    yRightUnit: '',
+    yRightUnit: 'RER',
+    description: 'Fat & CHO oxidation vs Power',
   },
   {
     key: 'rer',
@@ -191,8 +192,9 @@ const CHART_PRESETS = [
     yLeft: ['rer'],
     yRight: [],
     xUnit: 'W',
-    yLeftUnit: '',
+    yLeftUnit: 'Ratio',
     yRightUnit: '',
+    description: 'Respiratory Exchange Ratio vs Power',
   },
   {
     key: 'vo2',
@@ -203,6 +205,7 @@ const CHART_PRESETS = [
     xUnit: 'W',
     yLeftUnit: 'mL/min',
     yRightUnit: 'bpm',
+    description: 'VO2/VCO2 and HR vs Power',
   },
   {
     key: 'vt',
@@ -211,8 +214,9 @@ const CHART_PRESETS = [
     yLeft: ['ve_vo2', 've_vco2'],
     yRight: [],
     xUnit: 'mL/min',
-    yLeftUnit: '',
+    yLeftUnit: 'Eq. Ratio',
     yRightUnit: '',
+    description: 'Ventilatory Equivalents vs VO2',
   },
   {
     key: 'custom',
@@ -223,6 +227,7 @@ const CHART_PRESETS = [
     xUnit: 'sec',
     yLeftUnit: '',
     yRightUnit: '',
+    description: 'Custom chart configuration',
   },
 ];
 
@@ -347,10 +352,16 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   const getChartDataForPreset = useCallback(
     (xKey: string, yLeft: string[], yRight: string[]) => {
       const requiredKeys = [xKey, ...yLeft, ...yRight];
-      const processedHasKeys =
+
+      // Check if processed data has all required keys AND has at least some non-null values
+      const processedHasValidData =
         processedChartData.length > 0 &&
-        requiredKeys.every((key) => key in processedChartData[0]);
-      const source = useProcessedData && processedHasKeys ? processedChartData : rawChartData;
+        requiredKeys.every((key) => key in processedChartData[0]) &&
+        requiredKeys.every((key) =>
+          processedChartData.some((d: any) => d[key] !== null && d[key] !== undefined)
+        );
+
+      const source = useProcessedData && processedHasValidData ? processedChartData : rawChartData;
 
       return [...source].sort((a, b) => {
         const aVal = (a as any)[xKey];
@@ -528,13 +539,21 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         const smoothData = data.processed_series?.smoothed || [];
 
         const chartDataPoints = sourceData.map((point: any) => {
+          // null과 undefined를 구분하여 처리 (0은 유효한 값으로 유지)
+          const safeVal = (v: any) => (v !== null && v !== undefined ? v : null);
+
           const base: any = {
-            bike_power: point.power || 0,
-            power: point.power || 0,
-            fat_oxidation: point.fat_oxidation,
-            cho_oxidation: point.cho_oxidation,
-            rer: point.rer || null,
-            total_oxidation: (point.fat_oxidation || 0) + (point.cho_oxidation || 0),
+            bike_power: point.power ?? 0,
+            power: point.power ?? 0,
+            fat_oxidation: safeVal(point.fat_oxidation),
+            cho_oxidation: safeVal(point.cho_oxidation),
+            rer: safeVal(point.rer),
+            vo2: safeVal(point.vo2),
+            vco2: safeVal(point.vco2),
+            hr: safeVal(point.hr),
+            ve_vo2: safeVal(point.ve_vo2),
+            ve_vco2: safeVal(point.ve_vco2),
+            total_oxidation: (point.fat_oxidation ?? 0) + (point.cho_oxidation ?? 0),
           };
 
           // Trend 모드면 가장 가까운 Power를 가진 Smooth 데이터를 찾아 추가
@@ -543,11 +562,16 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
               Math.abs(curr.power - point.power) < Math.abs(prev.power - point.power) ? curr : prev
             );
 
-            // 5W 이내인 경우에만 Smooth 데이터로 간주 (Trend는 5W 간격이므로 거의 항상 일치)
+            // 5W 이내인 경우에만 Smooth 데이터로 간주
             if (Math.abs(nearestSmooth.power - point.power) < 3) {
-              base.fat_oxidation_smooth = nearestSmooth.fat_oxidation;
-              base.cho_oxidation_smooth = nearestSmooth.cho_oxidation;
-              base.rer_smooth = nearestSmooth.rer;
+              base.fat_oxidation_smooth = safeVal(nearestSmooth.fat_oxidation);
+              base.cho_oxidation_smooth = safeVal(nearestSmooth.cho_oxidation);
+              base.rer_smooth = safeVal(nearestSmooth.rer);
+              base.vo2_smooth = safeVal(nearestSmooth.vo2);
+              base.vco2_smooth = safeVal(nearestSmooth.vco2);
+              base.hr_smooth = safeVal(nearestSmooth.hr);
+              base.ve_vo2_smooth = safeVal(nearestSmooth.ve_vo2);
+              base.ve_vco2_smooth = safeVal(nearestSmooth.ve_vco2);
             }
           }
 
@@ -1047,66 +1071,69 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                                     <>
                                       {preset.yLeft.map((key, idx) => {
                                         const col = CHART_COLUMNS.find(c => c.key === key);
+                                        const color = CHART_COLORS[(presetIndex + idx) % CHART_COLORS.length];
                                         return (
-                                          <>
-                                            {/* Trend 모드일 때 배경에 그리는 Smooth 라인 */}
+                                          <React.Fragment key={`${preset.key}-left-${key}-group`}>
+                                            {/* Trend 모드일 때 배경에 그리는 Smooth 라인 (흐리고 점선) */}
                                             {dataMode === 'trend' && (
                                               <Line
-                                                key={`${preset.key}-left-${key}-smooth-bg`}
                                                 yAxisId="left"
                                                 type="monotone"
                                                 dataKey={`${key}_smooth`}
-                                                stroke={CHART_COLORS[(presetIndex + idx) % CHART_COLORS.length]}
+                                                stroke={color}
                                                 strokeWidth={1.5}
-                                                strokeOpacity={0.4}
-                                                strokeDasharray="4 4"
+                                                strokeOpacity={0.3}
+                                                strokeDasharray="6 4"
                                                 dot={false}
                                                 isAnimationActive={false}
+                                                connectNulls
                                               />
                                             )}
+                                            {/* 메인 라인 - Trend 모드에서는 굵고 깔끔한 실선 */}
                                             <Line
-                                              key={`${preset.key}-left-${key}`}
                                               yAxisId="left"
                                               type="monotone"
                                               dataKey={key}
                                               name={col?.label || key}
-                                              stroke={CHART_COLORS[(presetIndex + idx) % CHART_COLORS.length]}
-                                              strokeWidth={dataMode === 'trend' ? 4 : 2.5}
+                                              stroke={color}
+                                              strokeWidth={dataMode === 'trend' ? 3.5 : 2.5}
                                               dot={false}
+                                              connectNulls
                                             />
-                                          </>
+                                          </React.Fragment>
                                         );
                                       })}
                                       {preset.yRight.map((key, idx) => {
                                         const col = CHART_COLUMNS.find(c => c.key === key);
+                                        const color = CHART_COLORS[(presetIndex + preset.yLeft.length + idx) % CHART_COLORS.length];
                                         return (
-                                          <>
+                                          <React.Fragment key={`${preset.key}-right-${key}-group`}>
                                             {/* Trend 모드일 때 배경에 그리는 Smooth 라인 */}
                                             {dataMode === 'trend' && (
                                               <Line
-                                                key={`${preset.key}-right-${key}-smooth-bg`}
                                                 yAxisId="right"
                                                 type="monotone"
                                                 dataKey={`${key}_smooth`}
-                                                stroke={CHART_COLORS[(presetIndex + preset.yLeft.length + idx) % CHART_COLORS.length]}
+                                                stroke={color}
                                                 strokeWidth={1}
-                                                strokeOpacity={0.4}
-                                                strokeDasharray="3 3"
+                                                strokeOpacity={0.3}
+                                                strokeDasharray="6 4"
                                                 dot={false}
                                                 isAnimationActive={false}
+                                                connectNulls
                                               />
                                             )}
                                             <Line
-                                              key={`${preset.key}-right-${key}`}
                                               yAxisId="right"
                                               type="monotone"
                                               dataKey={key}
                                               name={col?.label || key}
-                                              stroke={CHART_COLORS[(presetIndex + preset.yLeft.length + idx) % CHART_COLORS.length]}
-                                              strokeWidth={dataMode === 'trend' ? 3 : 2}
+                                              stroke={color}
+                                              strokeWidth={dataMode === 'trend' ? 2.5 : 2}
                                               dot={false}
+                                              connectNulls
                                             />
-                                          </>
+                                          </React.Fragment>
                                         );
                                       })}
                                     </>
