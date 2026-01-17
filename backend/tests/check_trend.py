@@ -1,8 +1,12 @@
 import requests
 import json
+import os
 
-token = requests.post('http://localhost:8100/api/auth/login', data={'username': 'gerald.park@cpet.com', 'password': 'cpet2026!'}).json()['access_token']
-res = requests.get('http://localhost:8100/api/tests/c91339b9-c0ce-434d-b4ad-3c77452ed928/analysis', headers={'Authorization': f'Bearer {token}'}, params={'include_processed': True})
+# Get base URL from environment
+BASE_URL = os.getenv("VITE_API_URL", f"http://localhost:{os.getenv('BACKEND_PORT', '8100')}")
+
+token = requests.post(f'{BASE_URL}/api/auth/login', data={'username': 'gerald.park@cpet.com', 'password': 'cpet2026!'}).json()['access_token']
+res = requests.get(f'{BASE_URL}/api/tests/c91339b9-c0ce-434d-b4ad-3c77452ed928/analysis', headers={'Authorization': f'Bearer {token}'}, params={'include_processed': True})
 data = res.json()
 ps = data.get('processed_series', {})
 print('processed_series keys:', list(ps.keys()))

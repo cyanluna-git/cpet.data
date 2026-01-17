@@ -15,10 +15,11 @@ import requests
 import pandas as pd
 import numpy as np
 from typing import Dict, Any
+import os
 
 
 # === 설정 ===
-BASE_URL = "http://localhost:8100"
+BASE_URL = os.getenv("VITE_API_URL", f"http://localhost:{os.getenv('BACKEND_PORT', '8100')}")
 TEST_ID = "c91339b9-c0ce-434d-b4ad-3c77452ed928"
 LOGIN_EMAIL = "gerald.park@cpet.com"
 LOGIN_PASS = "cpet2026!"
