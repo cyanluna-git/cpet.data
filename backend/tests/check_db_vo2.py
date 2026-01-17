@@ -1,12 +1,16 @@
 import requests
 import json
+import os
+
+# Get base URL from environment
+BASE_URL = os.getenv("VITE_API_URL", f"http://localhost:{os.getenv('BACKEND_PORT', '8100')}")
 
 # 로그인
-token = requests.post('http://localhost:8100/api/auth/login', data={'username': 'gerald.park@cpet.com', 'password': 'cpet2026!'}).json()['access_token']
+token = requests.post(f'{BASE_URL}/api/auth/login', data={'username': 'gerald.park@cpet.com', 'password': 'cpet2026!'}).json()['access_token']
 headers = {'Authorization': f'Bearer {token}'}
 
 # 테스트 데이터 가져오기 (Exercise 단계 확인)
-res = requests.get('http://localhost:8100/api/tests/c91339b9-c0ce-434d-b4ad-3c77452ed928/raw-data', headers=headers, params={'limit': 500})
+res = requests.get(f'{BASE_URL}/api/tests/c91339b9-c0ce-434d-b4ad-3c77452ed928/raw-data', headers=headers, params={'limit': 500})
 data = res.json()
 
 if 'data' in data:

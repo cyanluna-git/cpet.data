@@ -1,8 +1,9 @@
 """실제 API 호출하여 vo2/vco2 응답 확인"""
 import requests
 import json
+import os
 
-BASE_URL = "http://localhost:8100"
+BASE_URL = os.getenv("VITE_API_URL", f"http://localhost:{os.getenv('BACKEND_PORT', '8100')}")
 TEST_ID = "c91339b9-c0ce-434d-b4ad-3c77452ed928"
 
 # 1. 로그인

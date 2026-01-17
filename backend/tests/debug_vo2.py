@@ -5,7 +5,7 @@ import requests
 import json
 
 # API를 통해 분석
-BASE_URL = "http://localhost:8100"
+BASE_URL = os.getenv("VITE_API_URL", f"http://localhost:{os.getenv('BACKEND_PORT', '8100')}")
 TEST_ID = "c91339b9-c0ce-434d-b4ad-3c77452ed928"
 
 def login():

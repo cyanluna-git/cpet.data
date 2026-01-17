@@ -19,14 +19,27 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Database URL (기본: PostgreSQL 로컬 개발용)
-    DATABASE_URL: Optional[str] = "postgresql+asyncpg://cpet_user:cpet_password@localhost:5100/cpet_db"
+    # Database Configuration
+    DB_HOST: str = "localhost"
+    DB_PORT: int = 5100
+    DB_USER: str = "cpet_user"
+    DB_PASSWORD: str = "cpet_password"
+    DB_NAME: str = "cpet_db"
+    
+    # DATABASE_URL (환경변수로 직접 설정 가능, 없으면 개별 변수로 생성)
+    DATABASE_URL: Optional[str] = None
 
     @computed_field
     @property
     def database_url(self) -> str:
-        """DATABASE_URL 반환 (환경변수로 덮어쓰기 가능)"""
-        return self.DATABASE_URL
+        """
+        DATABASE_URL 반환
+        - 환경변수에 DATABASE_URL이 설정되어 있으면 그것을 사용
+        - 없으면 DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME으로 생성
+        """
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+        return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
     # Backend Server
     BACKEND_HOST: str = "0.0.0.0"
