@@ -216,6 +216,7 @@ export interface ProcessedDataPoint {
   power: number;
   fat_oxidation: number | null;
   cho_oxidation: number | null;
+  rer?: number | null;  // RER value
   count?: number;  // binned data only
 }
 
@@ -223,6 +224,7 @@ export interface ProcessedSeries {
   raw: ProcessedDataPoint[];
   binned: ProcessedDataPoint[];
   smoothed: ProcessedDataPoint[];
+  trend?: ProcessedDataPoint[];  // Polynomial fit
 }
 
 export interface FatMaxMarker {
@@ -435,7 +437,7 @@ export const api = {
   async refreshToken() {
     const token = localStorage.getItem('access_token');
     if (!token) return null;
-    
+
     const response = await client.post('/auth/refresh');
     localStorage.setItem('access_token', response.data.access_token);
     return response.data;

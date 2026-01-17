@@ -21,6 +21,7 @@ from scipy.stats import trim_mean
 
 try:
     from statsmodels.nonparametric.smoothers_lowess import lowess
+
     HAS_STATSMODELS = True
 except ImportError:
     HAS_STATSMODELS = False
@@ -30,6 +31,7 @@ except ImportError:
 @dataclass
 class ProcessedDataPoint:
     """처리된 데이터 포인트"""
+
     power: float
     fat_oxidation: Optional[float]
     cho_oxidation: Optional[float]
@@ -42,7 +44,7 @@ class ProcessedDataPoint:
             "power": self.power,
             "fat_oxidation": self.fat_oxidation,
             "cho_oxidation": self.cho_oxidation,
-            "count": self.count
+            "count": self.count,
         }
         if self.vo2 is not None:
             result["vo2"] = self.vo2
@@ -54,66 +56,79 @@ class ProcessedDataPoint:
 @dataclass
 class FatMaxMarker:
     """FatMax 마커 정보"""
-    power: int           # FatMax 지점 파워 (W)
-    mfo: float           # Maximum Fat Oxidation (g/min)
-    zone_min: int        # FatMax zone 하한 (W)
-    zone_max: int        # FatMax zone 상한 (W)
+
+    power: int  # FatMax 지점 파워 (W)
+    mfo: float  # Maximum Fat Oxidation (g/min)
+    zone_min: int  # FatMax zone 하한 (W)
+    zone_max: int  # FatMax zone 상한 (W)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "power": self.power,
             "mfo": round(self.mfo, 4),
             "zone_min": self.zone_min,
-            "zone_max": self.zone_max
+            "zone_max": self.zone_max,
         }
 
 
 @dataclass
 class CrossoverMarker:
     """Crossover 지점 마커 정보"""
-    power: Optional[int]         # Crossover 지점 파워 (W), 없으면 None
-    fat_value: Optional[float]   # 교차 지점 FatOx 값
-    cho_value: Optional[float]   # 교차 지점 CHOOx 값
+
+    power: Optional[int]  # Crossover 지점 파워 (W), 없으면 None
+    fat_value: Optional[float]  # 교차 지점 FatOx 값
+    cho_value: Optional[float]  # 교차 지점 CHOOx 값
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "power": self.power,
-            "fat_value": round(self.fat_value, 4) if self.fat_value is not None else None,
-            "cho_value": round(self.cho_value, 4) if self.cho_value is not None else None
+            "fat_value": (
+                round(self.fat_value, 4) if self.fat_value is not None else None
+            ),
+            "cho_value": (
+                round(self.cho_value, 4) if self.cho_value is not None else None
+            ),
         }
 
 
 @dataclass
 class MetabolicMarkers:
     """대사 마커 정보"""
+
     fat_max: FatMaxMarker
     crossover: CrossoverMarker
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "fat_max": self.fat_max.to_dict(),
-            "crossover": self.crossover.to_dict()
+            "crossover": self.crossover.to_dict(),
         }
 
 
 @dataclass
 class ProcessedSeries:
     """처리된 시계열 데이터"""
-    raw: List[ProcessedDataPoint]      # 원본 데이터
-    binned: List[ProcessedDataPoint]   # 10W 구간 평균/중앙값
-    smoothed: List[ProcessedDataPoint] # LOESS smoothed
+
+    raw: List[ProcessedDataPoint]  # 원본 데이터
+    binned: List[ProcessedDataPoint]  # 10W 구간 평균/중앙값
+    smoothed: List[ProcessedDataPoint]  # LOESS smoothed
+    trend: List[ProcessedDataPoint] = field(default_factory=list)  # Polynomial fit
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "raw": [p.to_dict() for p in self.raw],
             "binned": [p.to_dict() for p in self.binned],
-            "smoothed": [p.to_dict() for p in self.smoothed]
+            "smoothed": [p.to_dict() for p in self.smoothed],
         }
+        if self.trend:
+            result["trend"] = [p.to_dict() for p in self.trend]
+        return result
 
 
 @dataclass
 class MetabolismAnalysisResult:
     """대사 분석 결과"""
+
     processed_series: ProcessedSeries
     metabolic_markers: MetabolicMarkers
     warnings: List[str]
@@ -122,13 +137,14 @@ class MetabolismAnalysisResult:
         return {
             "processed_series": self.processed_series.to_dict(),
             "metabolic_markers": self.metabolic_markers.to_dict(),
-            "warnings": self.warnings
+            "warnings": self.warnings,
         }
 
 
 @dataclass
 class AnalysisConfig:
     """분석 설정 dataclass"""
+
     loess_frac: float = 0.25
     bin_size: int = 10
     aggregation_method: Literal["median", "mean", "trimmed_mean"] = "median"
@@ -143,7 +159,7 @@ class AnalysisConfig:
     # Initial hyperventilation filtering (RER spike at start)
     exclude_initial_hyperventilation: bool = True
     initial_time_threshold: float = 120.0  # seconds - first 2 minutes
-    initial_power_threshold: int = 40      # watts - exclude low power data during startup
+    initial_power_threshold: int = 40  # watts - exclude low power data during startup
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -165,7 +181,7 @@ class AnalysisConfig:
 
 class MetabolismAnalyzer:
     """대사 데이터 분석기
-    
+
     Features:
     - Configurable power binning (5W~30W)
     - Multiple aggregation methods (median, mean, trimmed_mean)
@@ -180,7 +196,7 @@ class MetabolismAnalyzer:
         bin_size: int = 10,
         use_median: bool = True,
         fatmax_zone_threshold: float = 0.90,
-        config: Optional[AnalysisConfig] = None
+        config: Optional[AnalysisConfig] = None,
     ):
         """
         Args:
@@ -217,7 +233,9 @@ class MetabolismAnalyzer:
         filtered_data = self._apply_phase_trimming(breath_data)
 
         if len(filtered_data) < 10:
-            self.warnings.append(f"Insufficient exercise data for analysis: {len(filtered_data)} points")
+            self.warnings.append(
+                f"Insufficient exercise data for analysis: {len(filtered_data)} points"
+            )
             return None
 
         # 1. Raw 데이터 추출
@@ -237,23 +255,26 @@ class MetabolismAnalyzer:
         # 3. LOESS Smoothing
         smoothed_points = self._loess_smoothing(binned_points)
 
-        # 4. FatMax & Zone 계산
+        # 4. Polynomial Trend Fit
+        trend_points = self._polynomial_fit(smoothed_points)
+
+        # 5. FatMax & Zone 계산
         fatmax_marker = self._calculate_fatmax(smoothed_points)
 
-        # 5. Crossover Point 계산
+        # 6. Crossover Point 계산
         crossover_marker = self._calculate_crossover(smoothed_points)
 
         return MetabolismAnalysisResult(
             processed_series=ProcessedSeries(
                 raw=raw_points,
                 binned=binned_points,
-                smoothed=smoothed_points
+                smoothed=smoothed_points,
+                trend=trend_points,
             ),
             metabolic_markers=MetabolicMarkers(
-                fat_max=fatmax_marker,
-                crossover=crossover_marker
+                fat_max=fatmax_marker, crossover=crossover_marker
             ),
-            warnings=self.warnings
+            warnings=self.warnings,
         )
 
     def _apply_phase_trimming(self, breath_data: List[Any]) -> List[Any]:
@@ -262,29 +283,41 @@ class MetabolismAnalyzer:
 
         for bd in breath_data:
             # 필수 필드 체크
-            if bd.bike_power is None or bd.fat_oxidation is None or bd.cho_oxidation is None:
+            if (
+                bd.bike_power is None
+                or bd.fat_oxidation is None
+                or bd.cho_oxidation is None
+            ):
                 continue
 
             # Initial hyperventilation filtering (RER spike at start)
             # Exclude data points where both time < threshold AND power < threshold
             if self.config.exclude_initial_hyperventilation:
-                t_sec = getattr(bd, 't_sec', None)
+                t_sec = getattr(bd, "t_sec", None)
                 if t_sec is not None and t_sec < self.config.initial_time_threshold:
                     if bd.bike_power < self.config.initial_power_threshold:
                         continue
 
-            phase = getattr(bd, 'phase', None) or ''
+            phase = getattr(bd, "phase", None) or ""
 
             # Phase 기반 필터링
-            if self.config.exclude_rest and phase.lower() in ('rest', 'resting'):
+            if self.config.exclude_rest and phase.lower() in ("rest", "resting"):
                 continue
-            if self.config.exclude_warmup and phase.lower() in ('warmup', 'warm-up', 'warm_up'):
+            if self.config.exclude_warmup and phase.lower() in (
+                "warmup",
+                "warm-up",
+                "warm_up",
+            ):
                 continue
-            if self.config.exclude_recovery and phase.lower() in ('recovery', 'cooldown', 'cool-down'):
+            if self.config.exclude_recovery and phase.lower() in (
+                "recovery",
+                "cooldown",
+                "cool-down",
+            ):
                 continue
 
             # Exercise/Peak 구간만 포함 (기본)
-            if phase and phase not in ('Exercise', 'Peak', 'exercise', 'peak', ''):
+            if phase and phase not in ("Exercise", "Peak", "exercise", "peak", ""):
                 continue
 
             # Power threshold 필터링
@@ -303,16 +336,20 @@ class MetabolismAnalyzer:
         """호흡 데이터에서 raw 포인트 추출"""
         points = []
         for bd in breath_data:
-            points.append(ProcessedDataPoint(
-                power=float(bd.bike_power),
-                fat_oxidation=float(bd.fat_oxidation) if bd.fat_oxidation else None,
-                cho_oxidation=float(bd.cho_oxidation) if bd.cho_oxidation else None,
-                rer=float(bd.rer) if bd.rer else None,
-                count=1
-            ))
+            points.append(
+                ProcessedDataPoint(
+                    power=float(bd.bike_power),
+                    fat_oxidation=float(bd.fat_oxidation) if bd.fat_oxidation else None,
+                    cho_oxidation=float(bd.cho_oxidation) if bd.cho_oxidation else None,
+                    rer=float(bd.rer) if bd.rer else None,
+                    count=1,
+                )
+            )
         return points
 
-    def _power_binning(self, raw_points: List[ProcessedDataPoint]) -> List[ProcessedDataPoint]:
+    def _power_binning(
+        self, raw_points: List[ProcessedDataPoint]
+    ) -> List[ProcessedDataPoint]:
         """
         Power 데이터를 bin_size W 단위로 그룹화하고 중앙값/평균 계산
 
@@ -323,15 +360,17 @@ class MetabolismAnalyzer:
             Binned 데이터 포인트 리스트 (power 오름차순 정렬)
         """
         # DataFrame으로 변환
-        df = pd.DataFrame([
-            {
-                "power": p.power,
-                "fat_oxidation": p.fat_oxidation,
-                "cho_oxidation": p.cho_oxidation,
-                "rer": p.rer
-            }
-            for p in raw_points
-        ])
+        df = pd.DataFrame(
+            [
+                {
+                    "power": p.power,
+                    "fat_oxidation": p.fat_oxidation,
+                    "cho_oxidation": p.cho_oxidation,
+                    "rer": p.rer,
+                }
+                for p in raw_points
+            ]
+        )
 
         # Power bin 할당
         bin_size = self.config.bin_size
@@ -339,43 +378,68 @@ class MetabolismAnalyzer:
 
         # 집계 방법에 따른 그룹화
         agg_method = self.config.aggregation_method
-        
+
         if agg_method == "median":
-            agg_df = df.groupby("power_bin").agg({
-                "fat_oxidation": "median",
-                "cho_oxidation": "median",
-                "rer": "median",
-                "power": "count"
-            }).reset_index()
+            agg_df = (
+                df.groupby("power_bin")
+                .agg(
+                    {
+                        "fat_oxidation": "median",
+                        "cho_oxidation": "median",
+                        "rer": "median",
+                        "power": "count",
+                    }
+                )
+                .reset_index()
+            )
         elif agg_method == "mean":
-            agg_df = df.groupby("power_bin").agg({
-                "fat_oxidation": "mean",
-                "cho_oxidation": "mean",
-                "rer": "mean",
-                "power": "count"
-            }).reset_index()
+            agg_df = (
+                df.groupby("power_bin")
+                .agg(
+                    {
+                        "fat_oxidation": "mean",
+                        "cho_oxidation": "mean",
+                        "rer": "mean",
+                        "power": "count",
+                    }
+                )
+                .reset_index()
+            )
         elif agg_method == "trimmed_mean":
             # Trimmed mean: 양쪽 10% 제거 후 평균
             proportiontocut = self.config.trimmed_mean_proportiontocut
+
             def safe_trim_mean(x):
                 if len(x) < 4:  # 데이터가 너무 적으면 일반 평균
                     return x.mean()
                 return trim_mean(x, proportiontocut)
-            
-            agg_df = df.groupby("power_bin").agg({
-                "fat_oxidation": safe_trim_mean,
-                "cho_oxidation": safe_trim_mean,
-                "rer": safe_trim_mean,
-                "power": "count"
-            }).reset_index()
+
+            agg_df = (
+                df.groupby("power_bin")
+                .agg(
+                    {
+                        "fat_oxidation": safe_trim_mean,
+                        "cho_oxidation": safe_trim_mean,
+                        "rer": safe_trim_mean,
+                        "power": "count",
+                    }
+                )
+                .reset_index()
+            )
         else:
             # 기본값: median
-            agg_df = df.groupby("power_bin").agg({
-                "fat_oxidation": "median",
-                "cho_oxidation": "median",
-                "rer": "median",
-                "power": "count"
-            }).reset_index()
+            agg_df = (
+                df.groupby("power_bin")
+                .agg(
+                    {
+                        "fat_oxidation": "median",
+                        "cho_oxidation": "median",
+                        "rer": "median",
+                        "power": "count",
+                    }
+                )
+                .reset_index()
+            )
 
         agg_df = agg_df.rename(columns={"power": "count"})
         agg_df = agg_df.sort_values("power_bin").reset_index(drop=True)
@@ -383,28 +447,36 @@ class MetabolismAnalyzer:
         # 결과 변환
         binned_points = []
         for _, row in agg_df.iterrows():
-            fat_ox = float(row["fat_oxidation"]) if pd.notna(row["fat_oxidation"]) else None
-            cho_ox = float(row["cho_oxidation"]) if pd.notna(row["cho_oxidation"]) else None
+            fat_ox = (
+                float(row["fat_oxidation"]) if pd.notna(row["fat_oxidation"]) else None
+            )
+            cho_ox = (
+                float(row["cho_oxidation"]) if pd.notna(row["cho_oxidation"]) else None
+            )
             rer_val = float(row["rer"]) if pd.notna(row["rer"]) else None
-            
+
             # Non-negative constraint
             if self.config.non_negative_constraint:
                 if fat_ox is not None:
                     fat_ox = max(0.0, fat_ox)
                 if cho_ox is not None:
                     cho_ox = max(0.0, cho_ox)
-            
-            binned_points.append(ProcessedDataPoint(
-                power=float(row["power_bin"]),
-                fat_oxidation=fat_ox,
-                cho_oxidation=cho_ox,
-                rer=rer_val,
-                count=int(row["count"])
-            ))
+
+            binned_points.append(
+                ProcessedDataPoint(
+                    power=float(row["power_bin"]),
+                    fat_oxidation=fat_ox,
+                    cho_oxidation=cho_ox,
+                    rer=rer_val,
+                    count=int(row["count"]),
+                )
+            )
 
         return binned_points
 
-    def _loess_smoothing(self, binned_points: List[ProcessedDataPoint]) -> List[ProcessedDataPoint]:
+    def _loess_smoothing(
+        self, binned_points: List[ProcessedDataPoint]
+    ) -> List[ProcessedDataPoint]:
         """
         LOESS (Locally Estimated Scatterplot Smoothing) 적용
 
@@ -415,18 +487,34 @@ class MetabolismAnalyzer:
             Smoothed 데이터 포인트 리스트
         """
         if not HAS_STATSMODELS:
-            self.warnings.append("statsmodels not available, using binned data as smoothed")
+            self.warnings.append(
+                "statsmodels not available, using binned data as smoothed"
+            )
             return binned_points
 
         if len(binned_points) < 4:
-            self.warnings.append("Not enough data points for LOESS smoothing, using binned data")
+            self.warnings.append(
+                "Not enough data points for LOESS smoothing, using binned data"
+            )
             return binned_points
 
         # 데이터 추출
         powers = np.array([p.power for p in binned_points])
-        fat_ox = np.array([p.fat_oxidation if p.fat_oxidation is not None else 0 for p in binned_points])
-        cho_ox = np.array([p.cho_oxidation if p.cho_oxidation is not None else 0 for p in binned_points])
-        rer_vals = np.array([p.rer if p.rer is not None else np.nan for p in binned_points])
+        fat_ox = np.array(
+            [
+                p.fat_oxidation if p.fat_oxidation is not None else 0
+                for p in binned_points
+            ]
+        )
+        cho_ox = np.array(
+            [
+                p.cho_oxidation if p.cho_oxidation is not None else 0
+                for p in binned_points
+            ]
+        )
+        rer_vals = np.array(
+            [p.rer if p.rer is not None else np.nan for p in binned_points]
+        )
 
         # LOESS smoothing
         try:
@@ -436,20 +524,25 @@ class MetabolismAnalyzer:
 
             fat_smoothed = lowess(fat_ox, powers, frac=frac, return_sorted=True)
             cho_smoothed = lowess(cho_ox, powers, frac=frac, return_sorted=True)
-            
+
             # RER smoothing (NaN이 아닌 값들만 사용)
             rer_smoothed = None
             if not np.all(np.isnan(rer_vals)):
                 valid_idx = ~np.isnan(rer_vals)
                 if np.sum(valid_idx) >= 4:  # 최소 4개 이상의 유효값이 있을 때만
-                    rer_smoothed = lowess(rer_vals[valid_idx], powers[valid_idx], frac=frac, return_sorted=True)
+                    rer_smoothed = lowess(
+                        rer_vals[valid_idx],
+                        powers[valid_idx],
+                        frac=frac,
+                        return_sorted=True,
+                    )
 
             # 결과 생성 (물리적 제약: >= 0)
             smoothed_points = []
             for i in range(len(fat_smoothed)):
                 fat_val = float(fat_smoothed[i, 1])
                 cho_val = float(cho_smoothed[i, 1])
-                
+
                 # RER 값 보간
                 rer_val = None
                 if rer_smoothed is not None:
@@ -460,25 +553,27 @@ class MetabolismAnalyzer:
                     # RER 물리적 제약 (0.7~1.2)
                     if not (0.5 <= rer_val <= 1.5):
                         rer_val = None
-                
+
                 # NaN 체크 및 처리
                 if math.isnan(fat_val) or math.isinf(fat_val):
                     fat_val = 0.0
                 if math.isnan(cho_val) or math.isinf(cho_val):
                     cho_val = 0.0
-                
+
                 # Non-negative constraint
                 if self.config.non_negative_constraint:
                     fat_val = max(0.0, fat_val)
                     cho_val = max(0.0, cho_val)
-                
-                smoothed_points.append(ProcessedDataPoint(
-                    power=float(fat_smoothed[i, 0]),
-                    fat_oxidation=fat_val,
-                    cho_oxidation=cho_val,
-                    rer=rer_val,
-                    count=None
-                ))
+
+                smoothed_points.append(
+                    ProcessedDataPoint(
+                        power=float(fat_smoothed[i, 0]),
+                        fat_oxidation=fat_val,
+                        cho_oxidation=cho_val,
+                        rer=rer_val,
+                        count=None,
+                    )
+                )
 
             return smoothed_points
 
@@ -486,7 +581,113 @@ class MetabolismAnalyzer:
             self.warnings.append(f"LOESS smoothing failed: {str(e)}, using binned data")
             return binned_points
 
-    def _calculate_fatmax(self, smoothed_points: List[ProcessedDataPoint]) -> FatMaxMarker:
+    def _polynomial_fit(
+        self, smoothed_points: List[ProcessedDataPoint]
+    ) -> List[ProcessedDataPoint]:
+        """
+        Polynomial Regression을 사용한 Trend Line 계산
+
+        Fat/CHO: Degree 2-3 polynomial (inverted-U shape 캡처)
+        RER: Degree 3 polynomial (linear-to-plateau 트렌드)
+
+        Args:
+            smoothed_points: LOESS smoothed 데이터 포인트 리스트
+
+        Returns:
+            Trend 데이터 포인트 리스트 (5W 간격)
+        """
+        if len(smoothed_points) < 4:
+            self.warnings.append("Not enough data points for polynomial fit")
+            return []
+
+        try:
+            # 데이터 추출
+            powers = np.array([p.power for p in smoothed_points])
+            fat_ox = np.array(
+                [
+                    p.fat_oxidation if p.fat_oxidation is not None else 0
+                    for p in smoothed_points
+                ]
+            )
+            cho_ox = np.array(
+                [
+                    p.cho_oxidation if p.cho_oxidation is not None else 0
+                    for p in smoothed_points
+                ]
+            )
+            rer_vals = np.array(
+                [p.rer if p.rer is not None else np.nan for p in smoothed_points]
+            )
+
+            # Polynomial degree 결정
+            # Fat/CHO: degree 2 또는 3 (inverted-U 형태 캡처)
+            # 데이터 포인트가 충분하면 degree 3, 아니면 2
+            fat_cho_degree = 3 if len(powers) >= 8 else 2
+            rer_degree = 3 if len(powers) >= 8 else 2
+
+            # Polynomial fitting
+            fat_coeffs = np.polyfit(powers, fat_ox, fat_cho_degree)
+            cho_coeffs = np.polyfit(powers, cho_ox, fat_cho_degree)
+
+            fat_poly = np.poly1d(fat_coeffs)
+            cho_poly = np.poly1d(cho_coeffs)
+
+            # RER fitting (NaN이 아닌 값만 사용)
+            rer_poly = None
+            valid_rer_idx = ~np.isnan(rer_vals)
+            if np.sum(valid_rer_idx) >= 4:
+                rer_coeffs = np.polyfit(
+                    powers[valid_rer_idx], rer_vals[valid_rer_idx], rer_degree
+                )
+                rer_poly = np.poly1d(rer_coeffs)
+
+            # Trend 포인트 생성 (5W 간격으로 더 부드럽게)
+            power_min = int(np.floor(powers.min() / 5) * 5)
+            power_max = int(np.ceil(powers.max() / 5) * 5)
+            trend_powers = np.arange(power_min, power_max + 1, 5)
+
+            trend_points = []
+            for p in trend_powers:
+                fat_val = float(fat_poly(p))
+                cho_val = float(cho_poly(p))
+                rer_val = None
+
+                if rer_poly is not None:
+                    rer_val = float(rer_poly(p))
+                    # RER 물리적 제약 (0.5~1.5)
+                    if not (0.5 <= rer_val <= 1.5):
+                        rer_val = None
+
+                # NaN/Inf 체크
+                if math.isnan(fat_val) or math.isinf(fat_val):
+                    fat_val = 0.0
+                if math.isnan(cho_val) or math.isinf(cho_val):
+                    cho_val = 0.0
+
+                # Non-negative constraint
+                if self.config.non_negative_constraint:
+                    fat_val = max(0.0, fat_val)
+                    cho_val = max(0.0, cho_val)
+
+                trend_points.append(
+                    ProcessedDataPoint(
+                        power=float(p),
+                        fat_oxidation=fat_val,
+                        cho_oxidation=cho_val,
+                        rer=rer_val,
+                        count=None,
+                    )
+                )
+
+            return trend_points
+
+        except Exception as e:
+            self.warnings.append(f"Polynomial fit failed: {str(e)}")
+            return []
+
+    def _calculate_fatmax(
+        self, smoothed_points: List[ProcessedDataPoint]
+    ) -> FatMaxMarker:
         """
         FatMax (Maximum Fat Oxidation) 및 Zone 계산
 
@@ -513,7 +714,8 @@ class MetabolismAnalyzer:
         # FatMax Zone 계산 (MFO의 90% 이상 유지 구간)
         threshold = max_fat * self.config.fatmax_zone_threshold
         zone_powers = [
-            p.power for p in smoothed_points
+            p.power
+            for p in smoothed_points
             if p.fat_oxidation is not None and p.fat_oxidation >= threshold
         ]
 
@@ -528,10 +730,12 @@ class MetabolismAnalyzer:
             power=int(round(max_fat_power)),
             mfo=max_fat,
             zone_min=int(round(zone_min)),
-            zone_max=int(round(zone_max))
+            zone_max=int(round(zone_max)),
         )
 
-    def _calculate_crossover(self, smoothed_points: List[ProcessedDataPoint]) -> CrossoverMarker:
+    def _calculate_crossover(
+        self, smoothed_points: List[ProcessedDataPoint]
+    ) -> CrossoverMarker:
         """
         Crossover Point (FatOx = CHOOx 지점) 계산
 
@@ -546,8 +750,18 @@ class MetabolismAnalyzer:
 
         # 데이터 추출
         powers = np.array([p.power for p in smoothed_points])
-        fat_ox = np.array([p.fat_oxidation if p.fat_oxidation is not None else 0 for p in smoothed_points])
-        cho_ox = np.array([p.cho_oxidation if p.cho_oxidation is not None else 0 for p in smoothed_points])
+        fat_ox = np.array(
+            [
+                p.fat_oxidation if p.fat_oxidation is not None else 0
+                for p in smoothed_points
+            ]
+        )
+        cho_ox = np.array(
+            [
+                p.cho_oxidation if p.cho_oxidation is not None else 0
+                for p in smoothed_points
+            ]
+        )
 
         # FatOx - CHOOx 차이
         diff = fat_ox - cho_ox
@@ -587,7 +801,7 @@ class MetabolismAnalyzer:
             return CrossoverMarker(
                 power=int(round(crossover_power)),
                 fat_value=float(crossover_fat),
-                cho_value=float(crossover_cho)
+                cho_value=float(crossover_cho),
             )
 
         except Exception as e:
@@ -628,7 +842,7 @@ def analyze_metabolism(
     # aggregation_method가 제공되면 우선, 아니면 use_median 기반
     if aggregation_method is None:
         aggregation_method = "median" if use_median else "mean"
-    
+
     config = AnalysisConfig(
         loess_frac=loess_frac,
         bin_size=bin_size,
@@ -639,6 +853,6 @@ def analyze_metabolism(
         exclude_recovery=exclude_recovery,
         min_power_threshold=min_power_threshold,
     )
-    
+
     analyzer = MetabolismAnalyzer(config=config)
     return analyzer.analyze(breath_data)

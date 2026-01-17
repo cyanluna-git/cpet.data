@@ -63,7 +63,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
   const [loading, setLoading] = useState(false);
   const [loadingTests, setLoadingTests] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Consolidated analysis settings state
   const [analysisSettings, setAnalysisSettings] = useState({
     dataMode: 'smoothed' as DataMode,
@@ -79,7 +79,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
     loessFrac: analysisSettings.loessFrac,
     binSize: analysisSettings.binSize,
   });
-  
+
   // Load subjects from API
   useEffect(() => {
     async function loadSubjects() {
@@ -193,12 +193,12 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
       loadAnalysis();
     }
   }, [selectedTestId, showCohortAverage, debouncedParams, analysisSettings.aggregationMethod]);
-  
+
   // Calculate cohort average data
   const calculateCohortAverage = () => {
     const allData = sampleSubjects.map(subject => generateMetabolismData(subject));
     const averaged: any[] = [];
-    
+
     // Average across all power points
     for (let i = 0; i < allData[0].length; i++) {
       const powerPoint = {
@@ -207,20 +207,20 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
         choOxidation: 0,
         totalCalories: 0,
       };
-      
+
       allData.forEach(data => {
         powerPoint.fatOxidation += data[i].fatOxidation;
         powerPoint.choOxidation += data[i].choOxidation;
         powerPoint.totalCalories += data[i].totalCalories;
       });
-      
+
       powerPoint.fatOxidation = Math.round(powerPoint.fatOxidation / allData.length);
       powerPoint.choOxidation = Math.round(powerPoint.choOxidation / allData.length);
       powerPoint.totalCalories = Math.round(powerPoint.totalCalories / allData.length);
-      
+
       averaged.push(powerPoint);
     }
-    
+
     // Find FatMax in averaged data
     let maxFat = 0;
     let fatMaxPower = 80;
@@ -230,12 +230,12 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
         fatMaxPower = point.power;
       }
     });
-    
+
     return { data: averaged, fatMaxPower };
   };
-  
+
   const selectedSubject = availableSubjects.find(s => s.id === selectedSubjectId);
-  
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation
@@ -244,19 +244,19 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
         onNavigate={onNavigate}
         onLogout={onLogout}
       />
-      
+
       <div className="p-6">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="mb-8">
             <h1 className="text-4xl font-bold text-gray-900 mb-2">메타볼리즘 분석</h1>
             <p className="text-gray-600">
-              {user.role === 'subject' 
+              {user.role === 'subject'
                 ? '귀하의 대사 프로필과 지방 연소 특성을 확인하세요.'
                 : '피험자들의 대사 프로필과 코호트 평균을 분석하세요.'}
             </p>
           </div>
-          
+
           {/* Controls - Only for researchers/admin */}
           {user.role !== 'subject' && (
             <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
@@ -328,15 +328,38 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                   <>
                     <div className="border-l pl-4 flex items-center gap-2">
                       <label className="text-sm font-medium text-gray-700">데이터 표시:</label>
-                      <select
-                        value={analysisSettings.dataMode}
-                        onChange={(e) => setAnalysisSettings(prev => ({ ...prev, dataMode: e.target.value as DataMode }))}
-                        className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="smoothed">Smoothed (LOESS)</option>
-                        <option value="binned">Binned ({analysisSettings.binSize}W {analysisSettings.aggregationMethod === 'median' ? 'Median' : analysisSettings.aggregationMethod === 'mean' ? 'Mean' : 'Trimmed Mean'})</option>
-                        <option value="raw">Raw Data</option>
-                      </select>
+                      <div className="inline-flex rounded-md shadow-sm" role="group">
+                        <button
+                          type="button"
+                          onClick={() => setAnalysisSettings(prev => ({ ...prev, dataMode: 'raw' }))}
+                          className={`px-4 py-2 text-sm font-medium border ${analysisSettings.dataMode === 'raw'
+                              ? 'bg-blue-600 text-white border-blue-600 z-10'
+                              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                            } rounded-l-md focus:z-10 focus:ring-2 focus:ring-blue-500`}
+                        >
+                          Raw
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAnalysisSettings(prev => ({ ...prev, dataMode: 'smoothed' }))}
+                          className={`px-4 py-2 text-sm font-medium border-t border-b ${analysisSettings.dataMode === 'smoothed'
+                              ? 'bg-blue-600 text-white border-blue-600 z-10'
+                              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                            } focus:z-10 focus:ring-2 focus:ring-blue-500`}
+                        >
+                          Smooth
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAnalysisSettings(prev => ({ ...prev, dataMode: 'trend' }))}
+                          className={`px-4 py-2 text-sm font-medium border ${analysisSettings.dataMode === 'trend'
+                              ? 'bg-blue-600 text-white border-blue-600 z-10'
+                              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                            } rounded-r-md focus:z-10 focus:ring-2 focus:ring-blue-500`}
+                        >
+                          Trend
+                        </button>
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -441,7 +464,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
               )}
             </div>
           )}
-          
+
           {/* Main Chart */}
           <Suspense fallback={
             <div className="mb-8 bg-white rounded-lg shadow-sm border border-gray-200 p-8">
@@ -484,7 +507,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                   const duration = analysis.exercise_duration_sec
                     ? `${Math.floor(analysis.exercise_duration_sec / 60)}:${String(Math.floor(analysis.exercise_duration_sec % 60)).padStart(2, '0')}`
                     : '0:00';
-                  
+
                   // Find subject name
                   const subject = availableSubjects.find(s => s.id === selectedSubjectId);
                   const subjectName = subject
@@ -628,7 +651,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
               </div>
             ) : null}
           </Suspense>
-          
+
           {/* Pattern Comparison - Only for researchers/admin */}
           {user.role !== 'subject' && (
             <div>
@@ -637,7 +660,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                 서로 다른 훈련 유형에 따른 대사 프로필의 차이를 확인할 수 있습니다.
                 파란색은 지방 산화, 빨간색은 탄수화물 산화를 나타냅니다.
               </p>
-              
+
               <Suspense fallback={
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 animate-pulse">
@@ -655,7 +678,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                   <MetabolismPatternChart pattern="Hyrox" />
                 </div>
               </Suspense>
-              
+
               <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
                 <h3 className="text-lg font-semibold text-blue-900 mb-3">패턴 해석</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
@@ -677,7 +700,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
               </div>
             </div>
           )}
-          
+
           {/* Subject's own pattern info - only show for sample data (when API subjects not loaded) */}
           {user.role === 'subject' && selectedSubject && subjects.length === 0 && (selectedSubject as any).metabolic_pattern && (
             <div className="mt-8">
@@ -724,7 +747,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
               </div>
             </div>
           )}
-          
+
           {/* All subjects overview - Only for researchers/admin */}
           {user.role !== 'subject' && !showCohortAverage && (
             <div className="mt-12">
@@ -735,18 +758,17 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                   return (
                     <div
                       key={subject.id}
-                      className={`bg-white rounded-lg shadow-sm border-2 p-5 cursor-pointer transition-all ${
-                        selectedSubjectId === subject.id
+                      className={`bg-white rounded-lg shadow-sm border-2 p-5 cursor-pointer transition-all ${selectedSubjectId === subject.id
                           ? 'border-blue-500 shadow-md'
                           : 'border-gray-200 hover:border-blue-300'
-                      }`}
+                        }`}
                       onClick={() => setSelectedSubjectId(subject.id)}
                     >
                       <h3 className="text-lg font-semibold text-gray-900 mb-1">
                         {subject.name}
                       </h3>
                       <p className="text-sm text-gray-500 mb-3">{subject.research_id}</p>
-                      
+
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-600">FatMax:</span>
