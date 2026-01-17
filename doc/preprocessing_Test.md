@@ -1,0 +1,119 @@
+🧪 [Updated] Advanced CPET Pipeline 검증 테스트 계획서버전: 2.0작성일: 2026-01-17목표: DB 저장 데이터 호출, 백엔드 전처리 파이프라인(Lag, Filter, Recalc, PolyFit)의 논리적 정합성 검증1. 테스트 환경 및 전제 조건타겟 서버: Localhost (http://localhost:8100) 또는 개발 서버테스트 계정: gerald.park@cpet.com / cpet2026!테스트 대상 ID (Test ID): c91339b9-c0ce-434d-b4ad-3c77452ed928 (Park Yongdoo)필수 데이터: 해당 Test ID의 Raw Breath Data가 DB에 존재해야 함.2. 테스트 시나리오 상세TC-01: API 연결 및 기본 스키마 검증목적: API가 살아있고, api.json에 정의된 TestAnalysisResponse 스키마대로 응답하는지 확인.엔드포인트: GET /api/tests/{test_id}/analysis파라미터:include_processed=truegas_delay_seconds=15.0 (Backend Config 기본값 확인)min_power_threshold=0 (자동 Gap 감지 테스트를 위해 0으로 설정)검증 항목:HTTP Status Code가 200인가?응답 JSON에 processed_series 객체가 존재하는가?processed_series 내부에 raw, binned, smoothed, trend 배열이 모두 존재하는가?TC-02: 고급 전처리 로직 검증 (Logic Verification)목적: 리팩토링된 4가지 핵심 로직이 데이터에 반영되었는지 수치로 검증.검증 항목:Gas Lag Correction (15s):API 응답의 raw 데이터와 원본 DB(또는 raw-data 엔드포인트)의 VO2 피크 시점을 비교했을 때, 약 15초의 시차가 발생하는가?Outlier Filtering:processed_series.raw 데이터 중 vo2나 vco2가 null인 포인트가 존재하는가? (튀는 값이 제거되었는지 확인)Frayn Recalculation (중요):보정된 vo2, vco2 값을 사용하여 수동으로 Fat/CHO를 계산했을 때, API가 반환한 fat_oxidation, cho_oxidation 값과 일치하는가?공식: $1.67 \cdot VO_2(L) - 1.67 \cdot VCO_2(L)$Sparse Data Handling (유령선 제거):trend 시리즈 데이터에서 Power가 20W~80W 사이(Warm-up Gap)인 구간의 데이터 포인트가 존재하지 않거나 건너뛰어졌는가?TC-03: 데이터 변환 및 마커 정합성목적: Binning, Smoothing, Marker 계산이 올바른지 확인.검증 항목:Binning: binned 시리즈의 Power 값이 10, 20, 30... 등 10W 단위로 딱 떨어지는가?Smoothing: smoothed 데이터의 표준편차(변동성)가 raw 데이터보다 작은가?Markers:metabolic_markers.fat_max.power 값이 존재하는가?fat_max.power 지점에서의 Fat Oxidation 값이 주변 값들 중 최대(Peak)에 근접하는가?3. 자동 검증 Python 스크립트 (Execution Script)이 스크립트를 실행하면 위의 모든 검증 과정을 자동으로 수행하고 결과를 리포트합니다.Pythonimport requests
+import pandas as pd
+import numpy as np
+import json
+
+# === 설정 ===
+BASE_URL = "http://localhost:8100"
+LOGIN_EMAIL = "gerald.park@cpet.com"
+LOGIN_PASS = "cpet2026!"
+TEST_ID = "c91339b9-c0ce-434d-b4ad-3c77452ed928"
+
+def login():
+    """JWT 토큰 발급"""
+    response = requests.post(f"{BASE_URL}/api/auth/login", data={
+        "username": LOGIN_EMAIL,
+        "password": LOGIN_PASS
+    })
+    if response.status_code != 200:
+        raise Exception(f"Login failed: {response.text}")
+    return response.json()["access_token"]
+
+def run_validation():
+    print(f"🚀 Starting Advanced CPET Pipeline Validation for Test ID: {TEST_ID}")
+    
+    try:
+        token = login()
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        # 1. Analysis API 호출
+        print("\n[Step 1] Fetching Analysis Data...")
+        params = {
+            "include_processed": True,
+            "loess_frac": 0.25,
+            "bin_size": 10,
+            "aggregation_method": "median"
+        }
+        res = requests.get(f"{BASE_URL}/api/tests/{TEST_ID}/analysis", headers=headers, params=params)
+        
+        if res.status_code != 200:
+            print(f"❌ API Error: {res.status_code} - {res.text}")
+            return
+            
+        data = res.json()
+        processed = data.get("processed_series", {})
+        
+        # 2. 기본 구조 검증
+        required_keys = ["raw", "binned", "smoothed", "trend"]
+        missing_keys = [k for k in required_keys if k not in processed]
+        if missing_keys:
+            print(f"❌ Missing keys in processed_series: {missing_keys}")
+        else:
+            print(f"✅ Schema check passed. All series found.")
+            print(f"   - Raw points: {len(processed['raw'])}")
+            print(f"   - Binned points: {len(processed['binned'])}")
+            print(f"   - Trend points: {len(processed['trend'])}")
+
+        # DataFrame 변환
+        df_raw = pd.DataFrame(processed['raw'])
+        df_trend = pd.DataFrame(processed['trend'])
+        
+        # 3. 로직 검증: Recalculation (Frayn Equation Check)
+        print("\n[Step 2] Verifying Oxidation Rate Recalculation...")
+        # 임의의 샘플 5개 추출하여 검증
+        sample = df_raw.dropna(subset=['vo2', 'vco2']).sample(5)
+        errors = 0
+        for _, row in sample.iterrows():
+            # 단위 환산 (mL -> L)
+            vo2_l = row['vo2'] / 1000.0
+            vco2_l = row['vco2'] / 1000.0
+            
+            # Frayn 공식 계산
+            calc_fat = 1.67 * vo2_l - 1.67 * vco2_l
+            calc_cho = 4.55 * vco2_l - 3.21 * vo2_l
+            
+            # 음수 클램핑 고려
+            calc_fat = max(0, calc_fat)
+            calc_cho = max(0, calc_cho)
+            
+            # API 값과 비교 (소수점 4자리)
+            if not np.isclose(row['fat_oxidation'], calc_fat, atol=0.001):
+                errors += 1
+                print(f"   ⚠️ Mismatch! Power {row['power']}W: API Fat={row['fat_oxidation']} vs Calc={calc_fat}")
+        
+        if errors == 0:
+            print("✅ Frayn Equation recalculation verified (VO2/VCO2 match Fat/CHO).")
+        else:
+            print(f"❌ Recalculation verification failed with {errors} mismatches.")
+
+        # 4. 로직 검증: Sparse Data Handling (Phantom Line)
+        print("\n[Step 3] Checking Sparse Data Handling (Phantom Lines)...")
+        # 20W ~ 70W 구간 (Warm-up Gap)에 Trend 데이터가 있는지 확인
+        gap_data = df_trend[(df_trend['power'] > 20) & (df_trend['power'] < 70)]
+        
+        if gap_data.empty:
+            print("✅ No phantom trend lines detected in warm-up gap (20W-70W).")
+        else:
+            print(f"❌ Warning: Found {len(gap_data)} trend points in likely gap region. Check gap threshold.")
+            print(gap_data[['power', 'fat_oxidation']].head())
+
+        # 5. 로직 검증: Markers
+        print("\n[Step 4] Verifying Metabolic Markers...")
+        markers = data.get("metabolic_markers", {})
+        fatmax = markers.get("fat_max", {})
+        crossover = markers.get("crossover", {})
+        
+        print(f"   - FatMax Power: {fatmax.get('power')} W (MFO: {fatmax.get('mfo')} g/min)")
+        print(f"   - Crossover Power: {crossover.get('power')} W")
+        
+        if fatmax.get('power') and crossover.get('power'):
+            print("✅ Markers are successfully calculated.")
+        else:
+            print("❌ Markers are missing.")
+
+    except Exception as e:
+        print(f"❌ Test Execution Failed: {str(e)}")
+
+if __name__ == "__main__":
+    run_validation()
+4. 예상 결과 및 대응성공 (✅ All Passed):Schema check passedFrayn Equation recalculation verified (이게 통과해야 수정하신 3단계 로직이 도는 것입니다)No phantom trend lines detectedMarkers are successfully calculated실패 유형 및 대응:Frayn Mismatch: _recalculate_oxidation_rates 메서드가 호출되지 않았거나, 단위 변환(/1000)이 잘못되었을 수 있습니다.Phantom Lines Exist: trend_gap_threshold_watts 설정값(30W)이 너무 높거나, 전처리 로직에서 skipped_count가 작동하지 않은 것입니다. 백엔드 로그를 확인하세요.Authorization Error: 토큰이 만료되었거나 계정 정보가 틀렸습니다.

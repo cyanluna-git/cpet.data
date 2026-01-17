@@ -335,7 +335,11 @@ async def get_test_metrics(
     return TestMetricsResponse(test_id=test_id, subject_id=test.subject_id, **metrics)
 
 
-@router.get("/{test_id}/analysis", response_model=TestAnalysisResponse)
+@router.get(
+    "/{test_id}/analysis",
+    response_model=TestAnalysisResponse,
+    response_model_exclude_none=False,
+)
 async def get_test_analysis(
     test_id: UUID,
     db: DBSession,
