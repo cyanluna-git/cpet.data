@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any, List
 from uuid import UUID
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # =========================================
@@ -108,12 +108,20 @@ class CPETTestResponse(BaseModel):
     source_filename: Optional[str] = None
     parsing_status: Optional[str] = None
     data_quality_score: Optional[float] = None
+    is_valid: Optional[bool] = Field(None, description="데이터 유효성 (quality_score >= 0.7)")
 
     notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+    
+    @model_validator(mode='after')
+    def compute_is_valid(self):
+        """data_quality_score를 기반으로 is_valid 계산"""
+        if self.data_quality_score is not None:
+            self.is_valid = self.data_quality_score >= 0.7
+        return self
 
 
 class CPETTestListResponse(BaseModel):
