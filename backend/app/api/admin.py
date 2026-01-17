@@ -10,17 +10,31 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 
 from app.api.deps import AdminUser, DBSession
-from app.models import CPETTest, Subject, User
+from app.models import CPETTest, Subject, User, BreathData
 from app.schemas.admin import (
     AdminStatsResponse,
     AdminUserCreate,
     AdminUserListResponse,
     AdminUserUpdate,
+    AdminTestListResponse,
+    AdminTestRow,
+    TestValidationInfo,
 )
 from app.schemas.auth import UserCreate, UserResponse, UserUpdate
 from app.services import AuthService
+from app.services.data_validator import DataValidator
+import pandas as pd
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+
+def sanitize_float(value: float | None) -> float | None:
+    """Convert NaN/Inf to None for JSON serialization"""
+    if value is None:
+        return None
+    if math.isnan(value) or math.isinf(value):
+        return None
+    return value
 
 
 def _normalize_role(role: Optional[str]) -> Optional[str]:
@@ -211,3 +225,136 @@ async def delete_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/tests", response_model=AdminTestListResponse)
+async def list_all_tests(
+    admin_user: AdminUser,
+    db: DBSession,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    protocol_type: Optional[str] = Query(None, description="RAMP|INTERVAL|STEADY_STATE"),
+    is_valid: Optional[bool] = Query(None, description="Filter by validation status"),
+    sort_by: str = Query("test_date", pattern="^(test_date|quality_score|subject_name)$"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
+) -> AdminTestListResponse:
+    """[슈퍼어드민] 전체 테스트 목록 조회 (검증 정보 포함)"""
+    
+    from sqlalchemy.orm import selectinload
+    from datetime import datetime as dt
+    
+    # Base query
+    query = select(CPETTest).options(
+        selectinload(CPETTest.subject),
+        selectinload(CPETTest.breath_data)
+    )
+    
+    # Count query
+    count_query = select(func.count()).select_from(CPETTest)
+    
+    # Get all tests (we need breath_data for validation)
+    result = await db.execute(query)
+    all_tests = list(result.scalars().all())
+    
+    # Validate each test
+    validator = DataValidator()
+    test_rows = []
+    
+    for test in all_tests:
+        # Convert breath_data to DataFrame
+        if test.breath_data and len(test.breath_data) > 0:
+            breath_list = []
+            for bd in test.breath_data:
+                breath_list.append({
+                    't_sec': bd.t_sec,
+                    'bike_power': bd.bike_power,
+                    'hr': bd.hr,
+                    'vo2': bd.vo2,
+                    'vco2': bd.vco2,
+                })
+            df = pd.DataFrame(breath_list)
+            validation_result = validator.validate(df)
+            
+            validation_info = TestValidationInfo(
+                is_valid=validation_result.is_valid,
+                protocol_type=validation_result.protocol_type.value,
+                quality_score=sanitize_float(validation_result.quality_score) or 0.0,
+                duration_min=sanitize_float(validation_result.metadata.get('duration_min', 0)) or 0.0,
+                max_power=sanitize_float(validation_result.metadata.get('max_power', 0)) or 0.0,
+                hr_dropout_rate=sanitize_float(validation_result.metadata.get('hr_dropout_rate', 0)) or 0.0,
+                gas_dropout_rate=sanitize_float(max(
+                    validation_result.metadata.get('vo2_dropout_rate', 0) or 0,
+                    validation_result.metadata.get('vco2_dropout_rate', 0) or 0
+                )) or 0.0,
+                power_time_correlation=sanitize_float(validation_result.power_time_correlation),
+                issues=validation_result.reason
+            )
+        else:
+            # No breath data
+            validation_info = TestValidationInfo(
+                is_valid=False,
+                protocol_type="UNKNOWN",
+                quality_score=0.0,
+                duration_min=0.0,
+                max_power=0.0,
+                hr_dropout_rate=0.0,
+                gas_dropout_rate=0.0,
+                issues=["No breath data available"]
+            )
+        
+        # Calculate age
+        subject_age = None
+        if test.subject and test.subject.birth_year and test.test_date:
+            test_year = test.test_date.year
+            subject_age = test_year - test.subject.birth_year
+        
+        test_row = AdminTestRow(
+            test_id=test.test_id,
+            test_date=test.test_date,
+            test_time=test.test_time,
+            subject_id=test.subject_id,
+            subject_name=test.subject.encrypted_name if test.subject and test.subject.encrypted_name else (test.subject.research_id if test.subject else "Unknown"),
+            subject_age=subject_age,
+            protocol_type=test.protocol_type,
+            source_filename=test.source_filename,
+            parsing_status=test.parsing_status,
+            validation=validation_info,
+            vo2_max=sanitize_float(test.vo2_max) if test.vo2_max is not None else None,
+            fat_max_watt=sanitize_float(test.fat_max_watt) if test.fat_max_watt is not None else None
+        )
+        
+        test_rows.append(test_row)
+    
+    # Apply filters
+    filtered_rows = test_rows
+    
+    if protocol_type:
+        filtered_rows = [r for r in filtered_rows if r.validation.protocol_type == protocol_type]
+    
+    if is_valid is not None:
+        filtered_rows = [r for r in filtered_rows if r.validation.is_valid == is_valid]
+    
+    # Sort
+    reverse = (sort_order == "desc")
+    if sort_by == "test_date":
+        filtered_rows.sort(key=lambda x: x.test_date, reverse=reverse)
+    elif sort_by == "quality_score":
+        filtered_rows.sort(key=lambda x: x.validation.quality_score, reverse=reverse)
+    elif sort_by == "subject_name":
+        filtered_rows.sort(key=lambda x: x.subject_name, reverse=reverse)
+    
+    # Pagination
+    total = len(filtered_rows)
+    total_pages = math.ceil(total / page_size)
+    start = (page - 1) * page_size
+    end = start + page_size
+    paginated_rows = filtered_rows[start:end]
+    
+    return AdminTestListResponse(
+        items=paginated_rows,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages
+    )
+
