@@ -3,8 +3,42 @@
 from datetime import datetime, time
 from typing import Optional, Dict, Any, List
 from uuid import UUID
+from enum import Enum
 
 from pydantic import BaseModel, Field
+
+
+# =========================================
+# Data Validation Schemas
+# =========================================
+
+class ProtocolType(str, Enum):
+    """프로토콜 타입 열거형"""
+    RAMP = "RAMP"                    # 선형 증가 프로토콜 (r >= 0.85)
+    INTERVAL = "INTERVAL"            # 인터벌 트레이닝 (r < 0.85, 변동 심함)
+    STEADY_STATE = "STEADY_STATE"    # 정상 상태 (r < 0.85, 변동 적음)
+    UNKNOWN = "UNKNOWN"              # 분류 불가
+
+
+class ValidationResult(BaseModel):
+    """데이터 검증 결과 스키마"""
+    is_valid: bool = Field(..., description="데이터 사용 가능 여부")
+    protocol_type: ProtocolType = Field(default=ProtocolType.UNKNOWN, description="프로토콜 타입")
+    reason: List[str] = Field(default_factory=list, description="검증 실패 사유")
+    quality_score: float = Field(default=0.0, ge=0.0, le=1.0, description="데이터 품질 점수 (0.0-1.0)")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="검증 메타데이터")
+    
+    # 검증 세부 정보
+    has_essential_columns: bool = Field(default=False)
+    duration_valid: bool = Field(default=False)
+    intensity_valid: bool = Field(default=False)
+    hr_integrity: bool = Field(default=False)
+    gas_integrity: bool = Field(default=False)
+    
+    # 프로토콜 분류 메트릭
+    power_time_correlation: Optional[float] = Field(None, description="Power-Time 상관계수 (r)")
+    
+    model_config = {"from_attributes": True}
 
 
 class CPETTestCreate(BaseModel):
