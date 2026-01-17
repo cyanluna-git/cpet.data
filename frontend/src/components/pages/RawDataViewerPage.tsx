@@ -34,6 +34,8 @@ interface TestOption {
   test_date: string;
   subject_id: string;
   subject_name?: string;
+  protocol_type?: string;
+  is_valid?: boolean;
 }
 
 interface SubjectOption {
@@ -427,13 +429,19 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
 
       console.log('Loaded tests:', data.items?.length, 'Sample:', data.items?.[0]);
 
-      const options: TestOption[] = data.items.map((t: any) => ({
-        test_id: t.test_id,
-        source_filename: t.source_filename || 'Unknown',
-        test_date: t.test_date,
-        subject_id: t.subject_id,
-        subject_name: t.subject_name,
-      }));
+      const options: TestOption[] = data.items.map((t: any) => {
+        // subjects에서 subject_name 찾기
+        const subject = subjects.find(s => s.id === t.subject_id);
+        return {
+          test_id: t.test_id,
+          source_filename: t.source_filename || 'Unknown',
+          test_date: t.test_date,
+          subject_id: t.subject_id,
+          subject_name: subject?.name || subject?.research_id || 'Unknown',
+          protocol_type: t.protocol_type,
+          is_valid: t.is_valid,
+        };
+      });
       setTests(options);
     } catch (error) {
       toast.error(getErrorMessage(error));
@@ -696,11 +704,16 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                 ) : (
                   <>
                     <option value="">테스트 선택...</option>
-                    {filteredTests.map((t) => (
-                      <option key={t.test_id} value={t.test_id}>
-                        {new Date(t.test_date).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })} - {t.source_filename}
-                      </option>
-                    ))}
+                    {filteredTests.map((t) => {
+                      const protocolLabel = t.protocol_type || 'MIX';
+                      const validLabel = t.is_valid === true ? '✓유효' : t.is_valid === false ? '✗무효' : '-';
+                      const dateStr = new Date(t.test_date).toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' });
+                      return (
+                        <option key={t.test_id} value={t.test_id}>
+                          {t.subject_name} | {dateStr} | {protocolLabel} | {validLabel}
+                        </option>
+                      );
+                    })}
                   </>
                 )}
               </select>

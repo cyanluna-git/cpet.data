@@ -139,6 +139,9 @@ class TestValidator:
             
             # 출력
             self._print_test_result(idx, test, result)
+            
+            # DB 업데이트
+            await self._save_validation_result(test, result)
         
         # 최종 요약
         self._print_summary(stats)
@@ -199,6 +202,16 @@ class TestValidator:
             print(f"  💾 DB Quality: {test.data_quality_score:.2f}")
         
         print()
+    
+    async def _save_validation_result(self, test: CPETTest, result):
+        """검증 결과를 DB에 저장"""
+        async with self.async_session() as session:
+            # 테스트 다시 가져오기 (현재 세션에 attach)
+            db_test = await session.get(CPETTest, test.test_id)
+            if db_test:
+                db_test.data_quality_score = result.quality_score
+                db_test.protocol_type = result.protocol_type.value
+                await session.commit()
     
     def _print_summary(self, stats: Dict[str, Any]):
         """최종 요약 출력"""
