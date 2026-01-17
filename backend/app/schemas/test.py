@@ -255,6 +255,7 @@ class ProcessedSeries(BaseModel):
     raw: List[ProcessedDataPoint] = []      # 원본 데이터
     binned: List[ProcessedDataPoint] = []   # 10W 구간 평균/중앙값
     smoothed: List[ProcessedDataPoint] = [] # LOESS smoothed
+    trend: List[ProcessedDataPoint] = []    # Polynomial trend
 
 
 class FatMaxMarker(BaseModel):
