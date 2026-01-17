@@ -12,6 +12,7 @@ Features:
 
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Dict, Any, Literal
+import math
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
@@ -139,6 +140,10 @@ class AnalysisConfig:
     min_power_threshold: Optional[int] = None  # e.g., 50W 미만 제외
     max_power_threshold: Optional[int] = None  # e.g., 400W 초과 제외
     non_negative_constraint: bool = True  # 음수 값 0으로 클램핑
+    # Initial hyperventilation filtering (RER spike at start)
+    exclude_initial_hyperventilation: bool = True
+    initial_time_threshold: float = 120.0  # seconds - first 2 minutes
+    initial_power_threshold: int = 40      # watts - exclude low power data during startup
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -151,6 +156,10 @@ class AnalysisConfig:
             "exclude_recovery": self.exclude_recovery,
             "min_power_threshold": self.min_power_threshold,
             "max_power_threshold": self.max_power_threshold,
+            "non_negative_constraint": self.non_negative_constraint,
+            "exclude_initial_hyperventilation": self.exclude_initial_hyperventilation,
+            "initial_time_threshold": self.initial_time_threshold,
+            "initial_power_threshold": self.initial_power_threshold,
         }
 
 
@@ -250,14 +259,22 @@ class MetabolismAnalyzer:
     def _apply_phase_trimming(self, breath_data: List[Any]) -> List[Any]:
         """Phase trimming 적용: Rest, Warm-up, Recovery 구간 제외"""
         filtered = []
-        
+
         for bd in breath_data:
             # 필수 필드 체크
             if bd.bike_power is None or bd.fat_oxidation is None or bd.cho_oxidation is None:
                 continue
-            
+
+            # Initial hyperventilation filtering (RER spike at start)
+            # Exclude data points where both time < threshold AND power < threshold
+            if self.config.exclude_initial_hyperventilation:
+                t_sec = getattr(bd, 't_sec', None)
+                if t_sec is not None and t_sec < self.config.initial_time_threshold:
+                    if bd.bike_power < self.config.initial_power_threshold:
+                        continue
+
             phase = getattr(bd, 'phase', None) or ''
-            
+
             # Phase 기반 필터링
             if self.config.exclude_rest and phase.lower() in ('rest', 'resting'):
                 continue
@@ -265,11 +282,11 @@ class MetabolismAnalyzer:
                 continue
             if self.config.exclude_recovery and phase.lower() in ('recovery', 'cooldown', 'cool-down'):
                 continue
-            
+
             # Exercise/Peak 구간만 포함 (기본)
             if phase and phase not in ('Exercise', 'Peak', 'exercise', 'peak', ''):
                 continue
-            
+
             # Power threshold 필터링
             if self.config.min_power_threshold is not None:
                 if bd.bike_power < self.config.min_power_threshold:
@@ -277,9 +294,9 @@ class MetabolismAnalyzer:
             if self.config.max_power_threshold is not None:
                 if bd.bike_power > self.config.max_power_threshold:
                     continue
-            
+
             filtered.append(bd)
-        
+
         return filtered
 
     def _extract_raw_points(self, breath_data: List[Any]) -> List[ProcessedDataPoint]:
