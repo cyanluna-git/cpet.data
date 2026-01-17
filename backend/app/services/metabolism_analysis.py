@@ -36,21 +36,27 @@ class ProcessedDataPoint:
     fat_oxidation: Optional[float]
     cho_oxidation: Optional[float]
     count: Optional[int] = None  # binned data only
-    vo2: Optional[float] = None  # optional VO2 for relative calculations
-    rer: Optional[float] = None  # optional RER
+    vo2: Optional[float] = None  # VO2 for relative calculations and VO2 Kinetics chart
+    rer: Optional[float] = None  # RER
+    vco2: Optional[float] = None  # VCO2 for VO2 Kinetics chart
+    hr: Optional[float] = None  # HR for VO2 Kinetics chart
+    ve_vo2: Optional[float] = None  # VE/VO2 for VT Analysis chart
+    ve_vco2: Optional[float] = None  # VE/VCO2 for VT Analysis chart
 
     def to_dict(self) -> Dict[str, Any]:
-        result = {
+        """모든 필드를 항상 포함하여 프론트엔드에서 키 존재 여부 체크가 가능하도록 함"""
+        return {
             "power": self.power,
             "fat_oxidation": self.fat_oxidation,
             "cho_oxidation": self.cho_oxidation,
             "count": self.count,
+            "vo2": self.vo2,
+            "vco2": self.vco2,
+            "rer": self.rer,
+            "hr": self.hr,
+            "ve_vo2": self.ve_vo2,
+            "ve_vco2": self.ve_vco2,
         }
-        if self.vo2 is not None:
-            result["vo2"] = self.vo2
-        if self.rer is not None:
-            result["rer"] = self.rer
-        return result
 
 
 @dataclass
@@ -334,14 +340,31 @@ class MetabolismAnalyzer:
 
     def _extract_raw_points(self, breath_data: List[Any]) -> List[ProcessedDataPoint]:
         """호흡 데이터에서 raw 포인트 추출"""
+        # Helper to safely convert to float (handles None, NaN, and 0 correctly)
+        def safe_float(val):
+            if val is None:
+                return None
+            try:
+                f = float(val)
+                if math.isnan(f) or math.isinf(f):
+                    return None
+                return f
+            except (ValueError, TypeError):
+                return None
+
         points = []
         for bd in breath_data:
             points.append(
                 ProcessedDataPoint(
-                    power=float(bd.bike_power),
-                    fat_oxidation=float(bd.fat_oxidation) if bd.fat_oxidation else None,
-                    cho_oxidation=float(bd.cho_oxidation) if bd.cho_oxidation else None,
-                    rer=float(bd.rer) if bd.rer else None,
+                    power=float(bd.bike_power) if bd.bike_power is not None else 0.0,
+                    fat_oxidation=safe_float(bd.fat_oxidation),
+                    cho_oxidation=safe_float(bd.cho_oxidation),
+                    rer=safe_float(bd.rer),
+                    vo2=safe_float(getattr(bd, 'vo2', None)),
+                    vco2=safe_float(getattr(bd, 'vco2', None)),
+                    hr=safe_float(getattr(bd, 'hr', None)),
+                    ve_vo2=safe_float(getattr(bd, 've_vo2', None)),
+                    ve_vco2=safe_float(getattr(bd, 've_vco2', None)),
                     count=1,
                 )
             )
@@ -367,6 +390,11 @@ class MetabolismAnalyzer:
                     "fat_oxidation": p.fat_oxidation,
                     "cho_oxidation": p.cho_oxidation,
                     "rer": p.rer,
+                    "vo2": p.vo2,
+                    "vco2": p.vco2,
+                    "hr": p.hr,
+                    "ve_vo2": p.ve_vo2,
+                    "ve_vco2": p.ve_vco2,
                 }
                 for p in raw_points
             ]
@@ -376,35 +404,20 @@ class MetabolismAnalyzer:
         bin_size = self.config.bin_size
         df["power_bin"] = (df["power"] / bin_size).round() * bin_size
 
+        # 집계할 필드 목록
+        numeric_fields = ["fat_oxidation", "cho_oxidation", "rer", "vo2", "vco2", "hr", "ve_vo2", "ve_vco2"]
+
         # 집계 방법에 따른 그룹화
         agg_method = self.config.aggregation_method
 
         if agg_method == "median":
-            agg_df = (
-                df.groupby("power_bin")
-                .agg(
-                    {
-                        "fat_oxidation": "median",
-                        "cho_oxidation": "median",
-                        "rer": "median",
-                        "power": "count",
-                    }
-                )
-                .reset_index()
-            )
+            agg_dict = {field: "median" for field in numeric_fields}
+            agg_dict["power"] = "count"
+            agg_df = df.groupby("power_bin").agg(agg_dict).reset_index()
         elif agg_method == "mean":
-            agg_df = (
-                df.groupby("power_bin")
-                .agg(
-                    {
-                        "fat_oxidation": "mean",
-                        "cho_oxidation": "mean",
-                        "rer": "mean",
-                        "power": "count",
-                    }
-                )
-                .reset_index()
-            )
+            agg_dict = {field: "mean" for field in numeric_fields}
+            agg_dict["power"] = "count"
+            agg_df = df.groupby("power_bin").agg(agg_dict).reset_index()
         elif agg_method == "trimmed_mean":
             # Trimmed mean: 양쪽 10% 제거 후 평균
             proportiontocut = self.config.trimmed_mean_proportiontocut
@@ -414,32 +427,14 @@ class MetabolismAnalyzer:
                     return x.mean()
                 return trim_mean(x, proportiontocut)
 
-            agg_df = (
-                df.groupby("power_bin")
-                .agg(
-                    {
-                        "fat_oxidation": safe_trim_mean,
-                        "cho_oxidation": safe_trim_mean,
-                        "rer": safe_trim_mean,
-                        "power": "count",
-                    }
-                )
-                .reset_index()
-            )
+            agg_dict = {field: safe_trim_mean for field in numeric_fields}
+            agg_dict["power"] = "count"
+            agg_df = df.groupby("power_bin").agg(agg_dict).reset_index()
         else:
             # 기본값: median
-            agg_df = (
-                df.groupby("power_bin")
-                .agg(
-                    {
-                        "fat_oxidation": "median",
-                        "cho_oxidation": "median",
-                        "rer": "median",
-                        "power": "count",
-                    }
-                )
-                .reset_index()
-            )
+            agg_dict = {field: "median" for field in numeric_fields}
+            agg_dict["power"] = "count"
+            agg_df = df.groupby("power_bin").agg(agg_dict).reset_index()
 
         agg_df = agg_df.rename(columns={"power": "count"})
         agg_df = agg_df.sort_values("power_bin").reset_index(drop=True)
@@ -447,15 +442,16 @@ class MetabolismAnalyzer:
         # 결과 변환
         binned_points = []
         for _, row in agg_df.iterrows():
-            fat_ox = (
-                float(row["fat_oxidation"]) if pd.notna(row["fat_oxidation"]) else None
-            )
-            cho_ox = (
-                float(row["cho_oxidation"]) if pd.notna(row["cho_oxidation"]) else None
-            )
+            fat_ox = float(row["fat_oxidation"]) if pd.notna(row["fat_oxidation"]) else None
+            cho_ox = float(row["cho_oxidation"]) if pd.notna(row["cho_oxidation"]) else None
             rer_val = float(row["rer"]) if pd.notna(row["rer"]) else None
+            vo2_val = float(row["vo2"]) if pd.notna(row["vo2"]) else None
+            vco2_val = float(row["vco2"]) if pd.notna(row["vco2"]) else None
+            hr_val = float(row["hr"]) if pd.notna(row["hr"]) else None
+            ve_vo2_val = float(row["ve_vo2"]) if pd.notna(row["ve_vo2"]) else None
+            ve_vco2_val = float(row["ve_vco2"]) if pd.notna(row["ve_vco2"]) else None
 
-            # Non-negative constraint
+            # Non-negative constraint (for oxidation values only)
             if self.config.non_negative_constraint:
                 if fat_ox is not None:
                     fat_ox = max(0.0, fat_ox)
@@ -468,6 +464,11 @@ class MetabolismAnalyzer:
                     fat_oxidation=fat_ox,
                     cho_oxidation=cho_ox,
                     rer=rer_val,
+                    vo2=vo2_val,
+                    vco2=vco2_val,
+                    hr=hr_val,
+                    ve_vo2=ve_vo2_val,
+                    ve_vco2=ve_vco2_val,
                     count=int(row["count"]),
                 )
             )
@@ -500,21 +501,14 @@ class MetabolismAnalyzer:
 
         # 데이터 추출
         powers = np.array([p.power for p in binned_points])
-        fat_ox = np.array(
-            [
-                p.fat_oxidation if p.fat_oxidation is not None else 0
-                for p in binned_points
-            ]
-        )
-        cho_ox = np.array(
-            [
-                p.cho_oxidation if p.cho_oxidation is not None else 0
-                for p in binned_points
-            ]
-        )
-        rer_vals = np.array(
-            [p.rer if p.rer is not None else np.nan for p in binned_points]
-        )
+        fat_ox = np.array([p.fat_oxidation if p.fat_oxidation is not None else 0 for p in binned_points])
+        cho_ox = np.array([p.cho_oxidation if p.cho_oxidation is not None else 0 for p in binned_points])
+        rer_vals = np.array([p.rer if p.rer is not None else np.nan for p in binned_points])
+        vo2_vals = np.array([p.vo2 if p.vo2 is not None else np.nan for p in binned_points])
+        vco2_vals = np.array([p.vco2 if p.vco2 is not None else np.nan for p in binned_points])
+        hr_vals = np.array([p.hr if p.hr is not None else np.nan for p in binned_points])
+        ve_vo2_vals = np.array([p.ve_vo2 if p.ve_vo2 is not None else np.nan for p in binned_points])
+        ve_vco2_vals = np.array([p.ve_vco2 if p.ve_vco2 is not None else np.nan for p in binned_points])
 
         # LOESS smoothing
         try:
@@ -525,34 +519,38 @@ class MetabolismAnalyzer:
             fat_smoothed = lowess(fat_ox, powers, frac=frac, return_sorted=True)
             cho_smoothed = lowess(cho_ox, powers, frac=frac, return_sorted=True)
 
-            # RER smoothing (NaN이 아닌 값들만 사용)
-            rer_smoothed = None
-            if not np.all(np.isnan(rer_vals)):
-                valid_idx = ~np.isnan(rer_vals)
-                if np.sum(valid_idx) >= 4:  # 최소 4개 이상의 유효값이 있을 때만
-                    rer_smoothed = lowess(
-                        rer_vals[valid_idx],
-                        powers[valid_idx],
-                        frac=frac,
-                        return_sorted=True,
-                    )
+            # Helper function for optional LOESS smoothing
+            def smooth_optional(vals, powers, frac, min_points=4):
+                if np.all(np.isnan(vals)):
+                    return None
+                valid_idx = ~np.isnan(vals)
+                if np.sum(valid_idx) >= min_points:
+                    return lowess(vals[valid_idx], powers[valid_idx], frac=frac, return_sorted=True)
+                return None
 
-            # 결과 생성 (물리적 제약: >= 0)
+            rer_smoothed = smooth_optional(rer_vals, powers, frac)
+            vo2_smoothed = smooth_optional(vo2_vals, powers, frac)
+            vco2_smoothed = smooth_optional(vco2_vals, powers, frac)
+            hr_smoothed = smooth_optional(hr_vals, powers, frac)
+            ve_vo2_smoothed = smooth_optional(ve_vo2_vals, powers, frac)
+            ve_vco2_smoothed = smooth_optional(ve_vco2_vals, powers, frac)
+
+            # Helper to interpolate smoothed values
+            def get_interpolated_val(smoothed, power_val, constraint=None):
+                if smoothed is None:
+                    return None
+                idx = np.argmin(np.abs(smoothed[:, 0] - power_val))
+                val = float(smoothed[idx, 1])
+                if constraint and not (constraint[0] <= val <= constraint[1]):
+                    return None
+                return val
+
+            # 결과 생성
             smoothed_points = []
             for i in range(len(fat_smoothed)):
+                power_val = fat_smoothed[i, 0]
                 fat_val = float(fat_smoothed[i, 1])
                 cho_val = float(cho_smoothed[i, 1])
-
-                # RER 값 보간
-                rer_val = None
-                if rer_smoothed is not None:
-                    power_val = fat_smoothed[i, 0]
-                    # 가장 가까운 power 값의 RER 사용
-                    idx = np.argmin(np.abs(rer_smoothed[:, 0] - power_val))
-                    rer_val = float(rer_smoothed[idx, 1])
-                    # RER 물리적 제약 (0.7~1.2)
-                    if not (0.5 <= rer_val <= 1.5):
-                        rer_val = None
 
                 # NaN 체크 및 처리
                 if math.isnan(fat_val) or math.isinf(fat_val):
@@ -560,17 +558,22 @@ class MetabolismAnalyzer:
                 if math.isnan(cho_val) or math.isinf(cho_val):
                     cho_val = 0.0
 
-                # Non-negative constraint
+                # Non-negative constraint for oxidation values
                 if self.config.non_negative_constraint:
                     fat_val = max(0.0, fat_val)
                     cho_val = max(0.0, cho_val)
 
                 smoothed_points.append(
                     ProcessedDataPoint(
-                        power=float(fat_smoothed[i, 0]),
+                        power=float(power_val),
                         fat_oxidation=fat_val,
                         cho_oxidation=cho_val,
-                        rer=rer_val,
+                        rer=get_interpolated_val(rer_smoothed, power_val, (0.5, 1.5)),
+                        vo2=get_interpolated_val(vo2_smoothed, power_val),
+                        vco2=get_interpolated_val(vco2_smoothed, power_val),
+                        hr=get_interpolated_val(hr_smoothed, power_val),
+                        ve_vo2=get_interpolated_val(ve_vo2_smoothed, power_val),
+                        ve_vco2=get_interpolated_val(ve_vco2_smoothed, power_val),
                         count=None,
                     )
                 )
@@ -585,10 +588,15 @@ class MetabolismAnalyzer:
         self, binned_points: List[ProcessedDataPoint]
     ) -> List[ProcessedDataPoint]:
         """
-        Polynomial Regression을 사용한 Trend Line 계산 (깔끔한 포물선 생성)
+        Polynomial Regression을 사용한 Trend Line 계산 (깔끔한 곡선 생성)
 
-        Fat/CHO/RER: Degree 2 polynomial (단순한 U자형 포물선)
-        
+        Polynomial Degrees by Metric Type (physiological standard models):
+        - Fat & CHO (FatMax): Degree 3 - inverted U-shape / J-curve
+        - RER: Degree 3 - slight dip at start, exponential rise at end
+        - VO2, VCO2: Degree 2 - linear efficiency (slight curve)
+        - HR: Degree 2 - linear response
+        - VT Equivalents (VE/VO2, VE/VCO2): Degree 2 - U-shape for nadir detection
+
         Note: binned 데이터에서 직접 계산하여 smooth 데이터보다 더 단순한 패턴 생성
 
         Args:
@@ -603,73 +611,70 @@ class MetabolismAnalyzer:
             return []
 
         try:
-            print(
-                f"🔬 Starting polynomial fit with {len(binned_points)} binned points"
-            )
+            print(f"🔬 Starting polynomial fit with {len(binned_points)} binned points")
+
             # 데이터 추출
             powers = np.array([p.power for p in binned_points])
-            fat_ox = np.array(
-                [
-                    p.fat_oxidation if p.fat_oxidation is not None else 0
-                    for p in binned_points
-                ]
-            )
-            cho_ox = np.array(
-                [
-                    p.cho_oxidation if p.cho_oxidation is not None else 0
-                    for p in binned_points
-                ]
-            )
-            rer_vals = np.array(
-                [p.rer if p.rer is not None else np.nan for p in binned_points]
-            )
+            fat_ox = np.array([p.fat_oxidation if p.fat_oxidation is not None else 0 for p in binned_points])
+            cho_ox = np.array([p.cho_oxidation if p.cho_oxidation is not None else 0 for p in binned_points])
+            rer_vals = np.array([p.rer if p.rer is not None else np.nan for p in binned_points])
+            vo2_vals = np.array([p.vo2 if p.vo2 is not None else np.nan for p in binned_points])
+            vco2_vals = np.array([p.vco2 if p.vco2 is not None else np.nan for p in binned_points])
+            hr_vals = np.array([p.hr if p.hr is not None else np.nan for p in binned_points])
+            ve_vo2_vals = np.array([p.ve_vo2 if p.ve_vo2 is not None else np.nan for p in binned_points])
+            ve_vco2_vals = np.array([p.ve_vco2 if p.ve_vco2 is not None else np.nan for p in binned_points])
 
-            # Polynomial degree 결정
-            # 사용자의 요청에 따라 Fat/CHO는 깔끔한 2차 포물선을 위해 Degree 2로 고정
-            # RER도 2차로 고정하여 단순한 트렌드 생성
-            fat_cho_degree = 2
-            rer_degree = 2  # 3차에서 2차로 변경
+            # Polynomial degrees per metric type
+            DEGREE_FAT_CHO = 3  # Inverted U-shape for Fat, J-curve for CHO
+            DEGREE_RER = 3      # Slight dip at start, exponential rise at end
+            DEGREE_VO2_VCO2 = 2 # Linear efficiency (slight curve)
+            DEGREE_HR = 2       # Linear response
+            DEGREE_VT = 2       # U-shape for nadir detection
 
-            # Polynomial fitting
-            fat_coeffs = np.polyfit(powers, fat_ox, fat_cho_degree)
-            cho_coeffs = np.polyfit(powers, cho_ox, fat_cho_degree)
+            # Helper function for fitting polynomial with NaN handling
+            def fit_poly(vals, powers, degree, min_points=4):
+                if np.all(np.isnan(vals)):
+                    return None
+                valid_idx = ~np.isnan(vals)
+                if np.sum(valid_idx) >= min_points:
+                    # Limit degree if not enough points
+                    effective_degree = min(degree, np.sum(valid_idx) - 1)
+                    coeffs = np.polyfit(powers[valid_idx], vals[valid_idx], effective_degree)
+                    return np.poly1d(coeffs)
+                return None
 
-            fat_poly = np.poly1d(fat_coeffs)
-            cho_poly = np.poly1d(cho_coeffs)
+            # Fit polynomials
+            fat_poly = np.poly1d(np.polyfit(powers, fat_ox, DEGREE_FAT_CHO))
+            cho_poly = np.poly1d(np.polyfit(powers, cho_ox, DEGREE_FAT_CHO))
+            rer_poly = fit_poly(rer_vals, powers, DEGREE_RER)
+            vo2_poly = fit_poly(vo2_vals, powers, DEGREE_VO2_VCO2)
+            vco2_poly = fit_poly(vco2_vals, powers, DEGREE_VO2_VCO2)
+            hr_poly = fit_poly(hr_vals, powers, DEGREE_HR)
+            ve_vo2_poly = fit_poly(ve_vo2_vals, powers, DEGREE_VT)
+            ve_vco2_poly = fit_poly(ve_vco2_vals, powers, DEGREE_VT)
 
-            # RER fitting (NaN이 아닌 값만 사용)
-            rer_poly = None
-            valid_rer_idx = ~np.isnan(rer_vals)
-            if np.sum(valid_rer_idx) >= 4:
-                rer_coeffs = np.polyfit(
-                    powers[valid_rer_idx], rer_vals[valid_rer_idx], rer_degree
-                )
-                rer_poly = np.poly1d(rer_coeffs)
-
-            # Trend 포인트 생성 (10W 간격으로 부드럽고 단순한 포물선 생성)
+            # Trend 포인트 생성 (10W 간격)
             power_min = int(np.floor(powers.min() / 10) * 10)
             power_max = int(np.ceil(powers.max() / 10) * 10)
             trend_powers = np.arange(power_min, power_max + 1, 10)
 
+            # Helper to safely evaluate polynomial
+            def eval_poly(poly, p, constraint=None, default=None):
+                if poly is None:
+                    return default
+                val = float(poly(p))
+                if math.isnan(val) or math.isinf(val):
+                    return default
+                if constraint and not (constraint[0] <= val <= constraint[1]):
+                    return default
+                return val
+
             trend_points = []
             for p in trend_powers:
-                fat_val = float(fat_poly(p))
-                cho_val = float(cho_poly(p))
-                rer_val = None
+                fat_val = eval_poly(fat_poly, p, default=0.0)
+                cho_val = eval_poly(cho_poly, p, default=0.0)
 
-                if rer_poly is not None:
-                    rer_val = float(rer_poly(p))
-                    # RER 물리적 제약 (0.5~1.5)
-                    if not (0.5 <= rer_val <= 1.5):
-                        rer_val = None
-
-                # NaN/Inf 체크
-                if math.isnan(fat_val) or math.isinf(fat_val):
-                    fat_val = 0.0
-                if math.isnan(cho_val) or math.isinf(cho_val):
-                    cho_val = 0.0
-
-                # Non-negative constraint
+                # Non-negative constraint for oxidation values
                 if self.config.non_negative_constraint:
                     fat_val = max(0.0, fat_val)
                     cho_val = max(0.0, cho_val)
@@ -679,14 +684,17 @@ class MetabolismAnalyzer:
                         power=float(p),
                         fat_oxidation=fat_val,
                         cho_oxidation=cho_val,
-                        rer=rer_val,
+                        rer=eval_poly(rer_poly, p, constraint=(0.5, 1.5)),
+                        vo2=eval_poly(vo2_poly, p),
+                        vco2=eval_poly(vco2_poly, p),
+                        hr=eval_poly(hr_poly, p),
+                        ve_vo2=eval_poly(ve_vo2_poly, p),
+                        ve_vco2=eval_poly(ve_vco2_poly, p),
                         count=None,
                     )
                 )
 
-            print(
-                f"✅ Polynomial fit complete: {len(trend_points)} trend points generated"
-            )
+            print(f"✅ Polynomial fit complete: {len(trend_points)} trend points generated")
             return trend_points
 
         except Exception as e:
