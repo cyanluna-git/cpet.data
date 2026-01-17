@@ -1,0 +1,4802 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "CPET Database and Visualization Platform",
+        "description": "COSMED K5 CPET data collection, analysis, and visualization platform",
+        "version": "0.1.0"
+    },
+    "paths": {
+        "/": {
+            "get": {
+                "summary": "Root",
+                "description": "Root endpoint",
+                "operationId": "root__get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/health": {
+            "get": {
+                "summary": "Health Check",
+                "description": "Health check endpoint",
+                "operationId": "health_check_health_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/login": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Login",
+                "description": "사용자 로그인 및 JWT 토큰 발급\n\n- **username**: 이메일 주소\n- **password**: 비밀번호",
+                "operationId": "login_api_auth_login_post",
+                "requestBody": {
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_login_api_auth_login_post"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Token"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/register": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Register",
+                "description": "새 사용자 등록\n\n- 이메일 중복 확인\n- 비밀번호 해싱 후 저장",
+                "operationId": "register_api_auth_register_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UserCreate"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UserResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/me": {
+            "get": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Get Current User Info",
+                "description": "현재 로그인한 사용자 정보 조회",
+                "operationId": "get_current_user_info_api_auth_me_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UserResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Update Current User",
+                "description": "현재 로그인한 사용자 정보 업데이트",
+                "operationId": "update_current_user_api_auth_me_put",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UserUpdate"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UserResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/auth/users": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Admin Create User",
+                "description": "[관리자] 새 사용자 생성",
+                "operationId": "admin_create_user_api_auth_users_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UserCreate"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UserResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/auth/users/{user_id}": {
+            "delete": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Admin Delete User",
+                "description": "[관리자] 사용자 삭제",
+                "operationId": "admin_delete_user_api_auth_users__user_id__delete",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "User Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/admin/stats": {
+            "get": {
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Get Admin Stats",
+                "description": "[슈퍼어드민] 서비스 운영 통계",
+                "operationId": "get_admin_stats_api_admin_stats_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AdminStatsResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/users": {
+            "get": {
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "List Users",
+                "description": "[슈퍼어드민] 사용자 목록 조회",
+                "operationId": "list_users_api_admin_users_get",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "default": 1,
+                            "title": "Page"
+                        }
+                    },
+                    {
+                        "name": "page_size",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 100,
+                            "minimum": 1,
+                            "default": 20,
+                            "title": "Page Size"
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Search by email",
+                            "title": "Search"
+                        },
+                        "description": "Search by email"
+                    },
+                    {
+                        "name": "role",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "admin|researcher|user|subject",
+                            "title": "Role"
+                        },
+                        "description": "admin|researcher|user|subject"
+                    },
+                    {
+                        "name": "is_active",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "boolean"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Is Active"
+                        }
+                    },
+                    {
+                        "name": "sort_by",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^(created_at|last_login|email|role)$",
+                            "default": "created_at",
+                            "title": "Sort By"
+                        }
+                    },
+                    {
+                        "name": "sort_order",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^(asc|desc)$",
+                            "default": "desc",
+                            "title": "Sort Order"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AdminUserListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Create User",
+                "description": "[슈퍼어드민] 사용자 생성",
+                "operationId": "create_user_api_admin_users_post",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AdminUserCreate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UserResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/admin/users/{user_id}": {
+            "put": {
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Update User",
+                "description": "[슈퍼어드민] 사용자 수정 (role/active 포함)",
+                "operationId": "update_user_api_admin_users__user_id__put",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "User Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AdminUserUpdate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UserResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Delete User",
+                "description": "[슈퍼어드민] 사용자 삭제",
+                "operationId": "delete_user_api_admin_users__user_id__delete",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "User Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/subjects": {
+            "get": {
+                "tags": [
+                    "Subjects"
+                ],
+                "summary": "List Subjects",
+                "description": "피험자 목록 조회 (페이지네이션 + 검색/필터)\n\n- **page**: 페이지 번호 (1부터 시작)\n- **page_size**: 페이지당 항목 수 (최대 100)\n- **search**: 이름 또는 코드로 검색\n- **gender**: 성별 필터 (M: 남성, F: 여성)\n- **training_level**: 훈련 수준 필터",
+                "operationId": "list_subjects_api_subjects_get",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "description": "페이지 번호",
+                            "default": 1,
+                            "title": "Page"
+                        },
+                        "description": "페이지 번호"
+                    },
+                    {
+                        "name": "page_size",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 100,
+                            "minimum": 1,
+                            "description": "페이지 크기",
+                            "default": 20,
+                            "title": "Page Size"
+                        },
+                        "description": "페이지 크기"
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "검색어 (이름, 코드)",
+                            "title": "Search"
+                        },
+                        "description": "검색어 (이름, 코드)"
+                    },
+                    {
+                        "name": "gender",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "성별 필터 (M/F)",
+                            "title": "Gender"
+                        },
+                        "description": "성별 필터 (M/F)"
+                    },
+                    {
+                        "name": "training_level",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "훈련 수준 필터",
+                            "title": "Training Level"
+                        },
+                        "description": "훈련 수준 필터"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SubjectListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "Subjects"
+                ],
+                "summary": "Create Subject",
+                "description": "새 피험자 등록\n\n- **research_id**: 고유 연구 ID (필수)\n- **encrypted_name**: 암호화된 이름\n- **birth_year**: 출생 연도\n- **gender**: 성별 (M/F)\n- **height_cm/weight_kg**: 신체 정보",
+                "operationId": "create_subject_api_subjects_post",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SubjectCreate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SubjectResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/subjects/{subject_id}": {
+            "get": {
+                "tags": [
+                    "Subjects"
+                ],
+                "summary": "Get Subject",
+                "description": "피험자 상세 정보 조회 (테스트 목록 포함)\n\n피험자 본인이거나 연구자 이상 권한 필요",
+                "operationId": "get_subject_api_subjects__subject_id__get",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "subject_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Subject Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SubjectWithTests"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "tags": [
+                    "Subjects"
+                ],
+                "summary": "Update Subject",
+                "description": "피험자 정보 수정 (연구자 이상 권한 필요)",
+                "operationId": "update_subject_api_subjects__subject_id__patch",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "subject_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Subject Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SubjectUpdate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SubjectResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Subjects"
+                ],
+                "summary": "Delete Subject",
+                "description": "피험자 삭제 (연구자 이상 권한 필요)\n\n주의: 연관된 테스트 데이터도 함께 삭제됩니다.",
+                "operationId": "delete_subject_api_subjects__subject_id__delete",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "subject_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Subject Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/tests/upload": {
+            "post": {
+                "tags": [
+                    "Tests"
+                ],
+                "summary": "Upload Test",
+                "description": "COSMED 테스트 파일 업로드 및 파싱\n\n- **file**: COSMED Excel 파일 (.xlsx)\n- **subject_id**: 연결할 피험자 ID\n- **calc_method**: 대사 계산 방법 (Frayn, Peronnet, Jeukendrup)\n- **smoothing_window**: 평활화 윈도우 크기\n\n파일을 파싱하여 테스트 정보와 호흡 데이터를 저장합니다.",
+                "operationId": "upload_test_api_tests_upload_post",
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_upload_test_api_tests_upload_post"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TestUploadResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/tests": {
+            "get": {
+                "tags": [
+                    "Tests"
+                ],
+                "summary": "List Tests",
+                "description": "테스트 목록 조회\n\n피험자는 본인 테스트만, 연구자는 전체 조회 가능",
+                "operationId": "list_tests_api_tests_get",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "default": 1,
+                            "title": "Page"
+                        }
+                    },
+                    {
+                        "name": "page_size",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 100,
+                            "minimum": 1,
+                            "default": 20,
+                            "title": "Page Size"
+                        }
+                    },
+                    {
+                        "name": "subject_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "format": "uuid"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "피험자 ID로 필터",
+                            "title": "Subject Id"
+                        },
+                        "description": "피험자 ID로 필터"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CPETTestListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/tests/{test_id}": {
+            "get": {
+                "tags": [
+                    "Tests"
+                ],
+                "summary": "Get Test",
+                "description": "테스트 상세 정보 조회",
+                "operationId": "get_test_api_tests__test_id__get",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "test_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Test Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CPETTestResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "tags": [
+                    "Tests"
+                ],
+                "summary": "Update Test",
+                "description": "테스트 정보 수정 (연구자 이상 권한 필요)",
+                "operationId": "update_test_api_tests__test_id__patch",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "test_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Test Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CPETTestUpdate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CPETTestResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Tests"
+                ],
+                "summary": "Delete Test",
+                "description": "테스트 삭제 (연구자 이상 권한 필요)",
+                "operationId": "delete_test_api_tests__test_id__delete",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "test_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Test Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/tests/{test_id}/raw-data": {
+            "get": {
+                "tags": [
+                    "Tests"
+                ],
+                "summary": "Get Raw Breath Data",
+                "description": "테스트의 Raw Breath Data 조회 (데이터 분석용)\n\nAdmin 및 Researcher만 접근 가능.\nbreath_data 테이블의 모든 컬럼을 반환합니다.",
+                "operationId": "get_raw_breath_data_api_tests__test_id__raw_data_get",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "test_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Test Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RawBreathDataResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/tests/{test_id}/series": {
+            "get": {
+                "tags": [
+                    "Tests"
+                ],
+                "summary": "Get Time Series",
+                "description": "테스트 시계열 데이터 조회 (다운샘플링 지원)\n\n- **signals**: 조회할 신호 목록 (vo2, vco2, ve, hr, rer 등)\n- **interval**: 다운샘플 간격 (1s, 5s, 10s, 30s)\n- **method**: 집계 방법 (mean, median, max, min)\n- **start_sec/end_sec**: 시간 범위 필터 (초 단위)",
+                "operationId": "get_time_series_api_tests__test_id__series_get",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "test_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Test Id"
+                        }
+                    },
+                    {
+                        "name": "signals",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "description": "조회할 신호 (콤마 구분)",
+                            "default": "vo2,vco2,hr",
+                            "title": "Signals"
+                        },
+                        "description": "조회할 신호 (콤마 구분)"
+                    },
+                    {
+                        "name": "interval",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "description": "다운샘플 간격 (예: 1s, 5s, 10s, 30s)",
+                            "default": "1s",
+                            "title": "Interval"
+                        },
+                        "description": "다운샘플 간격 (예: 1s, 5s, 10s, 30s)"
+                    },
+                    {
+                        "name": "method",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "description": "집계 방법 (mean, median, max, min)",
+                            "default": "mean",
+                            "title": "Method"
+                        },
+                        "description": "집계 방법 (mean, median, max, min)"
+                    },
+                    {
+                        "name": "start_sec",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "number"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "시작 시간 (초)",
+                            "title": "Start Sec"
+                        },
+                        "description": "시작 시간 (초)"
+                    },
+                    {
+                        "name": "end_sec",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "number"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "종료 시간 (초)",
+                            "title": "End Sec"
+                        },
+                        "description": "종료 시간 (초)"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TimeSeriesResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/tests/{test_id}/metrics": {
+            "get": {
+                "tags": [
+                    "Tests"
+                ],
+                "summary": "Get Test Metrics",
+                "description": "테스트 주요 지표 조회\n\nVO2max, VT1, VT2, FatMax, RER 등 핵심 대사 지표 반환",
+                "operationId": "get_test_metrics_api_tests__test_id__metrics_get",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "test_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Test Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TestMetricsResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/tests/{test_id}/analysis": {
+            "get": {
+                "tags": [
+                    "Tests"
+                ],
+                "summary": "Get Test Analysis",
+                "description": "테스트 분석 결과 조회 (대사 프로파일 차트용)\n\n프론트엔드에서 대사 프로파일 차트를 그리기 위한 통합 분석 결과:\n- **phase_boundaries**: 구간 경계 (Rest, Warm-up, Exercise, Peak, Recovery)\n- **phase_metrics**: 구간별 평균/최대 메트릭\n- **fatmax**: FATMAX 상세 정보 (HR, Power, VO2, 시간)\n- **vo2max**: VO2MAX 상세 정보\n- **timeseries**: 다운샘플된 시계열 데이터 (차트용)\n- **통계 요약**: 총 지방/탄수화물 연소량, 평균 RER 등\n- **processed_series**: LOESS smoothing, Power binning 처리된 시계열\n- **metabolic_markers**: FatMax zone, Crossover point 마커\n\nProcessing Parameters:\n- **loess_frac**: LOESS 평활화 정도 (0.1=날카로움, 0.5=부드러움)\n- **bin_size**: 파워 구간 크기 (예: 10W → 0-10, 10-20, ...)\n- **aggregation_method**: 구간 집계 방법\n  - median: 중앙값 (이상치에 강함, 기본값)\n  - mean: 평균\n  - trimmed_mean: 양쪽 10% 제거 후 평균\n- **min_power_threshold**: 최소 파워 임계값 (W, 이하 데이터 제외)\n  - 0: 제외 없음 (기본값)\n  - 80: 80W 미만 데이터 제외 (웜업 아티팩트 제거에 유용)",
+                "operationId": "get_test_analysis_api_tests__test_id__analysis_get",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "test_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Test Id"
+                        }
+                    },
+                    {
+                        "name": "interval",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "description": "시계열 다운샘플 간격 (예: 1s, 5s, 10s)",
+                            "default": "5s",
+                            "title": "Interval"
+                        },
+                        "description": "시계열 다운샘플 간격 (예: 1s, 5s, 10s)"
+                    },
+                    {
+                        "name": "include_processed",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "처리된 시계열 데이터 포함 (LOESS, binning)",
+                            "default": true,
+                            "title": "Include Processed"
+                        },
+                        "description": "처리된 시계열 데이터 포함 (LOESS, binning)"
+                    },
+                    {
+                        "name": "loess_frac",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "number",
+                            "maximum": 0.5,
+                            "minimum": 0.1,
+                            "description": "LOESS smoothing fraction (0.1~0.5)",
+                            "default": 0.25,
+                            "title": "Loess Frac"
+                        },
+                        "description": "LOESS smoothing fraction (0.1~0.5)"
+                    },
+                    {
+                        "name": "bin_size",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 30,
+                            "minimum": 5,
+                            "description": "Power binning 크기 (W, 5~30)",
+                            "default": 10,
+                            "title": "Bin Size"
+                        },
+                        "description": "Power binning 크기 (W, 5~30)"
+                    },
+                    {
+                        "name": "aggregation_method",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "description": "집계 방법 (median, mean, trimmed_mean)",
+                            "default": "median",
+                            "title": "Aggregation Method"
+                        },
+                        "description": "집계 방법 (median, mean, trimmed_mean)"
+                    },
+                    {
+                        "name": "min_power_threshold",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 200,
+                            "minimum": 0,
+                            "description": "최소 파워 임계값 (W, 이하 데이터 제외)",
+                            "default": 0,
+                            "title": "Min Power Threshold"
+                        },
+                        "description": "최소 파워 임계값 (W, 이하 데이터 제외)"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TestAnalysisResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/subjects/{subject_id}/tests": {
+            "get": {
+                "tags": [
+                    "Tests"
+                ],
+                "summary": "List Subject Tests",
+                "description": "특정 피험자의 테스트 목록 조회",
+                "operationId": "list_subject_tests_api_subjects__subject_id__tests_get",
+                "security": [
+                    {
+                        "OAuth2PasswordBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "subject_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Subject Id"
+                        }
+                    },
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "default": 1,
+                            "title": "Page"
+                        }
+                    },
+                    {
+                        "name": "page_size",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 100,
+                            "minimum": 1,
+                            "default": 20,
+                            "title": "Page Size"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CPETTestListResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "AdminStatsResponse": {
+                "properties": {
+                    "users_total": {
+                        "type": "integer",
+                        "title": "Users Total"
+                    },
+                    "users_active": {
+                        "type": "integer",
+                        "title": "Users Active"
+                    },
+                    "users_inactive": {
+                        "type": "integer",
+                        "title": "Users Inactive"
+                    },
+                    "users_by_role": {
+                        "additionalProperties": {
+                            "type": "integer"
+                        },
+                        "type": "object",
+                        "title": "Users By Role"
+                    },
+                    "subjects_total": {
+                        "type": "integer",
+                        "title": "Subjects Total"
+                    },
+                    "tests_total": {
+                        "type": "integer",
+                        "title": "Tests Total"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "users_total",
+                    "users_active",
+                    "users_inactive",
+                    "users_by_role",
+                    "subjects_total",
+                    "tests_total"
+                ],
+                "title": "AdminStatsResponse",
+                "description": "관리자 대시보드용 통계"
+            },
+            "AdminUserCreate": {
+                "properties": {
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "title": "Email"
+                    },
+                    "password": {
+                        "type": "string",
+                        "minLength": 6,
+                        "title": "Password"
+                    },
+                    "role": {
+                        "type": "string",
+                        "pattern": "^(admin|researcher|user|subject)$",
+                        "title": "Role",
+                        "default": "user"
+                    },
+                    "subject_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Subject Id"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "email",
+                    "password"
+                ],
+                "title": "AdminUserCreate",
+                "description": "[관리자] 사용자 생성 요청"
+            },
+            "AdminUserListResponse": {
+                "properties": {
+                    "items": {
+                        "items": {
+                            "$ref": "#/components/schemas/UserResponse"
+                        },
+                        "type": "array",
+                        "title": "Items"
+                    },
+                    "total": {
+                        "type": "integer",
+                        "title": "Total"
+                    },
+                    "page": {
+                        "type": "integer",
+                        "title": "Page"
+                    },
+                    "page_size": {
+                        "type": "integer",
+                        "title": "Page Size"
+                    },
+                    "total_pages": {
+                        "type": "integer",
+                        "title": "Total Pages"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "page_size",
+                    "total_pages"
+                ],
+                "title": "AdminUserListResponse",
+                "description": "사용자 목록 응답 (페이지네이션)"
+            },
+            "AdminUserUpdate": {
+                "properties": {
+                    "email": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "email"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Email"
+                    },
+                    "password": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "minLength": 6
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Password"
+                    },
+                    "role": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(admin|researcher|user|subject)$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Role"
+                    },
+                    "is_active": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Is Active"
+                    },
+                    "subject_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Subject Id"
+                    }
+                },
+                "type": "object",
+                "title": "AdminUserUpdate",
+                "description": "[관리자] 사용자 업데이트 요청"
+            },
+            "Body_login_api_auth_login_post": {
+                "properties": {
+                    "grant_type": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "password"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Grant Type"
+                    },
+                    "username": {
+                        "type": "string",
+                        "title": "Username"
+                    },
+                    "password": {
+                        "type": "string",
+                        "title": "Password"
+                    },
+                    "scope": {
+                        "type": "string",
+                        "title": "Scope",
+                        "default": ""
+                    },
+                    "client_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Client Id"
+                    },
+                    "client_secret": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Client Secret"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "username",
+                    "password"
+                ],
+                "title": "Body_login_api_auth_login_post"
+            },
+            "Body_upload_test_api_tests_upload_post": {
+                "properties": {
+                    "file": {
+                        "type": "string",
+                        "format": "binary",
+                        "title": "File",
+                        "description": "COSMED Excel 파일 (.xlsx)"
+                    },
+                    "subject_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Subject Id",
+                        "description": "피험자 ID"
+                    },
+                    "calc_method": {
+                        "type": "string",
+                        "title": "Calc Method",
+                        "description": "대사 계산 방법",
+                        "default": "Frayn"
+                    },
+                    "smoothing_window": {
+                        "type": "integer",
+                        "title": "Smoothing Window",
+                        "description": "평활화 윈도우",
+                        "default": 10
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "file",
+                    "subject_id"
+                ],
+                "title": "Body_upload_test_api_tests_upload_post"
+            },
+            "CPETTestListResponse": {
+                "properties": {
+                    "items": {
+                        "items": {
+                            "$ref": "#/components/schemas/CPETTestResponse"
+                        },
+                        "type": "array",
+                        "title": "Items"
+                    },
+                    "total": {
+                        "type": "integer",
+                        "title": "Total"
+                    },
+                    "page": {
+                        "type": "integer",
+                        "title": "Page"
+                    },
+                    "page_size": {
+                        "type": "integer",
+                        "title": "Page Size"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "page_size"
+                ],
+                "title": "CPETTestListResponse",
+                "description": "테스트 목록 응답 스키마"
+            },
+            "CPETTestResponse": {
+                "properties": {
+                    "test_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Test Id"
+                    },
+                    "subject_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Subject Id"
+                    },
+                    "test_date": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Test Date"
+                    },
+                    "test_time": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Test Time"
+                    },
+                    "protocol_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Protocol Name"
+                    },
+                    "protocol_type": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Protocol Type"
+                    },
+                    "test_type": {
+                        "type": "string",
+                        "title": "Test Type"
+                    },
+                    "maximal_effort": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Maximal Effort"
+                    },
+                    "barometric_pressure": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Barometric Pressure"
+                    },
+                    "ambient_temp": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ambient Temp"
+                    },
+                    "ambient_humidity": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ambient Humidity"
+                    },
+                    "weight_kg": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Weight Kg"
+                    },
+                    "bsa": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Bsa"
+                    },
+                    "bmi": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Bmi"
+                    },
+                    "vo2_max": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vo2 Max"
+                    },
+                    "vo2_max_rel": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vo2 Max Rel"
+                    },
+                    "vco2_max": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vco2 Max"
+                    },
+                    "hr_max": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Hr Max"
+                    },
+                    "fat_max_hr": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Max Hr"
+                    },
+                    "fat_max_watt": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Max Watt"
+                    },
+                    "fat_max_g_min": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Max G Min"
+                    },
+                    "vt1_hr": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vt1 Hr"
+                    },
+                    "vt1_vo2": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vt1 Vo2"
+                    },
+                    "vt2_hr": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vt2 Hr"
+                    },
+                    "vt2_vo2": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vt2 Vo2"
+                    },
+                    "source_filename": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Source Filename"
+                    },
+                    "parsing_status": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parsing Status"
+                    },
+                    "data_quality_score": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Data Quality Score"
+                    },
+                    "notes": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Notes"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Updated At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "test_id",
+                    "subject_id",
+                    "test_date",
+                    "test_type",
+                    "created_at",
+                    "updated_at"
+                ],
+                "title": "CPETTestResponse",
+                "description": "테스트 응답 스키마"
+            },
+            "CPETTestUpdate": {
+                "properties": {
+                    "test_date": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Test Date"
+                    },
+                    "test_time": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Test Time"
+                    },
+                    "protocol_name": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 100
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Protocol Name"
+                    },
+                    "test_type": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Test Type"
+                    },
+                    "notes": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Notes"
+                    },
+                    "vt1_hr": {
+                        "anyOf": [
+                            {
+                                "type": "integer",
+                                "maximum": 250,
+                                "minimum": 50
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vt1 Hr"
+                    },
+                    "vt1_vo2": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "minimum": 0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vt1 Vo2"
+                    },
+                    "vt2_hr": {
+                        "anyOf": [
+                            {
+                                "type": "integer",
+                                "maximum": 250,
+                                "minimum": 50
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vt2 Hr"
+                    },
+                    "vt2_vo2": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "minimum": 0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vt2 Vo2"
+                    }
+                },
+                "type": "object",
+                "title": "CPETTestUpdate",
+                "description": "테스트 업데이트 요청 스키마"
+            },
+            "CrossoverMarker": {
+                "properties": {
+                    "power": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Power"
+                    },
+                    "fat_value": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Value"
+                    },
+                    "cho_value": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cho Value"
+                    }
+                },
+                "type": "object",
+                "title": "CrossoverMarker",
+                "description": "Crossover 지점 마커 스키마"
+            },
+            "FatMaxInfo": {
+                "properties": {
+                    "fat_max_g_min": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Max G Min"
+                    },
+                    "fat_max_hr": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Max Hr"
+                    },
+                    "fat_max_watt": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Max Watt"
+                    },
+                    "fat_max_vo2": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Max Vo2"
+                    },
+                    "fat_max_rer": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Max Rer"
+                    },
+                    "fat_max_time_sec": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Max Time Sec"
+                    }
+                },
+                "type": "object",
+                "title": "FatMaxInfo",
+                "description": "FATMAX 정보 스키마"
+            },
+            "FatMaxMarker": {
+                "properties": {
+                    "power": {
+                        "type": "integer",
+                        "title": "Power",
+                        "default": 0
+                    },
+                    "mfo": {
+                        "type": "number",
+                        "title": "Mfo",
+                        "default": 0
+                    },
+                    "zone_min": {
+                        "type": "integer",
+                        "title": "Zone Min",
+                        "default": 0
+                    },
+                    "zone_max": {
+                        "type": "integer",
+                        "title": "Zone Max",
+                        "default": 0
+                    }
+                },
+                "type": "object",
+                "title": "FatMaxMarker",
+                "description": "FatMax 마커 정보 스키마"
+            },
+            "HTTPValidationError": {
+                "properties": {
+                    "detail": {
+                        "items": {
+                            "$ref": "#/components/schemas/ValidationError"
+                        },
+                        "type": "array",
+                        "title": "Detail"
+                    }
+                },
+                "type": "object",
+                "title": "HTTPValidationError"
+            },
+            "MetabolicMarkers": {
+                "properties": {
+                    "fat_max": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/FatMaxMarker"
+                            }
+                        ],
+                        "default": {
+                            "power": 0,
+                            "mfo": 0,
+                            "zone_min": 0,
+                            "zone_max": 0
+                        }
+                    },
+                    "crossover": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/CrossoverMarker"
+                            }
+                        ],
+                        "default": {}
+                    }
+                },
+                "type": "object",
+                "title": "MetabolicMarkers",
+                "description": "대사 마커 정보 스키마"
+            },
+            "MetabolismDataPoint": {
+                "properties": {
+                    "time_sec": {
+                        "type": "number",
+                        "title": "Time Sec"
+                    },
+                    "power": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Power"
+                    },
+                    "hr": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Hr"
+                    },
+                    "vo2": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vo2"
+                    },
+                    "vco2": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vco2"
+                    },
+                    "rer": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Rer"
+                    },
+                    "fat_oxidation": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Oxidation"
+                    },
+                    "cho_oxidation": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cho Oxidation"
+                    },
+                    "fat_kcal_day": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Kcal Day"
+                    },
+                    "cho_kcal_day": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cho Kcal Day"
+                    },
+                    "phase": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Phase"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "time_sec"
+                ],
+                "title": "MetabolismDataPoint",
+                "description": "대사 차트 데이터 포인트"
+            },
+            "PhaseBoundaries": {
+                "properties": {
+                    "rest_end_sec": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Rest End Sec"
+                    },
+                    "warmup_end_sec": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Warmup End Sec"
+                    },
+                    "exercise_end_sec": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Exercise End Sec"
+                    },
+                    "peak_sec": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Peak Sec"
+                    },
+                    "total_duration_sec": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Total Duration Sec"
+                    },
+                    "phases": {
+                        "items": {
+                            "$ref": "#/components/schemas/PhaseInfo"
+                        },
+                        "type": "array",
+                        "title": "Phases",
+                        "default": []
+                    }
+                },
+                "type": "object",
+                "title": "PhaseBoundaries",
+                "description": "구간 경계 스키마"
+            },
+            "PhaseInfo": {
+                "properties": {
+                    "phase": {
+                        "type": "string",
+                        "title": "Phase"
+                    },
+                    "start_sec": {
+                        "type": "number",
+                        "title": "Start Sec"
+                    },
+                    "end_sec": {
+                        "type": "number",
+                        "title": "End Sec"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "phase",
+                    "start_sec",
+                    "end_sec"
+                ],
+                "title": "PhaseInfo",
+                "description": "구간 정보 스키마"
+            },
+            "PhaseMetrics": {
+                "properties": {
+                    "duration_sec": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Duration Sec"
+                    },
+                    "data_points": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Data Points"
+                    },
+                    "avg_hr": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Avg Hr"
+                    },
+                    "max_hr": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Max Hr"
+                    },
+                    "avg_vo2": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Avg Vo2"
+                    },
+                    "max_vo2": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Max Vo2"
+                    },
+                    "avg_rer": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Avg Rer"
+                    },
+                    "max_rer": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Max Rer"
+                    },
+                    "avg_fat_oxidation": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Avg Fat Oxidation"
+                    },
+                    "max_fat_oxidation": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Max Fat Oxidation"
+                    },
+                    "avg_cho_oxidation": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Avg Cho Oxidation"
+                    },
+                    "max_cho_oxidation": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Max Cho Oxidation"
+                    },
+                    "avg_bike_power": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Avg Bike Power"
+                    },
+                    "max_bike_power": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Max Bike Power"
+                    }
+                },
+                "type": "object",
+                "title": "PhaseMetrics",
+                "description": "구간별 메트릭 스키마"
+            },
+            "ProcessedDataPoint": {
+                "properties": {
+                    "power": {
+                        "type": "number",
+                        "title": "Power"
+                    },
+                    "fat_oxidation": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Oxidation"
+                    },
+                    "cho_oxidation": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cho Oxidation"
+                    },
+                    "rer": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Rer"
+                    },
+                    "count": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Count"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "power"
+                ],
+                "title": "ProcessedDataPoint",
+                "description": "처리된 데이터 포인트 스키마"
+            },
+            "ProcessedSeries": {
+                "properties": {
+                    "raw": {
+                        "items": {
+                            "$ref": "#/components/schemas/ProcessedDataPoint"
+                        },
+                        "type": "array",
+                        "title": "Raw",
+                        "default": []
+                    },
+                    "binned": {
+                        "items": {
+                            "$ref": "#/components/schemas/ProcessedDataPoint"
+                        },
+                        "type": "array",
+                        "title": "Binned",
+                        "default": []
+                    },
+                    "smoothed": {
+                        "items": {
+                            "$ref": "#/components/schemas/ProcessedDataPoint"
+                        },
+                        "type": "array",
+                        "title": "Smoothed",
+                        "default": []
+                    }
+                },
+                "type": "object",
+                "title": "ProcessedSeries",
+                "description": "처리된 시계열 데이터 스키마"
+            },
+            "RawBreathDataResponse": {
+                "properties": {
+                    "test_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Test Id"
+                    },
+                    "source_filename": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Source Filename"
+                    },
+                    "test_date": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Test Date"
+                    },
+                    "subject_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Subject Name"
+                    },
+                    "total_rows": {
+                        "type": "integer",
+                        "title": "Total Rows"
+                    },
+                    "data": {
+                        "items": {
+                            "$ref": "#/components/schemas/RawBreathDataRow"
+                        },
+                        "type": "array",
+                        "title": "Data"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "test_id",
+                    "test_date",
+                    "total_rows",
+                    "data"
+                ],
+                "title": "RawBreathDataResponse",
+                "description": "Raw breath data 응답 스키마"
+            },
+            "RawBreathDataRow": {
+                "properties": {
+                    "id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Id"
+                    },
+                    "time": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Time"
+                    },
+                    "t_sec": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "T Sec"
+                    },
+                    "rf": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Rf"
+                    },
+                    "vt": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vt"
+                    },
+                    "vo2": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vo2"
+                    },
+                    "vco2": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vco2"
+                    },
+                    "ve": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ve"
+                    },
+                    "hr": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Hr"
+                    },
+                    "vo2_hr": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vo2 Hr"
+                    },
+                    "bike_power": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Bike Power"
+                    },
+                    "bike_torque": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Bike Torque"
+                    },
+                    "cadence": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cadence"
+                    },
+                    "feo2": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Feo2"
+                    },
+                    "feco2": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Feco2"
+                    },
+                    "feto2": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Feto2"
+                    },
+                    "fetco2": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fetco2"
+                    },
+                    "ve_vo2": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ve Vo2"
+                    },
+                    "ve_vco2": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ve Vco2"
+                    },
+                    "rer": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Rer"
+                    },
+                    "fat_oxidation": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Oxidation"
+                    },
+                    "cho_oxidation": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cho Oxidation"
+                    },
+                    "vo2_rel": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vo2 Rel"
+                    },
+                    "mets": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Mets"
+                    },
+                    "ee_total": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Ee Total"
+                    },
+                    "phase": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Phase"
+                    },
+                    "data_source": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Data Source"
+                    },
+                    "is_valid": {
+                        "type": "boolean",
+                        "title": "Is Valid",
+                        "default": true
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "time"
+                ],
+                "title": "RawBreathDataRow",
+                "description": "Raw breath data 행 스키마"
+            },
+            "SubjectCreate": {
+                "properties": {
+                    "research_id": {
+                        "type": "string",
+                        "maxLength": 50,
+                        "minLength": 1,
+                        "title": "Research Id",
+                        "description": "연구 ID"
+                    },
+                    "encrypted_name": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 255
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Encrypted Name",
+                        "description": "암호화된 이름"
+                    },
+                    "birth_year": {
+                        "anyOf": [
+                            {
+                                "type": "integer",
+                                "maximum": 2100,
+                                "minimum": 1900
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Birth Year",
+                        "description": "출생연도"
+                    },
+                    "gender": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(M|F|Other)$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Gender",
+                        "description": "성별"
+                    },
+                    "job_category": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 50
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Job Category",
+                        "description": "직업 카테고리"
+                    },
+                    "medical_history": {
+                        "anyOf": [
+                            {
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Medical History",
+                        "description": "병력"
+                    },
+                    "training_level": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(Sedentary|Recreational|Trained|Elite)$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Training Level",
+                        "description": "훈련 수준"
+                    },
+                    "weight_kg": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "maximum": 300,
+                                "minimum": 20
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Weight Kg",
+                        "description": "체중 (kg)"
+                    },
+                    "height_cm": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "maximum": 250,
+                                "minimum": 100
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Height Cm",
+                        "description": "신장 (cm)"
+                    },
+                    "notes": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Notes",
+                        "description": "메모"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "research_id"
+                ],
+                "title": "SubjectCreate",
+                "description": "피험자 생성 요청 스키마"
+            },
+            "SubjectListResponse": {
+                "properties": {
+                    "items": {
+                        "items": {
+                            "$ref": "#/components/schemas/SubjectResponse"
+                        },
+                        "type": "array",
+                        "title": "Items"
+                    },
+                    "total": {
+                        "type": "integer",
+                        "title": "Total"
+                    },
+                    "page": {
+                        "type": "integer",
+                        "title": "Page"
+                    },
+                    "page_size": {
+                        "type": "integer",
+                        "title": "Page Size"
+                    },
+                    "total_pages": {
+                        "type": "integer",
+                        "title": "Total Pages"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "page_size",
+                    "total_pages"
+                ],
+                "title": "SubjectListResponse",
+                "description": "피험자 목록 응답 스키마"
+            },
+            "SubjectResponse": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "research_id": {
+                        "type": "string",
+                        "title": "Research Id"
+                    },
+                    "encrypted_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Encrypted Name"
+                    },
+                    "birth_year": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Birth Year"
+                    },
+                    "gender": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Gender"
+                    },
+                    "job_category": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Job Category"
+                    },
+                    "medical_history": {
+                        "anyOf": [
+                            {
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Medical History"
+                    },
+                    "training_level": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Training Level"
+                    },
+                    "weight_kg": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Weight Kg"
+                    },
+                    "height_cm": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Height Cm"
+                    },
+                    "notes": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Notes"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Updated At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "research_id",
+                    "created_at",
+                    "updated_at"
+                ],
+                "title": "SubjectResponse",
+                "description": "피험자 응답 스키마"
+            },
+            "SubjectUpdate": {
+                "properties": {
+                    "research_id": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 50,
+                                "minLength": 1
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Research Id"
+                    },
+                    "encrypted_name": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 255
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Encrypted Name"
+                    },
+                    "birth_year": {
+                        "anyOf": [
+                            {
+                                "type": "integer",
+                                "maximum": 2100,
+                                "minimum": 1900
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Birth Year"
+                    },
+                    "gender": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(M|F|Other)$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Gender"
+                    },
+                    "job_category": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 50
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Job Category"
+                    },
+                    "medical_history": {
+                        "anyOf": [
+                            {
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Medical History"
+                    },
+                    "training_level": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(Sedentary|Recreational|Trained|Elite)$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Training Level"
+                    },
+                    "weight_kg": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "maximum": 300,
+                                "minimum": 20
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Weight Kg"
+                    },
+                    "height_cm": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "maximum": 250,
+                                "minimum": 100
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Height Cm"
+                    },
+                    "notes": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Notes"
+                    }
+                },
+                "type": "object",
+                "title": "SubjectUpdate",
+                "description": "피험자 업데이트 요청 스키마"
+            },
+            "SubjectWithTests": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "research_id": {
+                        "type": "string",
+                        "title": "Research Id"
+                    },
+                    "encrypted_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Encrypted Name"
+                    },
+                    "birth_year": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Birth Year"
+                    },
+                    "gender": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Gender"
+                    },
+                    "job_category": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Job Category"
+                    },
+                    "medical_history": {
+                        "anyOf": [
+                            {
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Medical History"
+                    },
+                    "training_level": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Training Level"
+                    },
+                    "weight_kg": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Weight Kg"
+                    },
+                    "height_cm": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Height Cm"
+                    },
+                    "notes": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Notes"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Updated At"
+                    },
+                    "test_count": {
+                        "type": "integer",
+                        "title": "Test Count",
+                        "default": 0
+                    },
+                    "latest_test_date": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Latest Test Date"
+                    },
+                    "vo2_max_best": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vo2 Max Best"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "research_id",
+                    "created_at",
+                    "updated_at"
+                ],
+                "title": "SubjectWithTests",
+                "description": "테스트 포함 피험자 응답 스키마"
+            },
+            "TestAnalysisResponse": {
+                "properties": {
+                    "test_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Test Id"
+                    },
+                    "subject_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Subject Id"
+                    },
+                    "test_date": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Test Date"
+                    },
+                    "protocol_type": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Protocol Type"
+                    },
+                    "calc_method": {
+                        "type": "string",
+                        "title": "Calc Method",
+                        "default": "Frayn"
+                    },
+                    "phase_boundaries": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/PhaseBoundaries"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "phase_metrics": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": {
+                                    "$ref": "#/components/schemas/PhaseMetrics"
+                                },
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Phase Metrics"
+                    },
+                    "fatmax": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/FatMaxInfo"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "vo2max": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/VO2MaxInfo"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "vt1_hr": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vt1 Hr"
+                    },
+                    "vt1_vo2": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vt1 Vo2"
+                    },
+                    "vt2_hr": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vt2 Hr"
+                    },
+                    "vt2_vo2": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vt2 Vo2"
+                    },
+                    "timeseries": {
+                        "items": {
+                            "$ref": "#/components/schemas/MetabolismDataPoint"
+                        },
+                        "type": "array",
+                        "title": "Timeseries",
+                        "default": []
+                    },
+                    "timeseries_interval": {
+                        "type": "string",
+                        "title": "Timeseries Interval",
+                        "default": "5s"
+                    },
+                    "total_fat_burned_g": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Total Fat Burned G"
+                    },
+                    "total_cho_burned_g": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Total Cho Burned G"
+                    },
+                    "avg_rer": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Avg Rer"
+                    },
+                    "exercise_duration_sec": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Exercise Duration Sec"
+                    },
+                    "processed_series": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/ProcessedSeries"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "metabolic_markers": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/MetabolicMarkers"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "analysis_warnings": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Analysis Warnings"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "test_id",
+                    "subject_id",
+                    "test_date"
+                ],
+                "title": "TestAnalysisResponse",
+                "description": "테스트 분석 결과 응답 스키마 (대사 프로파일 차트용)"
+            },
+            "TestMetricsResponse": {
+                "properties": {
+                    "test_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Test Id"
+                    },
+                    "subject_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Subject Id"
+                    },
+                    "vo2_max": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vo2 Max"
+                    },
+                    "vo2_max_rel": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vo2 Max Rel"
+                    },
+                    "vo2_at_vt1": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vo2 At Vt1"
+                    },
+                    "vo2_at_vt2": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vo2 At Vt2"
+                    },
+                    "hr_max": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Hr Max"
+                    },
+                    "hr_at_vt1": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Hr At Vt1"
+                    },
+                    "hr_at_vt2": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Hr At Vt2"
+                    },
+                    "hr_reserve": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Hr Reserve"
+                    },
+                    "fat_max_hr": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Max Hr"
+                    },
+                    "fat_max_watt": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Max Watt"
+                    },
+                    "fat_max_g_min": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Max G Min"
+                    },
+                    "fat_max_zone_lower": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Max Zone Lower"
+                    },
+                    "fat_max_zone_upper": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Fat Max Zone Upper"
+                    },
+                    "vco2_max": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vco2 Max"
+                    },
+                    "rer_max": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Rer Max"
+                    },
+                    "test_duration_sec": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Test Duration Sec"
+                    },
+                    "exercise_duration_sec": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Exercise Duration Sec"
+                    },
+                    "phases": {
+                        "anyOf": [
+                            {
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Phases"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "test_id",
+                    "subject_id"
+                ],
+                "title": "TestMetricsResponse",
+                "description": "테스트 메트릭 요약 응답 스키마"
+            },
+            "TestUploadResponse": {
+                "properties": {
+                    "test_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Test Id"
+                    },
+                    "subject_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Subject Id"
+                    },
+                    "source_filename": {
+                        "type": "string",
+                        "title": "Source Filename"
+                    },
+                    "parsing_status": {
+                        "type": "string",
+                        "title": "Parsing Status"
+                    },
+                    "parsing_errors": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parsing Errors"
+                    },
+                    "parsing_warnings": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parsing Warnings"
+                    },
+                    "data_points_count": {
+                        "type": "integer",
+                        "title": "Data Points Count"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "test_id",
+                    "subject_id",
+                    "source_filename",
+                    "parsing_status",
+                    "data_points_count",
+                    "created_at"
+                ],
+                "title": "TestUploadResponse",
+                "description": "테스트 파일 업로드 응답 스키마"
+            },
+            "TimeSeriesResponse": {
+                "properties": {
+                    "test_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Test Id"
+                    },
+                    "signals": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Signals"
+                    },
+                    "interval": {
+                        "type": "string",
+                        "title": "Interval"
+                    },
+                    "data_points": {
+                        "items": {
+                            "type": "object"
+                        },
+                        "type": "array",
+                        "title": "Data Points"
+                    },
+                    "total_points": {
+                        "type": "integer",
+                        "title": "Total Points"
+                    },
+                    "duration_sec": {
+                        "type": "number",
+                        "title": "Duration Sec"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "test_id",
+                    "signals",
+                    "interval",
+                    "data_points",
+                    "total_points",
+                    "duration_sec"
+                ],
+                "title": "TimeSeriesResponse",
+                "description": "시계열 데이터 응답 스키마"
+            },
+            "Token": {
+                "properties": {
+                    "access_token": {
+                        "type": "string",
+                        "title": "Access Token"
+                    },
+                    "token_type": {
+                        "type": "string",
+                        "title": "Token Type",
+                        "default": "bearer"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "access_token"
+                ],
+                "title": "Token",
+                "description": "JWT 토큰 응답 스키마"
+            },
+            "UserCreate": {
+                "properties": {
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "title": "Email"
+                    },
+                    "password": {
+                        "type": "string",
+                        "minLength": 6,
+                        "title": "Password"
+                    },
+                    "role": {
+                        "type": "string",
+                        "pattern": "^(admin|researcher|user)$",
+                        "title": "Role",
+                        "default": "user"
+                    },
+                    "subject_id": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Subject Id"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "email",
+                    "password"
+                ],
+                "title": "UserCreate",
+                "description": "사용자 생성 요청 스키마"
+            },
+            "UserResponse": {
+                "properties": {
+                    "user_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "User Id"
+                    },
+                    "email": {
+                        "type": "string",
+                        "title": "Email"
+                    },
+                    "role": {
+                        "type": "string",
+                        "title": "Role"
+                    },
+                    "subject_id": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Subject Id"
+                    },
+                    "is_active": {
+                        "type": "boolean",
+                        "title": "Is Active"
+                    },
+                    "last_login": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Login"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "user_id",
+                    "email",
+                    "role",
+                    "is_active",
+                    "created_at"
+                ],
+                "title": "UserResponse",
+                "description": "사용자 응답 스키마"
+            },
+            "UserUpdate": {
+                "properties": {
+                    "email": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "email"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Email"
+                    },
+                    "password": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "minLength": 6
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Password"
+                    },
+                    "role": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(admin|researcher|user)$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Role"
+                    },
+                    "is_active": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Is Active"
+                    },
+                    "subject_id": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Subject Id"
+                    }
+                },
+                "type": "object",
+                "title": "UserUpdate",
+                "description": "사용자 업데이트 요청 스키마"
+            },
+            "VO2MaxInfo": {
+                "properties": {
+                    "vo2_max": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vo2 Max"
+                    },
+                    "vo2_max_rel": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vo2 Max Rel"
+                    },
+                    "vco2_max": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vco2 Max"
+                    },
+                    "hr_max": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Hr Max"
+                    },
+                    "rer_at_max": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Rer At Max"
+                    },
+                    "vo2_max_time_sec": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Vo2 Max Time Sec"
+                    }
+                },
+                "type": "object",
+                "title": "VO2MaxInfo",
+                "description": "VO2MAX 정보 스키마"
+            },
+            "ValidationError": {
+                "properties": {
+                    "loc": {
+                        "items": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "integer"
+                                }
+                            ]
+                        },
+                        "type": "array",
+                        "title": "Location"
+                    },
+                    "msg": {
+                        "type": "string",
+                        "title": "Message"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Error Type"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "loc",
+                    "msg",
+                    "type"
+                ],
+                "title": "ValidationError"
+            }
+        },
+        "securitySchemes": {
+            "OAuth2PasswordBearer": {
+                "type": "oauth2",
+                "flows": {
+                    "password": {
+                        "scopes": {},
+                        "tokenUrl": "/api/auth/login"
+                    }
+                }
+            }
+        }
+    }
+}

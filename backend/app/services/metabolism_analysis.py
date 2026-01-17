@@ -269,6 +269,9 @@ class MetabolismAnalyzer:
         # Step 0b: Rolling IQR Outlier Detection (remove breath-by-breath spikes)
         filtered_data = self._filter_local_outliers(filtered_data)
 
+        # Step 0c: Recalculate Fat/CHO oxidation from cleaned VO2/VCO2 (Frayn equation)
+        filtered_data = self._recalculate_oxidation_rates(filtered_data)
+
         # 1. Raw 데이터 추출
         raw_points = self._extract_raw_points(filtered_data)
 
@@ -520,6 +523,68 @@ class MetabolismAnalyzer:
 
         if outliers_removed > 0:
             print(f"🔬 Filtered {outliers_removed} outlier values using rolling IQR")
+
+        return breath_data
+
+    def _recalculate_oxidation_rates(self, breath_data: List[Any]) -> List[Any]:
+        """
+        Recalculate Fat/CHO Oxidation Rates using Frayn Equation
+
+        Critical Step: After gas delay and outlier filtering, VO2/VCO2 values
+        have been modified. Fat/CHO oxidation must be recalculated to reflect
+        these cleaned values.
+
+        Frayn Equations (input VO2/VCO2 in L/min):
+        - Fat (g/min) = 1.67 * VO2 - 1.67 * VCO2
+        - CHO (g/min) = 4.55 * VCO2 - 3.21 * VO2
+
+        Note: Input VO2/VCO2 are typically in mL/min, so divide by 1000.
+        """
+        if len(breath_data) < 5:
+            return breath_data
+
+        print(f"🔬 Recalculating Fat/CHO oxidation rates from cleaned VO2/VCO2...")
+
+        recalculated = 0
+        set_to_none = 0
+
+        for bd in breath_data:
+            vo2 = getattr(bd, "vo2", None)
+            vco2 = getattr(bd, "vco2", None)
+
+            # If VO2 or VCO2 were filtered out (set to None), set oxidation to None too
+            if vo2 is None or vco2 is None:
+                bd.fat_oxidation = None
+                bd.cho_oxidation = None
+                set_to_none += 1
+                continue
+
+            try:
+                # Convert mL/min to L/min
+                vo2_l = vo2 / 1000.0
+                vco2_l = vco2 / 1000.0
+
+                # Frayn Equations
+                fat_ox = 1.67 * vo2_l - 1.67 * vco2_l
+                cho_ox = 4.55 * vco2_l - 3.21 * vo2_l
+
+                # Non-negative constraint (physiologically, can't have negative oxidation)
+                if self.config.non_negative_constraint:
+                    fat_ox = max(0.0, fat_ox)
+                    cho_ox = max(0.0, cho_ox)
+
+                bd.fat_oxidation = fat_ox
+                bd.cho_oxidation = cho_ox
+                recalculated += 1
+
+            except (TypeError, ValueError) as e:
+                bd.fat_oxidation = None
+                bd.cho_oxidation = None
+                set_to_none += 1
+
+        print(
+            f"🔬 Recalculated {recalculated} points, {set_to_none} points set to None (filtered)"
+        )
 
         return breath_data
 
