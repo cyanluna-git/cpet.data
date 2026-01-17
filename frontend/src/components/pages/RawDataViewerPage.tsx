@@ -103,7 +103,7 @@ const SELECTABLE_COLUMNS: ColumnDef[] = [
   { key: 'bike_power', label: 'Power(W)', group: 'basic', format: (v: number | null) => v?.toString() ?? '-' },
   { key: 'cadence', label: 'Cadence', group: 'basic', format: (v: number | null) => v?.toString() ?? '-' },
   { key: 'mets', label: 'METs', group: 'basic', format: (v: number | null) => v?.toFixed(1) ?? '-' },
-  
+
   // 호흡 지표
   { key: 've', label: 'VE', group: 'respiratory', format: (v: number | null) => v?.toFixed(1) ?? '-' },
   { key: 'vt', label: 'VT', group: 'respiratory', format: (v: number | null) => v?.toFixed(3) ?? '-' },
@@ -112,7 +112,7 @@ const SELECTABLE_COLUMNS: ColumnDef[] = [
   { key: 'fetco2', label: 'FetCO2', group: 'respiratory', format: (v: number | null) => v?.toFixed(2) ?? '-' },
   { key: 'feo2', label: 'FeO2', group: 'respiratory', format: (v: number | null) => v?.toFixed(2) ?? '-' },
   { key: 'feco2', label: 'FeCO2', group: 'respiratory', format: (v: number | null) => v?.toFixed(2) ?? '-' },
-  
+
   // 대사 지표
   { key: 'vo2', label: 'VO2', group: 'metabolic', format: (v: number | null) => v?.toFixed(1) ?? '-' },
   { key: 'vco2', label: 'VCO2', group: 'metabolic', format: (v: number | null) => v?.toFixed(1) ?? '-' },
@@ -121,7 +121,7 @@ const SELECTABLE_COLUMNS: ColumnDef[] = [
   { key: 'cho_oxidation', label: 'CHO(g/min)', group: 'metabolic', format: (v: number | null) => v?.toFixed(3) ?? '-' },
   { key: 'vo2_rel', label: 'VO2/kg', group: 'metabolic', format: (v: number | null) => v?.toFixed(1) ?? '-' },
   { key: 'ee_total', label: 'EE', group: 'metabolic', format: (v: number | null) => v?.toFixed(1) ?? '-' },
-  
+
   // 심폐 지표
   { key: 'vo2_hr', label: 'VO2/HR', group: 'cardio', format: (v: number | null) => v?.toFixed(1) ?? '-' },
   { key: 've_vo2', label: 'VE/VO2', group: 'cardio', format: (v: number | null) => v?.toFixed(1) ?? '-' },
@@ -180,6 +180,9 @@ const CHART_PRESETS = [
     x: 'bike_power',
     yLeft: ['fat_oxidation', 'cho_oxidation'],
     yRight: ['rer'],
+    xUnit: 'W',
+    yLeftUnit: 'g/min',
+    yRightUnit: '',
   },
   {
     key: 'rer',
@@ -187,6 +190,9 @@ const CHART_PRESETS = [
     x: 'bike_power',
     yLeft: ['rer'],
     yRight: [],
+    xUnit: 'W',
+    yLeftUnit: '',
+    yRightUnit: '',
   },
   {
     key: 'vo2',
@@ -194,6 +200,9 @@ const CHART_PRESETS = [
     x: 'bike_power',
     yLeft: ['vo2', 'vco2'],
     yRight: ['hr'],
+    xUnit: 'W',
+    yLeftUnit: 'mL/min',
+    yRightUnit: 'bpm',
   },
   {
     key: 'vt',
@@ -201,6 +210,9 @@ const CHART_PRESETS = [
     x: 'vo2',
     yLeft: ['ve_vo2', 've_vco2'],
     yRight: [],
+    xUnit: 'mL/min',
+    yLeftUnit: '',
+    yRightUnit: '',
   },
   {
     key: 'custom',
@@ -208,6 +220,9 @@ const CHART_PRESETS = [
     x: 't_sec',
     yLeft: [],
     yRight: [],
+    xUnit: 'sec',
+    yLeftUnit: '',
+    yRightUnit: '',
   },
 ];
 
@@ -227,9 +242,11 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   const [loadingSubjects, setLoadingSubjects] = useState(true);
   const [loadingTests, setLoadingTests] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  
+
   // 전처리 데이터 상태 추가
-  const [useProcessedData, setUseProcessedData] = useState(false);
+  type DataMode = 'raw' | 'smoothed' | 'trend';
+  const [dataMode, setDataMode] = useState<DataMode>('raw');
+  const useProcessedData = dataMode !== 'raw'; // 호환성 유지
   const [processedData, setProcessedData] = useState<any>(null);
   const [analysisData, setAnalysisData] = useState<any>(null);
 
@@ -248,7 +265,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   // Debounced values for API calls (prevents excessive requests during slider drag)
   const debouncedLoess = useDebounce(analysisSettings.loess, 500);
   const debouncedBin = useDebounce(analysisSettings.bin, 500);
-  
+
   // 컬럼 선택 상태
   const [selectedColumns, setSelectedColumns] = useState<string[]>(DEFAULT_SELECTED_COLUMNS);
   const [showColumnSelector, setShowColumnSelector] = useState(false);
@@ -271,8 +288,8 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
 
   // 컬럼 토글
   const toggleColumn = useCallback((key: string) => {
-    setSelectedColumns(prev => 
-      prev.includes(key) 
+    setSelectedColumns(prev =>
+      prev.includes(key)
         ? prev.filter(k => k !== key)
         : [...prev, key]
     );
@@ -282,7 +299,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   const toggleGroup = useCallback((group: string) => {
     const groupColumns = SELECTABLE_COLUMNS.filter(c => c.group === group).map(c => c.key);
     const allSelected = groupColumns.every(k => selectedColumns.includes(k));
-    
+
     if (allSelected) {
       setSelectedColumns(prev => prev.filter(k => !groupColumns.includes(k)));
     } else {
@@ -299,20 +316,20 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   const rawChartData = useMemo(() => {
     if (!rawData) return [];
     const data = rawData.data;
-    
+
     // Dynamic maxPoints based on data density and duration
     // For longer tests, allow more points to preserve detail
-    const totalDuration = data.length > 0 && data[data.length - 1]?.t_sec 
-      ? data[data.length - 1].t_sec 
+    const totalDuration = data.length > 0 && data[data.length - 1]?.t_sec
+      ? data[data.length - 1].t_sec
       : data.length * 5; // Assume 5s intervals if no t_sec
-    
+
     // Scale maxPoints with duration: 500 for 10min, up to 1000 for longer tests
     const maxPoints = Math.min(1000, Math.max(500, Math.floor((totalDuration ?? 600) / 1.2)));
-    
+
     if (data.length <= maxPoints) {
       return data;
     }
-    
+
     // Use uniform sampling that preserves data distribution
     const step = data.length / maxPoints;
     const sampled = [];
@@ -365,7 +382,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       });
       if (!response.ok) throw new Error('Failed to load subjects');
       const data = await response.json();
-      
+
       const options: SubjectOption[] = data.items.map((s: any) => ({
         id: s.id,
         name: s.encrypted_name || s.name || s.research_id,
@@ -373,7 +390,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       }));
       console.log('Loaded subjects:', options.length, 'Sample:', options[0]);
       setSubjects(options);
-      
+
       // 테스트 목록도 같이 로드
       await loadAllTests();
     } catch (error) {
@@ -393,9 +410,9 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       });
       if (!response.ok) throw new Error('Failed to load tests');
       const data = await response.json();
-      
+
       console.log('Loaded tests:', data.items?.length, 'Sample:', data.items?.[0]);
-      
+
       const options: TestOption[] = data.items.map((t: any) => ({
         test_id: t.test_id,
         source_filename: t.source_filename || 'Unknown',
@@ -415,7 +432,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   useEffect(() => {
     if (selectedSubjectId) {
       // UUID 문자열 비교 (대소문자 무시)
-      const filtered = tests.filter(t => 
+      const filtered = tests.filter(t =>
         String(t.subject_id).toLowerCase() === String(selectedSubjectId).toLowerCase()
       );
       console.log('Filtering tests for subject:', selectedSubjectId, 'Found:', filtered.length, 'of', tests.length);
@@ -451,7 +468,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   // 선택한 테스트의 raw data 로드
   async function loadRawData() {
     if (!selectedTestId) return;
-    
+
     try {
       setLoading(true);
       const token = getAuthToken();
@@ -476,7 +493,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   // 전처리된 데이터 로드 (TestAnalysis API 사용)
   async function loadProcessedData() {
     if (!selectedTestId) return;
-    
+
     try {
       setLoading(true);
       const token = getAuthToken();
@@ -493,25 +510,40 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       const data = await response.json();
       console.log('📊 Analysis API Response:', data);
       setAnalysisData(data);
-      
-      // processed_series를 차트 데이터로 변환
-      if (data.processed_series?.smoothed) {
-        console.log('✨ Processed Series Smoothed:', data.processed_series.smoothed.length, 'points');
-        const chartDataPoints = data.processed_series.smoothed.map((point: any) => ({
-          bike_power: point.power || 0,  // 차트 X축용으로 bike_power로 매핑
+
+      // dataMode에 따라 적절한 데이터 소스 선택
+      const sourceKey = dataMode === 'trend' ? 'trend' : 'smoothed';
+      const sourceData = data.processed_series?.[sourceKey] || data.processed_series?.smoothed;
+
+      if (sourceData && sourceData.length > 0) {
+        console.log(`✨ Using ${sourceKey} data:`, sourceData.length, 'points');
+        const chartDataPoints = sourceData.map((point: any) => ({
+          bike_power: point.power || 0,
           power: point.power || 0,
           fat_oxidation: point.fat_oxidation,
           cho_oxidation: point.cho_oxidation,
           rer: point.rer || null,
-          // 추가 계산된 값
           total_oxidation: (point.fat_oxidation || 0) + (point.cho_oxidation || 0),
         }));
         console.log('📈 Chart Data Points:', chartDataPoints.length, 'Sample:', chartDataPoints[0]);
-        setProcessedData({ data: chartDataPoints });
+        setProcessedData({
+          data: chartDataPoints,
+          // 모든 시리즈 저장 (차트 오버레이용)
+          allSeries: {
+            raw: data.processed_series?.raw || [],
+            binned: data.processed_series?.binned || [],
+            smoothed: data.processed_series?.smoothed || [],
+            trend: data.processed_series?.trend || [],
+          }
+        });
         setShowChart(true);
       } else {
-        console.warn('⚠️ No processed_series.smoothed in response');
-        toast.warning('전처리 데이터가 없습니다. Raw 데이터를 확인하세요.');
+        console.warn(`⚠️ No ${sourceKey} data in response, falling back...`);
+        if (dataMode === 'trend' && !data.processed_series?.trend) {
+          toast.warning('Trend 데이터가 없습니다. Smooth 모드를 사용하세요.');
+        } else {
+          toast.warning('전처리 데이터가 없습니다. Raw 데이터를 확인하세요.');
+        }
       }
     } catch (error) {
       console.error('❌ Load Processed Data Error:', error);
@@ -531,22 +563,22 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
 
   // 페이지네이션
   const totalPages = rawData ? Math.ceil(rawData.data.length / PAGE_SIZE) : 0;
-  const paginatedData = rawData 
+  const paginatedData = rawData
     ? rawData.data.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
     : [];
 
   // CSV 다운로드
   function downloadCSV() {
     if (!rawData) return;
-    
+
     const headers = displayColumns.map(c => c.label).join(',');
-    const rows = rawData.data.map(row => 
+    const rows = rawData.data.map(row =>
       displayColumns.map(col => {
         const value = (row as any)[col.key];
         return value ?? '';
       }).join(',')
     );
-    
+
     const csv = [headers, ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -618,30 +650,53 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
               </select>
             </div>
 
-            {/* 전처리 데이터 사용 체크박스 */}
+            {/* 3-Way 데이터 모드 토글 */}
             <div className="flex items-center gap-2 border-l pl-4">
-              <input
-                type="checkbox"
-                id="useProcessedData"
-                checked={useProcessedData}
-                onChange={(e) => {
-                  const checked = e.target.checked;
-                  setUseProcessedData(checked);
-                  if (checked && selectedTestId) {
-                    loadProcessedData();
-                  } else if (selectedTestId) {
-                    loadRawData();
-                  }
-                }}
-                disabled={!selectedTestId}
-                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-              />
-              <label
-                htmlFor="useProcessedData"
-                className={`text-sm font-medium ${!selectedTestId ? 'text-gray-400' : 'text-gray-700 cursor-pointer'}`}
-              >
-                전처리된 데이터 사용 (LOESS Smoothed)
-              </label>
+              <label className="text-sm font-medium text-gray-700">데이터 표시:</label>
+              <div className="inline-flex rounded-md shadow-sm" role="group">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDataMode('raw');
+                    if (selectedTestId) loadRawData();
+                  }}
+                  disabled={!selectedTestId}
+                  className={`px-3 py-1.5 text-sm font-medium border ${dataMode === 'raw'
+                    ? 'bg-blue-600 text-white border-blue-600 z-10'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    } rounded-l-md focus:z-10 focus:ring-2 focus:ring-blue-500 disabled:opacity-50`}
+                >
+                  Raw
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDataMode('smoothed');
+                    if (selectedTestId) loadProcessedData();
+                  }}
+                  disabled={!selectedTestId}
+                  className={`px-3 py-1.5 text-sm font-medium border-t border-b ${dataMode === 'smoothed'
+                    ? 'bg-blue-600 text-white border-blue-600 z-10'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    } focus:z-10 focus:ring-2 focus:ring-blue-500 disabled:opacity-50`}
+                >
+                  Smooth
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDataMode('trend');
+                    if (selectedTestId) loadProcessedData();
+                  }}
+                  disabled={!selectedTestId}
+                  className={`px-3 py-1.5 text-sm font-medium border ${dataMode === 'trend'
+                    ? 'bg-blue-600 text-white border-blue-600 z-10'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    } rounded-r-md focus:z-10 focus:ring-2 focus:ring-blue-500 disabled:opacity-50`}
+                >
+                  Trend
+                </button>
+              </div>
             </div>
 
             {/* 전처리 파라미터 컨트롤 */}
@@ -699,7 +754,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
               CSV
             </Button>
           </div>
-          
+
           {/* 선택된 정보 표시 */}
           {(rawData || processedData) && (
             <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-4 text-sm text-gray-600 flex-wrap">
@@ -825,213 +880,216 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                     </div>
                   </div>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                  {QUAD_PRESETS.map((preset, presetIndex) => {
-                    const data = getChartDataForPreset(preset.x, preset.yLeft, preset.yRight);
-                    const xLabel = CHART_COLUMNS.find(c => c.key === preset.x)?.label || preset.x;
-                    return (
-                      <div key={preset.key} className="rounded-lg border border-gray-200 bg-white p-2">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-gray-700">{preset.label}</span>
-                          <span className="text-[11px] text-gray-400">X: {xLabel}</span>
-                        </div>
-                        {data.length === 0 ? (
-                          <div className="aspect-square w-full flex items-center justify-center text-xs text-gray-400">
-                            데이터 없음
+                    {QUAD_PRESETS.map((preset, presetIndex) => {
+                      const data = getChartDataForPreset(preset.x, preset.yLeft, preset.yRight);
+                      const xLabel = CHART_COLUMNS.find(c => c.key === preset.x)?.label || preset.x;
+                      return (
+                        <div key={preset.key} className="rounded-lg border border-gray-200 bg-white p-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-semibold text-gray-700">{preset.label}</span>
+                            <span className="text-[11px] text-gray-400">X: {xLabel}</span>
                           </div>
-                        ) : (
-                          <div className="aspect-[4/3] w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <ComposedChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 10 }} syncId="rawDataViewer">
-                                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                <XAxis
-                                  dataKey={preset.x}
-                                  type="number"
-                                  domain={['dataMin', 'dataMax']}
-                                  tick={{ fontSize: 10 }}
-                                  tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
-                                />
-                                <YAxis
-                                  yAxisId="left"
-                                  type="number"
-                                  domain={preset.key === 'rer' ? [0.6, 1.2] : ['auto', 'auto']}
-                                  allowDataOverflow={preset.key === 'rer'}
-                                  tick={{ fontSize: 10 }}
-                                  tickFormatter={(v) => typeof v === 'number' ? (preset.key === 'rer' ? v.toFixed(2) : v.toFixed(0)) : v}
-                                />
-                                {preset.yRight.length > 0 && (
-                                  <YAxis
-                                    yAxisId="right"
-                                    orientation="right"
+                          {data.length === 0 ? (
+                            <div className="aspect-square w-full flex items-center justify-center text-xs text-gray-400">
+                              데이터 없음
+                            </div>
+                          ) : (
+                            <div className="aspect-[4/3] w-full">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <ComposedChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 10 }} syncId="rawDataViewer">
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                  <XAxis
+                                    dataKey={preset.x}
                                     type="number"
-                                    domain={['auto', 'auto']}
+                                    domain={['dataMin', 'dataMax']}
                                     tick={{ fontSize: 10 }}
                                     tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
+                                    label={preset.xUnit ? { value: preset.xUnit, position: 'insideBottomRight', offset: -5, style: { fontSize: 10, fill: '#6b7280' } } : undefined}
                                   />
-                                )}
-                                <ZAxis range={[20, 20]} />
-                                <Tooltip
-                                  contentStyle={{ fontSize: 11 }}
-                                  formatter={(value: any, name: string) => {
-                                    const col = CHART_COLUMNS.find(c => c.key === name);
-                                    return [typeof value === 'number' ? value.toFixed(2) : value, col?.label || name];
-                                  }}
-                                  labelFormatter={(label) => `${xLabel}: ${typeof label === 'number' ? label.toFixed(1) : label}`}
-                                />
-                                {/* FatMax Zone (90% MFO range) - render as subtle background area */}
-                                {analysisData?.metabolic_markers?.fat_max?.zone_min &&
-                                 analysisData?.metabolic_markers?.fat_max?.zone_max &&
-                                 preset.key === 'fatmax' && (
-                                  <ReferenceArea
-                                    x1={analysisData.metabolic_markers.fat_max.zone_min}
-                                    x2={analysisData.metabolic_markers.fat_max.zone_max}
+                                  <YAxis
                                     yAxisId="left"
-                                    fill="#3B82F6"
-                                    fillOpacity={0.1}
-                                    stroke="#3B82F6"
-                                    strokeOpacity={0.3}
-                                    strokeDasharray="3 3"
+                                    type="number"
+                                    domain={preset.key === 'rer' ? [0.6, 1.2] : ['auto', 'auto']}
+                                    allowDataOverflow={preset.key === 'rer'}
+                                    tick={{ fontSize: 10 }}
+                                    tickFormatter={(v) => typeof v === 'number' ? (preset.key === 'rer' ? v.toFixed(2) : preset.key === 'fatmax' ? v.toFixed(2) : v.toFixed(0)) : v}
+                                    label={preset.yLeftUnit ? { value: preset.yLeftUnit, angle: -90, position: 'insideLeft', style: { fontSize: 10, fill: '#6b7280' } } : undefined}
                                   />
-                                )}
-                                {/* FatMax line with label at top */}
-                                {analysisData?.metabolic_markers?.fat_max?.power && preset.key === 'fatmax' && (
-                                  <ReferenceLine
-                                    x={analysisData.metabolic_markers.fat_max.power}
-                                    yAxisId="left"
-                                    stroke="#DC2626"
-                                    strokeDasharray="5 5"
-                                    strokeWidth={2}
-                                  >
-                                    <Label
-                                      value={`FatMax ${analysisData.metabolic_markers.fat_max.power}W`}
-                                      position="top"
-                                      dy={-5}
-                                      fill="#DC2626"
-                                      fontSize={11}
-                                      fontWeight={600}
+                                  {preset.yRight.length > 0 && (
+                                    <YAxis
+                                      yAxisId="right"
+                                      orientation="right"
+                                      type="number"
+                                      domain={['auto', 'auto']}
+                                      tick={{ fontSize: 10 }}
+                                      tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
+                                      label={preset.yRightUnit ? { value: preset.yRightUnit, angle: 90, position: 'insideRight', style: { fontSize: 10, fill: '#6b7280' } } : undefined}
                                     />
-                                  </ReferenceLine>
-                                )}
-                                {/* Crossover line with label staggered lower to avoid overlap */}
-                                {analysisData?.metabolic_markers?.crossover?.power && preset.key === 'fatmax' && (
-                                  <ReferenceLine
-                                    x={analysisData.metabolic_markers.crossover.power}
-                                    yAxisId="left"
-                                    stroke="#8B5CF6"
-                                    strokeDasharray="3 3"
-                                    strokeWidth={2}
-                                  >
-                                    <Label
-                                      value={`Crossover ${analysisData.metabolic_markers.crossover.power}W`}
-                                      position="insideTop"
-                                      dy={15}
-                                      fill="#8B5CF6"
-                                      fontSize={10}
-                                    />
-                                  </ReferenceLine>
-                                )}
-                                {/* VT1 and VT2 reference lines for VT Analysis chart */}
-                                {analysisData?.vt1_vo2 && preset.key === 'vt' && (
-                                  <ReferenceLine
-                                    x={analysisData.vt1_vo2}
-                                    yAxisId="left"
-                                    stroke="#22C55E"
-                                    strokeDasharray="4 4"
-                                    strokeWidth={2}
-                                  >
-                                    <Label value="VT1" position="top" fill="#22C55E" fontSize={11} />
-                                  </ReferenceLine>
-                                )}
-                                {analysisData?.vt2_vo2 && preset.key === 'vt' && (
-                                  <ReferenceLine
-                                    x={analysisData.vt2_vo2}
-                                    yAxisId="left"
-                                    stroke="#EF4444"
-                                    strokeDasharray="4 4"
-                                    strokeWidth={2}
-                                  >
-                                    <Label value="VT2" position="top" fill="#EF4444" fontSize={11} />
-                                  </ReferenceLine>
-                                )}
-                                {useProcessedData ? (
-                                  <>
-                                    {preset.yLeft.map((key, idx) => {
-                                      const col = CHART_COLUMNS.find(c => c.key === key);
-                                      return (
-                                        <Line
-                                          key={`${preset.key}-left-${key}`}
-                                          yAxisId="left"
-                                          type="monotone"
-                                          dataKey={key}
-                                          name={col?.label || key}
-                                          stroke={CHART_COLORS[(presetIndex + idx) % CHART_COLORS.length]}
-                                          strokeWidth={2.5}
-                                          dot={false}
-                                        />
-                                      );
-                                    })}
-                                    {preset.yRight.map((key, idx) => {
-                                      const col = CHART_COLUMNS.find(c => c.key === key);
-                                      return (
-                                        <Line
-                                          key={`${preset.key}-right-${key}`}
-                                          yAxisId="right"
-                                          type="monotone"
-                                          dataKey={key}
-                                          name={col?.label || key}
-                                          stroke={CHART_COLORS[(presetIndex + preset.yLeft.length + idx) % CHART_COLORS.length]}
-                                          strokeWidth={2}
-                                          strokeDasharray="5 5"
-                                          dot={false}
-                                        />
-                                      );
-                                    })}
-                                  </>
-                                ) : (
-                                  <>
-                                    {preset.yLeft.map((key, idx) => {
-                                      const col = CHART_COLUMNS.find(c => c.key === key);
-                                      return (
-                                        <Scatter
-                                          key={`${preset.key}-left-${key}`}
-                                          yAxisId="left"
-                                          dataKey={key}
-                                          name={col?.label || key}
-                                          fill={CHART_COLORS[(presetIndex + idx) % CHART_COLORS.length]}
-                                          line={{ stroke: CHART_COLORS[(presetIndex + idx) % CHART_COLORS.length], strokeWidth: 1 }}
-                                          lineType="joint"
-                                        />
-                                      );
-                                    })}
-                                    {preset.yRight.map((key, idx) => {
-                                      const col = CHART_COLUMNS.find(c => c.key === key);
-                                      return (
-                                        <Scatter
-                                          key={`${preset.key}-right-${key}`}
-                                          yAxisId="right"
-                                          dataKey={key}
-                                          name={col?.label || key}
-                                          fill={CHART_COLORS[(presetIndex + preset.yLeft.length + idx) % CHART_COLORS.length]}
-                                          line={{ stroke: CHART_COLORS[(presetIndex + preset.yLeft.length + idx) % CHART_COLORS.length], strokeWidth: 1, strokeDasharray: '5 5' }}
-                                          lineType="joint"
-                                          shape="cross"
-                                        />
-                                      );
-                                    })}
-                                  </>
-                                )}
-                              </ComposedChart>
-                            </ResponsiveContainer>
-                          </div>
-                        )}
-                        <div className="mt-2 text-[11px] text-gray-400">
-                          Y-left: {preset.yLeft.map(k => CHART_COLUMNS.find(c => c.key === k)?.label).join(', ')}
-                          {preset.yRight.length > 0 && (
-                            <> · Y-right: {preset.yRight.map(k => CHART_COLUMNS.find(c => c.key === k)?.label).join(', ')}</>
+                                  )}
+                                  <ZAxis range={[20, 20]} />
+                                  <Tooltip
+                                    contentStyle={{ fontSize: 11 }}
+                                    formatter={(value: any, name: string) => {
+                                      const col = CHART_COLUMNS.find(c => c.key === name);
+                                      return [typeof value === 'number' ? value.toFixed(2) : value, col?.label || name];
+                                    }}
+                                    labelFormatter={(label) => `${xLabel}: ${typeof label === 'number' ? label.toFixed(1) : label}`}
+                                  />
+                                  {/* FatMax Zone (90% MFO range) - render as subtle background area */}
+                                  {analysisData?.metabolic_markers?.fat_max?.zone_min &&
+                                    analysisData?.metabolic_markers?.fat_max?.zone_max &&
+                                    preset.key === 'fatmax' && (
+                                      <ReferenceArea
+                                        x1={analysisData.metabolic_markers.fat_max.zone_min}
+                                        x2={analysisData.metabolic_markers.fat_max.zone_max}
+                                        yAxisId="left"
+                                        fill="#3B82F6"
+                                        fillOpacity={0.1}
+                                        stroke="#3B82F6"
+                                        strokeOpacity={0.3}
+                                        strokeDasharray="3 3"
+                                      />
+                                    )}
+                                  {/* FatMax line with label at top */}
+                                  {analysisData?.metabolic_markers?.fat_max?.power && preset.key === 'fatmax' && (
+                                    <ReferenceLine
+                                      x={analysisData.metabolic_markers.fat_max.power}
+                                      yAxisId="left"
+                                      stroke="#DC2626"
+                                      strokeDasharray="5 5"
+                                      strokeWidth={2}
+                                    >
+                                      <Label
+                                        value={`FatMax ${analysisData.metabolic_markers.fat_max.power}W`}
+                                        position="top"
+                                        dy={-5}
+                                        fill="#DC2626"
+                                        fontSize={11}
+                                        fontWeight={600}
+                                      />
+                                    </ReferenceLine>
+                                  )}
+                                  {/* Crossover line with label staggered lower to avoid overlap */}
+                                  {analysisData?.metabolic_markers?.crossover?.power && preset.key === 'fatmax' && (
+                                    <ReferenceLine
+                                      x={analysisData.metabolic_markers.crossover.power}
+                                      yAxisId="left"
+                                      stroke="#8B5CF6"
+                                      strokeDasharray="3 3"
+                                      strokeWidth={2}
+                                    >
+                                      <Label
+                                        value={`Crossover ${analysisData.metabolic_markers.crossover.power}W`}
+                                        position="insideTop"
+                                        dy={15}
+                                        fill="#8B5CF6"
+                                        fontSize={10}
+                                      />
+                                    </ReferenceLine>
+                                  )}
+                                  {/* VT1 and VT2 reference lines for VT Analysis chart */}
+                                  {analysisData?.vt1_vo2 && preset.key === 'vt' && (
+                                    <ReferenceLine
+                                      x={analysisData.vt1_vo2}
+                                      yAxisId="left"
+                                      stroke="#22C55E"
+                                      strokeDasharray="4 4"
+                                      strokeWidth={2}
+                                    >
+                                      <Label value="VT1" position="top" fill="#22C55E" fontSize={11} />
+                                    </ReferenceLine>
+                                  )}
+                                  {analysisData?.vt2_vo2 && preset.key === 'vt' && (
+                                    <ReferenceLine
+                                      x={analysisData.vt2_vo2}
+                                      yAxisId="left"
+                                      stroke="#EF4444"
+                                      strokeDasharray="4 4"
+                                      strokeWidth={2}
+                                    >
+                                      <Label value="VT2" position="top" fill="#EF4444" fontSize={11} />
+                                    </ReferenceLine>
+                                  )}
+                                  {useProcessedData ? (
+                                    <>
+                                      {preset.yLeft.map((key, idx) => {
+                                        const col = CHART_COLUMNS.find(c => c.key === key);
+                                        return (
+                                          <Line
+                                            key={`${preset.key}-left-${key}`}
+                                            yAxisId="left"
+                                            type="monotone"
+                                            dataKey={key}
+                                            name={col?.label || key}
+                                            stroke={CHART_COLORS[(presetIndex + idx) % CHART_COLORS.length]}
+                                            strokeWidth={2.5}
+                                            dot={false}
+                                          />
+                                        );
+                                      })}
+                                      {preset.yRight.map((key, idx) => {
+                                        const col = CHART_COLUMNS.find(c => c.key === key);
+                                        return (
+                                          <Line
+                                            key={`${preset.key}-right-${key}`}
+                                            yAxisId="right"
+                                            type="monotone"
+                                            dataKey={key}
+                                            name={col?.label || key}
+                                            stroke={CHART_COLORS[(presetIndex + preset.yLeft.length + idx) % CHART_COLORS.length]}
+                                            strokeWidth={2}
+                                            strokeDasharray="5 5"
+                                            dot={false}
+                                          />
+                                        );
+                                      })}
+                                    </>
+                                  ) : (
+                                    <>
+                                      {preset.yLeft.map((key, idx) => {
+                                        const col = CHART_COLUMNS.find(c => c.key === key);
+                                        return (
+                                          <Scatter
+                                            key={`${preset.key}-left-${key}`}
+                                            yAxisId="left"
+                                            dataKey={key}
+                                            name={col?.label || key}
+                                            fill={CHART_COLORS[(presetIndex + idx) % CHART_COLORS.length]}
+                                            line={{ stroke: CHART_COLORS[(presetIndex + idx) % CHART_COLORS.length], strokeWidth: 1 }}
+                                            lineType="joint"
+                                          />
+                                        );
+                                      })}
+                                      {preset.yRight.map((key, idx) => {
+                                        const col = CHART_COLUMNS.find(c => c.key === key);
+                                        return (
+                                          <Scatter
+                                            key={`${preset.key}-right-${key}`}
+                                            yAxisId="right"
+                                            dataKey={key}
+                                            name={col?.label || key}
+                                            fill={CHART_COLORS[(presetIndex + preset.yLeft.length + idx) % CHART_COLORS.length]}
+                                            line={{ stroke: CHART_COLORS[(presetIndex + preset.yLeft.length + idx) % CHART_COLORS.length], strokeWidth: 1, strokeDasharray: '5 5' }}
+                                            lineType="joint"
+                                            shape="cross"
+                                          />
+                                        );
+                                      })}
+                                    </>
+                                  )}
+                                </ComposedChart>
+                              </ResponsiveContainer>
+                            </div>
                           )}
+                          <div className="mt-2 text-[11px] text-gray-400">
+                            Y-left: {preset.yLeft.map(k => CHART_COLUMNS.find(c => c.key === k)?.label).join(', ')}
+                            {preset.yRight.length > 0 && (
+                              <> · Y-right: {preset.yRight.map(k => CHART_COLUMNS.find(c => c.key === k)?.label).join(', ')}</>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1065,102 +1123,101 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                   </Button>
                   {showRawTable && (
                     <>
-                  {/* 컬럼 선택기 */}
-                  <div className="relative" ref={columnSelectorRef}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowColumnSelector(!showColumnSelector)}
-                      className="gap-1"
-                    >
-                      <Settings2 className="w-4 h-4" />
-                      컬럼 선택
-                    </Button>
-                    
-                    {showColumnSelector && (
-                      <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto">
-                        <div className="p-3 border-b bg-gray-50">
-                          <div className="flex justify-between items-center">
-                            <span className="font-medium text-sm">표시할 컬럼 선택</span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setSelectedColumns(DEFAULT_SELECTED_COLUMNS)}
-                              className="text-xs h-6 px-2"
-                            >
-                              기본값
-                            </Button>
-                          </div>
-                        </div>
-                        
-                        {(Object.keys(COLUMN_GROUPS) as Array<keyof typeof COLUMN_GROUPS>).map(group => {
-                          const groupColumns = SELECTABLE_COLUMNS.filter(c => c.group === group);
-                          const allSelected = groupColumns.every(c => selectedColumns.includes(c.key));
-                          const someSelected = groupColumns.some(c => selectedColumns.includes(c.key));
-                          
-                          return (
-                            <div key={group} className="border-b last:border-b-0">
-                              <div 
-                                className="flex items-center gap-2 p-2 bg-gray-50 cursor-pointer hover:bg-gray-100"
-                                onClick={() => toggleGroup(group)}
-                              >
-                                <div className={`w-4 h-4 rounded border flex items-center justify-center ${
-                                  allSelected ? 'bg-[#2563EB] border-[#2563EB]' : 
-                                  someSelected ? 'bg-[#2563EB]/50 border-[#2563EB]' : 'border-gray-300'
-                                }`}>
-                                  {allSelected && <Check className="w-3 h-3 text-white" />}
-                                </div>
-                                <span className={`px-2 py-0.5 text-xs rounded ${COLUMN_GROUPS[group].color}`}>
-                                  {COLUMN_GROUPS[group].label}
-                                </span>
-                                <span className="text-xs text-gray-500">
-                                  ({groupColumns.filter(c => selectedColumns.includes(c.key)).length}/{groupColumns.length})
-                                </span>
-                              </div>
-                              <div className="px-3 py-2 grid grid-cols-2 gap-1">
-                                {groupColumns.map(col => (
-                                  <label 
-                                    key={col.key} 
-                                    className="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50 cursor-pointer text-sm"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedColumns.includes(col.key)}
-                                      onChange={() => toggleColumn(col.key)}
-                                      className="w-3.5 h-3.5 rounded border-gray-300 text-[#2563EB] focus:ring-[#2563EB]"
-                                    />
-                                    {col.label}
-                                  </label>
-                                ))}
+                      {/* 컬럼 선택기 */}
+                      <div className="relative" ref={columnSelectorRef}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowColumnSelector(!showColumnSelector)}
+                          className="gap-1"
+                        >
+                          <Settings2 className="w-4 h-4" />
+                          컬럼 선택
+                        </Button>
+
+                        {showColumnSelector && (
+                          <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto">
+                            <div className="p-3 border-b bg-gray-50">
+                              <div className="flex justify-between items-center">
+                                <span className="font-medium text-sm">표시할 컬럼 선택</span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setSelectedColumns(DEFAULT_SELECTED_COLUMNS)}
+                                  className="text-xs h-6 px-2"
+                                >
+                                  기본값
+                                </Button>
                               </div>
                             </div>
-                          );
-                        })}
+
+                            {(Object.keys(COLUMN_GROUPS) as Array<keyof typeof COLUMN_GROUPS>).map(group => {
+                              const groupColumns = SELECTABLE_COLUMNS.filter(c => c.group === group);
+                              const allSelected = groupColumns.every(c => selectedColumns.includes(c.key));
+                              const someSelected = groupColumns.some(c => selectedColumns.includes(c.key));
+
+                              return (
+                                <div key={group} className="border-b last:border-b-0">
+                                  <div
+                                    className="flex items-center gap-2 p-2 bg-gray-50 cursor-pointer hover:bg-gray-100"
+                                    onClick={() => toggleGroup(group)}
+                                  >
+                                    <div className={`w-4 h-4 rounded border flex items-center justify-center ${allSelected ? 'bg-[#2563EB] border-[#2563EB]' :
+                                      someSelected ? 'bg-[#2563EB]/50 border-[#2563EB]' : 'border-gray-300'
+                                      }`}>
+                                      {allSelected && <Check className="w-3 h-3 text-white" />}
+                                    </div>
+                                    <span className={`px-2 py-0.5 text-xs rounded ${COLUMN_GROUPS[group].color}`}>
+                                      {COLUMN_GROUPS[group].label}
+                                    </span>
+                                    <span className="text-xs text-gray-500">
+                                      ({groupColumns.filter(c => selectedColumns.includes(c.key)).length}/{groupColumns.length})
+                                    </span>
+                                  </div>
+                                  <div className="px-3 py-2 grid grid-cols-2 gap-1">
+                                    {groupColumns.map(col => (
+                                      <label
+                                        key={col.key}
+                                        className="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50 cursor-pointer text-sm"
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedColumns.includes(col.key)}
+                                          onChange={() => toggleColumn(col.key)}
+                                          className="w-3.5 h-3.5 rounded border-gray-300 text-[#2563EB] focus:ring-[#2563EB]"
+                                        />
+                                        {col.label}
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  
-                  <div className="w-px h-6 bg-gray-300" />
-                  
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </Button>
-                  <span className="text-sm text-gray-600">
-                    {currentPage} / {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </Button>
+
+                      <div className="w-px h-6 bg-gray-300" />
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </Button>
+                      <span className="text-sm text-gray-600">
+                        {currentPage} / {totalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </Button>
                     </>
                   )}
                 </div>
@@ -1199,7 +1256,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                       </tbody>
                     </table>
                   </div>
-                  
+
                   {/* 오른쪽 스크롤 가능 영역 */}
                   <div className="overflow-x-auto flex-1">
                     <table className="text-sm w-full">
@@ -1209,12 +1266,11 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                             <th key={col.key} className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">
                               <span className="flex items-center gap-1">
                                 {col.label}
-                                <span className={`w-2 h-2 rounded-full ${
-                                  col.group === 'basic' ? 'bg-blue-400' :
+                                <span className={`w-2 h-2 rounded-full ${col.group === 'basic' ? 'bg-blue-400' :
                                   col.group === 'respiratory' ? 'bg-green-400' :
-                                  col.group === 'metabolic' ? 'bg-orange-400' :
-                                  'bg-purple-400'
-                                }`} title={COLUMN_GROUPS[col.group as keyof typeof COLUMN_GROUPS].label} />
+                                    col.group === 'metabolic' ? 'bg-orange-400' :
+                                      'bg-purple-400'
+                                  }`} title={COLUMN_GROUPS[col.group as keyof typeof COLUMN_GROUPS].label} />
                               </span>
                             </th>
                           ))}
@@ -1238,7 +1294,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
             )}
           </Card>
         ) : null}
-        
+
         {/* 빈 상태 표시 */}
         {!loading && !rawData && (
           <Card className="p-12 text-center text-gray-400">

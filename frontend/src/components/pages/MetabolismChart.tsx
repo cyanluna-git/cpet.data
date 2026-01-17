@@ -14,7 +14,7 @@ import {
 } from 'recharts';
 import type { ProcessedSeries, MetabolicMarkers } from '@/lib/api';
 
-export type DataMode = 'smoothed' | 'binned' | 'raw';
+export type DataMode = 'raw' | 'smoothed' | 'trend';
 
 interface MetabolismChartProps {
   data: Array<{
@@ -69,10 +69,10 @@ export function MetabolismChart({
 
     switch (dataMode) {
       case 'raw':
-        sourceData = processedSeries.raw;
+        sourceData = processedSeries.binned; // Use binned for scatter display
         break;
-      case 'binned':
-        sourceData = processedSeries.binned;
+      case 'trend':
+        sourceData = processedSeries.trend || processedSeries.smoothed;
         break;
       case 'smoothed':
       default:
@@ -88,6 +88,9 @@ export function MetabolismChart({
       totalCalories: point.fat_oxidation !== null && point.cho_oxidation !== null
         ? Math.round((point.fat_oxidation * 9.75 + point.cho_oxidation * 4.07) * 60 * 24)
         : 0,
+      // Keep g/min values for tooltip
+      fatGMin: point.fat_oxidation,
+      choGMin: point.cho_oxidation,
     })).filter(d => d.power >= 50 && d.power <= 300).sort((a, b) => a.power - b.power);
   };
 
@@ -121,8 +124,8 @@ export function MetabolismChart({
         )}
         {processedSeries && (
           <p className="text-xs text-gray-500 mt-1">
-            Data: {dataMode === 'smoothed' ? 'LOESS Smoothed' : dataMode === 'binned' ? '10W Binned' : 'Raw'}
-            {showRawOverlay && dataMode === 'smoothed' && ' + Binned overlay'}
+            Data: {dataMode === 'smoothed' ? 'LOESS Smoothed' : dataMode === 'trend' ? 'Polynomial Trend' : 'Binned'}
+            {showRawOverlay && dataMode !== 'raw' && ' + overlay'}
           </p>
         )}
       </div>
@@ -143,7 +146,13 @@ export function MetabolismChart({
             tick={{ fill: '#6b7280', fontSize: 12 }}
           />
           <YAxis
-            label={{ value: 'Calories', angle: -90, position: 'insideLeft', style: { fill: '#6b7280' } }}
+            label={{
+              value: 'kcal/day',
+              angle: -90,
+              position: 'insideLeft',
+              style: { fill: '#6b7280', fontSize: 11 },
+              offset: 10
+            }}
             tick={{ fill: '#6b7280', fontSize: 12 }}
             domain={yDomain}
           />
@@ -154,9 +163,15 @@ export function MetabolismChart({
                 return (
                   <div className="bg-white p-3 border border-gray-300 rounded shadow-lg">
                     <p className="font-semibold text-sm mb-1">{`${dataPoint.power} W`}</p>
-                    <p className="text-xs text-gray-600">{`지방 연소: ${dataPoint.fatOxidation} Cal`}</p>
-                    <p className="text-xs text-gray-600">{`탄수화물: ${dataPoint.choOxidation} Cal`}</p>
-                    <p className="text-xs text-gray-800 font-semibold">{`총 칼로리: ${dataPoint.totalCalories} Cal`}</p>
+                    <p className="text-xs text-yellow-700">
+                      {`Fat: ${dataPoint.fatGMin?.toFixed(2) || '—'} g/min (${dataPoint.fatOxidation} kcal/day)`}
+                    </p>
+                    <p className="text-xs text-teal-700">
+                      {`CHO: ${dataPoint.choGMin?.toFixed(2) || '—'} g/min (${dataPoint.choOxidation} kcal/day)`}
+                    </p>
+                    <p className="text-xs text-gray-800 font-semibold mt-1">
+                      {`Total: ${dataPoint.totalCalories} kcal/day`}
+                    </p>
                   </div>
                 );
               }
