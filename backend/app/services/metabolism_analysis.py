@@ -290,6 +290,7 @@ class MetabolismAnalyzer:
                 power=float(bd.bike_power),
                 fat_oxidation=float(bd.fat_oxidation) if bd.fat_oxidation else None,
                 cho_oxidation=float(bd.cho_oxidation) if bd.cho_oxidation else None,
+                rer=float(bd.rer) if bd.rer else None,
                 count=1
             ))
         return points
@@ -309,7 +310,8 @@ class MetabolismAnalyzer:
             {
                 "power": p.power,
                 "fat_oxidation": p.fat_oxidation,
-                "cho_oxidation": p.cho_oxidation
+                "cho_oxidation": p.cho_oxidation,
+                "rer": p.rer
             }
             for p in raw_points
         ])
@@ -325,12 +327,14 @@ class MetabolismAnalyzer:
             agg_df = df.groupby("power_bin").agg({
                 "fat_oxidation": "median",
                 "cho_oxidation": "median",
+                "rer": "median",
                 "power": "count"
             }).reset_index()
         elif agg_method == "mean":
             agg_df = df.groupby("power_bin").agg({
                 "fat_oxidation": "mean",
                 "cho_oxidation": "mean",
+                "rer": "mean",
                 "power": "count"
             }).reset_index()
         elif agg_method == "trimmed_mean":
@@ -344,6 +348,7 @@ class MetabolismAnalyzer:
             agg_df = df.groupby("power_bin").agg({
                 "fat_oxidation": safe_trim_mean,
                 "cho_oxidation": safe_trim_mean,
+                "rer": safe_trim_mean,
                 "power": "count"
             }).reset_index()
         else:
@@ -351,6 +356,7 @@ class MetabolismAnalyzer:
             agg_df = df.groupby("power_bin").agg({
                 "fat_oxidation": "median",
                 "cho_oxidation": "median",
+                "rer": "median",
                 "power": "count"
             }).reset_index()
 
@@ -362,6 +368,7 @@ class MetabolismAnalyzer:
         for _, row in agg_df.iterrows():
             fat_ox = float(row["fat_oxidation"]) if pd.notna(row["fat_oxidation"]) else None
             cho_ox = float(row["cho_oxidation"]) if pd.notna(row["cho_oxidation"]) else None
+            rer_val = float(row["rer"]) if pd.notna(row["rer"]) else None
             
             # Non-negative constraint
             if self.config.non_negative_constraint:
@@ -374,6 +381,7 @@ class MetabolismAnalyzer:
                 power=float(row["power_bin"]),
                 fat_oxidation=fat_ox,
                 cho_oxidation=cho_ox,
+                rer=rer_val,
                 count=int(row["count"])
             ))
 
@@ -401,6 +409,7 @@ class MetabolismAnalyzer:
         powers = np.array([p.power for p in binned_points])
         fat_ox = np.array([p.fat_oxidation if p.fat_oxidation is not None else 0 for p in binned_points])
         cho_ox = np.array([p.cho_oxidation if p.cho_oxidation is not None else 0 for p in binned_points])
+        rer_vals = np.array([p.rer if p.rer is not None else np.nan for p in binned_points])
 
         # LOESS smoothing
         try:
@@ -410,12 +419,30 @@ class MetabolismAnalyzer:
 
             fat_smoothed = lowess(fat_ox, powers, frac=frac, return_sorted=True)
             cho_smoothed = lowess(cho_ox, powers, frac=frac, return_sorted=True)
+            
+            # RER smoothing (NaN이 아닌 값들만 사용)
+            rer_smoothed = None
+            if not np.all(np.isnan(rer_vals)):
+                valid_idx = ~np.isnan(rer_vals)
+                if np.sum(valid_idx) >= 4:  # 최소 4개 이상의 유효값이 있을 때만
+                    rer_smoothed = lowess(rer_vals[valid_idx], powers[valid_idx], frac=frac, return_sorted=True)
 
             # 결과 생성 (물리적 제약: >= 0)
             smoothed_points = []
             for i in range(len(fat_smoothed)):
                 fat_val = float(fat_smoothed[i, 1])
                 cho_val = float(cho_smoothed[i, 1])
+                
+                # RER 값 보간
+                rer_val = None
+                if rer_smoothed is not None:
+                    power_val = fat_smoothed[i, 0]
+                    # 가장 가까운 power 값의 RER 사용
+                    idx = np.argmin(np.abs(rer_smoothed[:, 0] - power_val))
+                    rer_val = float(rer_smoothed[idx, 1])
+                    # RER 물리적 제약 (0.7~1.2)
+                    if not (0.5 <= rer_val <= 1.5):
+                        rer_val = None
                 
                 # NaN 체크 및 처리
                 if math.isnan(fat_val) or math.isinf(fat_val):
@@ -432,6 +459,7 @@ class MetabolismAnalyzer:
                     power=float(fat_smoothed[i, 0]),
                     fat_oxidation=fat_val,
                     cho_oxidation=cho_val,
+                    rer=rer_val,
                     count=None
                 ))
 

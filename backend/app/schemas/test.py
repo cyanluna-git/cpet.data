@@ -246,6 +246,7 @@ class ProcessedDataPoint(BaseModel):
     power: float
     fat_oxidation: Optional[float] = None
     cho_oxidation: Optional[float] = None
+    rer: Optional[float] = None
     count: Optional[int] = None  # binned data only
 
 
