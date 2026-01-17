@@ -710,7 +710,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                       const dateStr = new Date(t.test_date).toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' });
                       return (
                         <option key={t.test_id} value={t.test_id}>
-                          {t.subject_name} | {dateStr} | {protocolLabel} | {validLabel}
+                          {dateStr} | {protocolLabel} | {validLabel}
                         </option>
                       );
                     })}
