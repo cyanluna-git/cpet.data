@@ -523,14 +523,37 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
 
       if (sourceData && sourceData.length > 0) {
         console.log(`✨ Using ${sourceKey} data:`, sourceData.length, 'points');
-        const chartDataPoints = sourceData.map((point: any) => ({
-          bike_power: point.power || 0,
-          power: point.power || 0,
-          fat_oxidation: point.fat_oxidation,
-          cho_oxidation: point.cho_oxidation,
-          rer: point.rer || null,
-          total_oxidation: (point.fat_oxidation || 0) + (point.cho_oxidation || 0),
-        }));
+
+        // Trend 모드일 경우 배경에 그릴 Smooth 데이터 준비
+        const smoothData = data.processed_series?.smoothed || [];
+
+        const chartDataPoints = sourceData.map((point: any) => {
+          const base: any = {
+            bike_power: point.power || 0,
+            power: point.power || 0,
+            fat_oxidation: point.fat_oxidation,
+            cho_oxidation: point.cho_oxidation,
+            rer: point.rer || null,
+            total_oxidation: (point.fat_oxidation || 0) + (point.cho_oxidation || 0),
+          };
+
+          // Trend 모드면 가장 가까운 Power를 가진 Smooth 데이터를 찾아 추가
+          if (currentMode === 'trend' && smoothData.length > 0) {
+            const nearestSmooth = smoothData.reduce((prev: any, curr: any) =>
+              Math.abs(curr.power - point.power) < Math.abs(prev.power - point.power) ? curr : prev
+            );
+
+            // 5W 이내인 경우에만 Smooth 데이터로 간주 (Trend는 5W 간격이므로 거의 항상 일치)
+            if (Math.abs(nearestSmooth.power - point.power) < 3) {
+              base.fat_oxidation_smooth = nearestSmooth.fat_oxidation;
+              base.cho_oxidation_smooth = nearestSmooth.cho_oxidation;
+              base.rer_smooth = nearestSmooth.rer;
+            }
+          }
+
+          return base;
+        });
+
         console.log('📈 Chart Data Points:', chartDataPoints.length, 'Sample:', chartDataPoints[0]);
         setProcessedData({
           data: chartDataPoints,
@@ -1025,32 +1048,65 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                                       {preset.yLeft.map((key, idx) => {
                                         const col = CHART_COLUMNS.find(c => c.key === key);
                                         return (
-                                          <Line
-                                            key={`${preset.key}-left-${key}`}
-                                            yAxisId="left"
-                                            type="monotone"
-                                            dataKey={key}
-                                            name={col?.label || key}
-                                            stroke={CHART_COLORS[(presetIndex + idx) % CHART_COLORS.length]}
-                                            strokeWidth={2.5}
-                                            dot={false}
-                                          />
+                                          <>
+                                            {/* Trend 모드일 때 배경에 그리는 Smooth 라인 */}
+                                            {dataMode === 'trend' && (
+                                              <Line
+                                                key={`${preset.key}-left-${key}-smooth-bg`}
+                                                yAxisId="left"
+                                                type="monotone"
+                                                dataKey={`${key}_smooth`}
+                                                stroke={CHART_COLORS[(presetIndex + idx) % CHART_COLORS.length]}
+                                                strokeWidth={1.5}
+                                                strokeOpacity={0.4}
+                                                strokeDasharray="4 4"
+                                                dot={false}
+                                                isAnimationActive={false}
+                                              />
+                                            )}
+                                            <Line
+                                              key={`${preset.key}-left-${key}`}
+                                              yAxisId="left"
+                                              type="monotone"
+                                              dataKey={key}
+                                              name={col?.label || key}
+                                              stroke={CHART_COLORS[(presetIndex + idx) % CHART_COLORS.length]}
+                                              strokeWidth={dataMode === 'trend' ? 4 : 2.5}
+                                              dot={false}
+                                            />
+                                          </>
                                         );
                                       })}
                                       {preset.yRight.map((key, idx) => {
                                         const col = CHART_COLUMNS.find(c => c.key === key);
                                         return (
-                                          <Line
-                                            key={`${preset.key}-right-${key}`}
-                                            yAxisId="right"
-                                            type="monotone"
-                                            dataKey={key}
-                                            name={col?.label || key}
-                                            stroke={CHART_COLORS[(presetIndex + preset.yLeft.length + idx) % CHART_COLORS.length]}
-                                            strokeWidth={2}
-                                            strokeDasharray="5 5"
-                                            dot={false}
-                                          />
+                                          <>
+                                            {/* Trend 모드일 때 배경에 그리는 Smooth 라인 */}
+                                            {dataMode === 'trend' && (
+                                              <Line
+                                                key={`${preset.key}-right-${key}-smooth-bg`}
+                                                yAxisId="right"
+                                                type="monotone"
+                                                dataKey={`${key}_smooth`}
+                                                stroke={CHART_COLORS[(presetIndex + preset.yLeft.length + idx) % CHART_COLORS.length]}
+                                                strokeWidth={1}
+                                                strokeOpacity={0.4}
+                                                strokeDasharray="3 3"
+                                                dot={false}
+                                                isAnimationActive={false}
+                                              />
+                                            )}
+                                            <Line
+                                              key={`${preset.key}-right-${key}`}
+                                              yAxisId="right"
+                                              type="monotone"
+                                              dataKey={key}
+                                              name={col?.label || key}
+                                              stroke={CHART_COLORS[(presetIndex + preset.yLeft.length + idx) % CHART_COLORS.length]}
+                                              strokeWidth={dataMode === 'trend' ? 3 : 2}
+                                              dot={false}
+                                            />
+                                          </>
                                         );
                                       })}
                                     </>

@@ -255,8 +255,8 @@ class MetabolismAnalyzer:
         # 3. LOESS Smoothing
         smoothed_points = self._loess_smoothing(binned_points)
 
-        # 4. Polynomial Trend Fit
-        trend_points = self._polynomial_fit(smoothed_points)
+        # 4. Polynomial Trend Fit (binned 데이터에서 직접 계산하여 깔끔한 포물선 생성)
+        trend_points = self._polynomial_fit(binned_points)
 
         # 5. FatMax & Zone 계산
         fatmax_marker = self._calculate_fatmax(smoothed_points)
@@ -582,52 +582,53 @@ class MetabolismAnalyzer:
             return binned_points
 
     def _polynomial_fit(
-        self, smoothed_points: List[ProcessedDataPoint]
+        self, binned_points: List[ProcessedDataPoint]
     ) -> List[ProcessedDataPoint]:
         """
-        Polynomial Regression을 사용한 Trend Line 계산
+        Polynomial Regression을 사용한 Trend Line 계산 (깔끔한 포물선 생성)
 
-        Fat/CHO: Degree 2-3 polynomial (inverted-U shape 캡처)
-        RER: Degree 3 polynomial (linear-to-plateau 트렌드)
+        Fat/CHO/RER: Degree 2 polynomial (단순한 U자형 포물선)
+        
+        Note: binned 데이터에서 직접 계산하여 smooth 데이터보다 더 단순한 패턴 생성
 
         Args:
-            smoothed_points: LOESS smoothed 데이터 포인트 리스트
+            binned_points: Binned 데이터 포인트 리스트
 
         Returns:
-            Trend 데이터 포인트 리스트 (5W 간격)
+            Trend 데이터 포인트 리스트 (10W 간격)
         """
-        if len(smoothed_points) < 4:
+        if len(binned_points) < 4:
             self.warnings.append("Not enough data points for polynomial fit")
-            print(f"⚠️ Polynomial fit skipped: only {len(smoothed_points)} points")
+            print(f"⚠️ Polynomial fit skipped: only {len(binned_points)} points")
             return []
 
         try:
             print(
-                f"🔬 Starting polynomial fit with {len(smoothed_points)} smoothed points"
+                f"🔬 Starting polynomial fit with {len(binned_points)} binned points"
             )
             # 데이터 추출
-            powers = np.array([p.power for p in smoothed_points])
+            powers = np.array([p.power for p in binned_points])
             fat_ox = np.array(
                 [
                     p.fat_oxidation if p.fat_oxidation is not None else 0
-                    for p in smoothed_points
+                    for p in binned_points
                 ]
             )
             cho_ox = np.array(
                 [
                     p.cho_oxidation if p.cho_oxidation is not None else 0
-                    for p in smoothed_points
+                    for p in binned_points
                 ]
             )
             rer_vals = np.array(
-                [p.rer if p.rer is not None else np.nan for p in smoothed_points]
+                [p.rer if p.rer is not None else np.nan for p in binned_points]
             )
 
             # Polynomial degree 결정
-            # Fat/CHO: degree 2 또는 3 (inverted-U 형태 캡처)
-            # 데이터 포인트가 충분하면 degree 3, 아니면 2
-            fat_cho_degree = 3 if len(powers) >= 8 else 2
-            rer_degree = 3 if len(powers) >= 8 else 2
+            # 사용자의 요청에 따라 Fat/CHO는 깔끔한 2차 포물선을 위해 Degree 2로 고정
+            # RER도 2차로 고정하여 단순한 트렌드 생성
+            fat_cho_degree = 2
+            rer_degree = 2  # 3차에서 2차로 변경
 
             # Polynomial fitting
             fat_coeffs = np.polyfit(powers, fat_ox, fat_cho_degree)
@@ -645,10 +646,10 @@ class MetabolismAnalyzer:
                 )
                 rer_poly = np.poly1d(rer_coeffs)
 
-            # Trend 포인트 생성 (5W 간격으로 더 부드럽게)
-            power_min = int(np.floor(powers.min() / 5) * 5)
-            power_max = int(np.ceil(powers.max() / 5) * 5)
-            trend_powers = np.arange(power_min, power_max + 1, 5)
+            # Trend 포인트 생성 (10W 간격으로 부드럽고 단순한 포물선 생성)
+            power_min = int(np.floor(powers.min() / 10) * 10)
+            power_max = int(np.ceil(powers.max() / 10) * 10)
+            trend_powers = np.arange(power_min, power_max + 1, 10)
 
             trend_points = []
             for p in trend_powers:
