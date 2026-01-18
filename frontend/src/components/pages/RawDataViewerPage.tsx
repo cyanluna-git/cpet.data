@@ -324,8 +324,12 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   ];
 
   const rawChartData = useMemo(() => {
-    if (!rawData) return [];
+    if (!rawData) {
+      console.log('[RawDataViewer] rawChartData: no rawData');
+      return [];
+    }
     const data = rawData.data;
+    console.log('[RawDataViewer] rawChartData: processing', data.length, 'rows');
 
     // Dynamic maxPoints based on data density and duration
     // For longer tests, allow more points to preserve detail
@@ -381,7 +385,9 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   );
 
   const hasChartData = useMemo(() => {
-    return useProcessedData ? processedChartData.length > 0 : rawChartData.length > 0;
+    const result = useProcessedData ? processedChartData.length > 0 : rawChartData.length > 0;
+    console.log('[RawDataViewer] hasChartData:', result, '(useProcessedData:', useProcessedData, 'processedLen:', processedChartData.length, 'rawLen:', rawChartData.length, ')');
+    return result;
   }, [processedChartData, rawChartData, useProcessedData]);
 
   // 피험자 목록 로드
@@ -474,9 +480,13 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
 
   // 테스트 선택 시 자동으로 데이터 로드
   useEffect(() => {
+    console.log('[RawDataViewer] useEffect triggered - selectedTestId:', selectedTestId, 'useProcessedData:', useProcessedData);
     if (selectedTestId) {
       if (!useProcessedData) {
+        console.log('[RawDataViewer] Calling loadRawData()');
         loadRawData();
+      } else {
+        console.log('[RawDataViewer] Skipping loadRawData (useProcessedData=true)');
       }
     }
   }, [selectedTestId, useProcessedData]);
@@ -491,20 +501,26 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   async function loadRawData() {
     if (!selectedTestId) return;
 
+    console.log('[RawDataViewer] Loading raw data for test:', selectedTestId);
+
     try {
       setLoading(true);
       const token = getAuthToken();
+      console.log('[RawDataViewer] Fetching raw data...');
       const response = await fetch(`/api/tests/${selectedTestId}/raw-data`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) {
         const err = await response.json();
+        console.error('[RawDataViewer] API error:', err);
         throw new Error(err.detail || 'Failed to load raw data');
       }
       const data: RawDataResponse = await response.json();
+      console.log('[RawDataViewer] Raw data loaded:', data.total_rows, 'rows');
       setRawData(data);
       setCurrentPage(1);
     } catch (error) {
+      console.error('[RawDataViewer] Error loading raw data:', error);
       toast.error(getErrorMessage(error));
       setRawData(null);
     } finally {
@@ -518,6 +534,8 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
 
     // 명시적으로 전달된 mode를 우선 사용, 없으면 현재 state 사용
     const currentMode = overrideMode || dataMode;
+
+    console.log('[RawDataViewer] Loading processed data, mode:', currentMode);
 
     try {
       setLoading(true);

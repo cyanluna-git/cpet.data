@@ -8,7 +8,9 @@
       "Bash(ls:*)",
       "Bash(tree:*)",
       "Bash(xargs ls:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(docker ps:*)",
+      "Bash(python3:*)"
     ]
   }
 }

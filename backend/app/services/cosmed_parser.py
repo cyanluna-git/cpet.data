@@ -92,6 +92,11 @@ class ParsedCPETData:
     parsing_errors: List[str] = field(default_factory=list)
     parsing_warnings: List[str] = field(default_factory=list)
 
+    @property
+    def breath_data_df(self) -> pd.DataFrame:
+        """Alias for time_series (backward compatibility)"""
+        return self.time_series
+
 
 class COSMEDParser:
     """COSMED K5 Excel 파일 파서"""

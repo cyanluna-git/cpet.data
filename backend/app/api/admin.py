@@ -19,6 +19,7 @@ from app.schemas.admin import (
     AdminTestListResponse,
     AdminTestRow,
     TestValidationInfo,
+    AdminTestDemographicUpdate,
 )
 from app.schemas.auth import UserCreate, UserResponse, UserUpdate
 from app.services import AuthService
@@ -315,6 +316,8 @@ async def list_all_tests(
             subject_id=test.subject_id,
             subject_name=test.subject.encrypted_name if test.subject and test.subject.encrypted_name else (test.subject.research_id if test.subject else "Unknown"),
             subject_age=subject_age,
+            height_cm=sanitize_float(test.height_cm) if test.height_cm is not None else None,
+            weight_kg=sanitize_float(test.weight_kg) if test.weight_kg is not None else None,
             protocol_type=test.protocol_type,
             source_filename=test.source_filename,
             parsing_status=test.parsing_status,
@@ -357,4 +360,50 @@ async def list_all_tests(
         page_size=page_size,
         total_pages=total_pages
     )
+
+
+@router.patch("/tests/{test_id}/demographics")
+async def update_test_demographics(
+    test_id: UUID,
+    update_data: AdminTestDemographicUpdate,
+    admin_user: AdminUser,
+    db: DBSession,
+) -> dict:
+    """Update test demographic information (age, height, weight)"""
+
+    # Find test
+    result = await db.execute(
+        select(CPETTest).where(CPETTest.test_id == test_id)
+    )
+    test = result.scalar_one_or_none()
+
+    if not test:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Test {test_id} not found"
+        )
+
+    # Update fields
+    updated_fields = []
+    if update_data.age is not None:
+        test.age = update_data.age
+        updated_fields.append("age")
+    if update_data.height_cm is not None:
+        test.height_cm = update_data.height_cm
+        updated_fields.append("height_cm")
+    if update_data.weight_kg is not None:
+        test.weight_kg = update_data.weight_kg
+        updated_fields.append("weight_kg")
+
+    if updated_fields:
+        await db.commit()
+        await db.refresh(test)
+
+    return {
+        "test_id": str(test_id),
+        "updated_fields": updated_fields,
+        "age": test.age,
+        "height_cm": test.height_cm,
+        "weight_kg": test.weight_kg,
+    }
 
