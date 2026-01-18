@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+__pycache__/
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Test results
+test-results/
+playwright-report/
+coverage/
+.coverage
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+.env.local
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+
+# Docker artifacts
+.dockerignore
+
+# Data files (if too large)
+*.xlsx
+*.xls
+CPET_data/
+
+# Generated files
+repomix-output.xml

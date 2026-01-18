@@ -359,20 +359,38 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   }, [processedData]);
 
   const getChartDataForPreset = useCallback(
-    (xKey: string, yLeft: string[], yRight: string[]) => {
-      const requiredKeys = [xKey, ...yLeft, ...yRight];
+    (xKey: string, yLeft: string[], yRight: string[]): { data: any[]; isProcessed: boolean } => {
+      const allYKeys = [...yLeft, ...yRight];
 
-      // Check if processed data has all required keys AND has at least some non-null values
-      const processedHasValidData =
+      // Check if processed data has valid X-axis data and at least one Y-axis with non-null values
+      const hasValidXAxis =
         processedChartData.length > 0 &&
-        requiredKeys.every((key) => key in processedChartData[0]) &&
-        requiredKeys.every((key) =>
+        xKey in processedChartData[0] &&
+        processedChartData.some((d: any) => d[xKey] !== null && d[xKey] !== undefined);
+
+      // At least one Y-axis key should have valid data
+      const hasValidYAxis =
+        allYKeys.length === 0 ||
+        allYKeys.some((key) =>
           processedChartData.some((d: any) => d[key] !== null && d[key] !== undefined)
         );
 
-      const source = useProcessedData && processedHasValidData ? processedChartData : rawChartData;
+      const processedHasValidData = hasValidXAxis && hasValidYAxis;
+      const isProcessed = useProcessedData && processedHasValidData;
 
-      return [...source].sort((a, b) => {
+      // Debug logging
+      if (useProcessedData && !processedHasValidData) {
+        console.warn(`[getChartDataForPreset] Falling back to raw data for xKey=${xKey}:`, {
+          hasValidXAxis,
+          hasValidYAxis,
+          processedDataLength: processedChartData.length,
+          samplePoint: processedChartData[0],
+        });
+      }
+
+      const source = isProcessed ? processedChartData : rawChartData;
+
+      const sortedData = [...source].sort((a, b) => {
         const aVal = (a as any)[xKey];
         const bVal = (b as any)[xKey];
         if (typeof aVal === 'number' && typeof bVal === 'number') {
@@ -380,6 +398,8 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         }
         return 0;
       });
+
+      return { data: sortedData, isProcessed };
     },
     [processedChartData, rawChartData, useProcessedData]
   );
@@ -608,6 +628,13 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         });
 
         console.log('📈 Chart Data Points:', chartDataPoints.length, 'Sample:', chartDataPoints[0]);
+        // Debug: Check which fields have valid data
+        const fieldStats = ['bike_power', 'vo2', 'vco2', 'hr', 've_vo2', 've_vco2'].reduce((acc, key) => {
+          const validCount = chartDataPoints.filter((d: any) => d[key] !== null && d[key] !== undefined).length;
+          acc[key] = `${validCount}/${chartDataPoints.length}`;
+          return acc;
+        }, {} as Record<string, string>);
+        console.log('📊 Field validity stats:', fieldStats);
         setProcessedData({
           data: chartDataPoints,
           // 모든 시리즈 저장 (차트 오버레이용)
@@ -987,7 +1014,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                   </div>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                     {QUAD_PRESETS.map((preset, presetIndex) => {
-                      const data = getChartDataForPreset(preset.x, preset.yLeft, preset.yRight);
+                      const { data: chartData, isProcessed } = getChartDataForPreset(preset.x, preset.yLeft, preset.yRight);
                       const xLabel = CHART_COLUMNS.find(c => c.key === preset.x)?.label || preset.x;
                       return (
                         <div key={preset.key} className="rounded-lg border border-gray-200 bg-white p-2">
@@ -995,14 +1022,14 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                             <span className="text-xs font-semibold text-gray-700">{preset.label}</span>
                             <span className="text-[11px] text-gray-400">X: {xLabel}</span>
                           </div>
-                          {data.length === 0 ? (
+                          {chartData.length === 0 ? (
                             <div className="aspect-square w-full flex items-center justify-center text-xs text-gray-400">
                               데이터 없음
                             </div>
                           ) : (
                             <div className="aspect-[4/3] w-full">
                               <ResponsiveContainer width="100%" height="100%">
-                                <ComposedChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 10 }} syncId="rawDataViewer">
+                                <ComposedChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }} syncId="rawDataViewer">
                                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                                   <XAxis
                                     dataKey={preset.x}
@@ -1116,7 +1143,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                                       <Label value="VT2" position="top" fill="#EF4444" fontSize={11} />
                                     </ReferenceLine>
                                   )}
-                                  {useProcessedData ? (
+                                  {isProcessed ? (
                                     <>
                                       {preset.yLeft.map((key, idx) => {
                                         const col = CHART_COLUMNS.find(c => c.key === key);
@@ -1124,7 +1151,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                                         return (
                                           <React.Fragment key={`${preset.key}-left-${key}-group`}>
                                             {/* Trend 모드일 때 배경에 그리는 Smooth 라인 (흐리고 점선) */}
-                                            {dataMode === 'trend' && (
+                                            {dataMode === 'trend' && isProcessed && (
                                               <Line
                                                 yAxisId="left"
                                                 type="monotone"
@@ -1158,7 +1185,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                                         return (
                                           <React.Fragment key={`${preset.key}-right-${key}-group`}>
                                             {/* Trend 모드일 때 배경에 그리는 Smooth 라인 */}
-                                            {dataMode === 'trend' && (
+                                            {dataMode === 'trend' && isProcessed && (
                                               <Line
                                                 yAxisId="right"
                                                 type="monotone"
