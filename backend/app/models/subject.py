@@ -1,10 +1,10 @@
 """Subject model - 피험자 정보"""
 
-from datetime import datetime
+from datetime import datetime, date
 from typing import TYPE_CHECKING, Optional
 import uuid
 
-from sqlalchemy import String, Integer, Float, Text, Index, DateTime, Uuid, JSON
+from sqlalchemy import String, Integer, Float, Text, Index, DateTime, Date, Uuid, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -29,6 +29,7 @@ class Subject(Base):
     )
     encrypted_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     birth_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    birth_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     gender: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     job_category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     medical_history: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)

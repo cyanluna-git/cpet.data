@@ -162,6 +162,27 @@ class TestService:
             parser = COSMEDParser()
             parsed_data = parser.parse_file(tmp_path)
 
+            # Update subject information from parsed data if available
+            if parsed_data.subject.birth_date and not subject.birth_date:
+                try:
+                    from datetime import datetime as dt
+                    # Parse birth_date string to date object
+                    if isinstance(parsed_data.subject.birth_date, str):
+                        birth_date = dt.strptime(parsed_data.subject.birth_date, "%m/%d/%Y").date()
+                    else:
+                        birth_date = parsed_data.subject.birth_date
+                    subject.birth_date = birth_date
+                except Exception as e:
+                    print(f"Failed to parse birth_date: {e}")
+
+            # Update height and weight if not set
+            if parsed_data.subject.height_cm and not subject.height_cm:
+                subject.height_cm = parsed_data.subject.height_cm
+            if parsed_data.subject.weight_kg and not subject.weight_kg:
+                subject.weight_kg = parsed_data.subject.weight_kg
+
+            await self.db.flush()
+
             # ========================================
             # DATA VALIDATION & PROTOCOL CLASSIFICATION
             # ========================================
@@ -296,6 +317,8 @@ class TestService:
                 ambient_temp=parsed_data.environment.ambient_temp,
                 ambient_humidity=parsed_data.environment.ambient_humidity,
                 device_temp=parsed_data.environment.device_temp,
+                age=parsed_data.subject.age,
+                height_cm=parsed_data.subject.height_cm,
                 weight_kg=parsed_data.subject.weight_kg or subject.weight_kg,
                 bsa=parsed_data.environment.bsa,
                 bmi=parsed_data.environment.bmi,

@@ -68,24 +68,28 @@ class TestValidationInfo(BaseModel):
 
 class AdminTestRow(BaseModel):
     """관리 테이블용 테스트 행"""
-    
+
     test_id: UUID
     test_date: datetime
     test_time: Optional[time] = None
-    
+
     # 피험자 정보
     subject_id: UUID
     subject_name: str
     subject_age: Optional[int] = None
-    
+
+    # 테스트 시점의 신체 정보
+    height_cm: Optional[float] = None
+    weight_kg: Optional[float] = None
+
     # 테스트 정보
     protocol_type: Optional[str] = None
     source_filename: Optional[str] = None
     parsing_status: Optional[str] = None
-    
+
     # 검증 정보
     validation: TestValidationInfo
-    
+
     # 분석 결과 (있으면)
     vo2_max: Optional[float] = None
     fat_max_watt: Optional[float] = None
@@ -95,10 +99,18 @@ class AdminTestRow(BaseModel):
 
 class AdminTestListResponse(BaseModel):
     """관리자 테스트 목록 응답"""
-    
+
     items: List[AdminTestRow]
     total: int
     page: int
     page_size: int
     total_pages: int
     subject_id: Optional[str] = None
+
+
+class AdminTestDemographicUpdate(BaseModel):
+    """테스트 인구통계 정보 업데이트"""
+
+    age: Optional[float] = None
+    height_cm: Optional[float] = None
+    weight_kg: Optional[float] = None

@@ -57,6 +57,8 @@ class CPETTest(Base):
     device_temp: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # Body measurements at test time
+    age: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    height_cm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     weight_kg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     bsa: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     bmi: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

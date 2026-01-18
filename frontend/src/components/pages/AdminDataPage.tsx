@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigation } from '@/components/layout/Navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Database, ExternalLink, CheckCircle, XCircle, Activity, Filter } from 'lucide-react';
+import { Database, ExternalLink, CheckCircle, XCircle, Activity, Filter, Edit, Save, X as XIcon } from 'lucide-react';
 import { api, type AdminStats } from '@/lib/api';
 import { toast } from 'sonner';
 import { getErrorMessage } from '@/utils/apiHelpers';
@@ -32,6 +32,8 @@ interface AdminTestRow {
   subject_id: string;
   subject_name: string;
   subject_age?: number;
+  height_cm?: number;
+  weight_kg?: number;
   protocol_type?: string;
   source_filename?: string;
   parsing_status?: string;
@@ -57,6 +59,14 @@ export function AdminDataPage({ user, onLogout, onNavigate }: AdminDataPageProps
   const [filterProtocol, setFilterProtocol] = useState<string>('');
   const [filterValid, setFilterValid] = useState<string>('');
   const [showTable, setShowTable] = useState(false);
+
+  // 편집 상태
+  const [editingTestId, setEditingTestId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<{
+    age?: number;
+    height_cm?: number;
+    weight_kg?: number;
+  }>({});
 
   useEffect(() => {
     load();
@@ -89,19 +99,19 @@ export function AdminDataPage({ user, onLogout, onNavigate }: AdminDataPageProps
       });
       if (filterProtocol) params.append('protocol_type', filterProtocol);
       if (filterValid) params.append('is_valid', filterValid);
-      
+
       const token = localStorage.getItem('access_token');
       if (!token) {
         throw new Error('No access token found. Please login again.');
       }
-      
+
       const response = await fetch(`/api/admin/tests?${params.toString()}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: 'Failed to load tests' }));
         throw new Error(errorData.detail || 'Failed to load tests');
@@ -113,6 +123,53 @@ export function AdminDataPage({ user, onLogout, onNavigate }: AdminDataPageProps
       toast.error(getErrorMessage(error));
     } finally {
       setTestsLoading(false);
+    }
+  }
+
+  function startEdit(test: AdminTestRow) {
+    setEditingTestId(test.test_id);
+    setEditValues({
+      age: test.subject_age || undefined,
+      height_cm: test.height_cm || undefined,
+      weight_kg: test.weight_kg || undefined,
+    });
+  }
+
+  function cancelEdit() {
+    setEditingTestId(null);
+    setEditValues({});
+  }
+
+  async function saveEdit(testId: string) {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        throw new Error('No access token found');
+      }
+
+      const response = await fetch(`/api/admin/tests/${testId}/demographics`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(editValues)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Failed to update' }));
+        throw new Error(errorData.detail || 'Failed to update');
+      }
+
+      toast.success('정보가 업데이트되었습니다');
+      setEditingTestId(null);
+      setEditValues({});
+
+      // Reload tests
+      await loadTests();
+    } catch (error) {
+      console.error('Update error:', error);
+      toast.error(getErrorMessage(error));
     }
   }
 
@@ -276,6 +333,8 @@ export function AdminDataPage({ user, onLogout, onNavigate }: AdminDataPageProps
                             <tr>
                               <th className="px-4 py-3 text-left font-medium text-gray-700">피험자</th>
                               <th className="px-4 py-3 text-left font-medium text-gray-700">나이</th>
+                              <th className="px-4 py-3 text-left font-medium text-gray-700">키</th>
+                              <th className="px-4 py-3 text-left font-medium text-gray-700">체중</th>
                               <th className="px-4 py-3 text-left font-medium text-gray-700">수행일</th>
                               <th className="px-4 py-3 text-left font-medium text-gray-700">프로토콜</th>
                               <th className="px-4 py-3 text-left font-medium text-gray-700">길이</th>
@@ -283,18 +342,67 @@ export function AdminDataPage({ user, onLogout, onNavigate }: AdminDataPageProps
                               <th className="px-4 py-3 text-left font-medium text-gray-700">품질</th>
                               <th className="px-4 py-3 text-left font-medium text-gray-700">유효성</th>
                               <th className="px-4 py-3 text-left font-medium text-gray-700">파일명</th>
+                              <th className="px-4 py-3 text-left font-medium text-gray-700">편집</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y">
-                            {tests.items.map((test) => (
-                              <tr key={test.test_id} className="hover:bg-gray-50">
-                                <td className="px-4 py-3">{test.subject_name}</td>
-                                <td className="px-4 py-3 text-gray-600">
-                                  {test.subject_age ? `${test.subject_age}세` : '-'}
-                                </td>
-                                <td className="px-4 py-3 text-gray-600">
-                                  {formatDate(test.test_date)}
-                                </td>
+                            {tests.items.map((test) => {
+                              const isEditing = editingTestId === test.test_id;
+
+                              return (
+                                <tr key={test.test_id} className="hover:bg-gray-50">
+                                  <td className="px-4 py-3">{test.subject_name}</td>
+
+                                  {/* 나이 */}
+                                  <td className="px-4 py-3 text-gray-600">
+                                    {isEditing ? (
+                                      <input
+                                        type="number"
+                                        className="w-20 px-2 py-1 border rounded text-sm"
+                                        value={editValues.age || ''}
+                                        onChange={(e) => setEditValues({ ...editValues, age: parseFloat(e.target.value) || undefined })}
+                                        placeholder="나이"
+                                      />
+                                    ) : (
+                                      test.subject_age ? `${test.subject_age}세` : '-'
+                                    )}
+                                  </td>
+
+                                  {/* 키 */}
+                                  <td className="px-4 py-3 text-gray-600">
+                                    {isEditing ? (
+                                      <input
+                                        type="number"
+                                        step="0.1"
+                                        className="w-20 px-2 py-1 border rounded text-sm"
+                                        value={editValues.height_cm || ''}
+                                        onChange={(e) => setEditValues({ ...editValues, height_cm: parseFloat(e.target.value) || undefined })}
+                                        placeholder="cm"
+                                      />
+                                    ) : (
+                                      test.height_cm ? `${test.height_cm.toFixed(1)}cm` : '-'
+                                    )}
+                                  </td>
+
+                                  {/* 체중 */}
+                                  <td className="px-4 py-3 text-gray-600">
+                                    {isEditing ? (
+                                      <input
+                                        type="number"
+                                        step="0.1"
+                                        className="w-20 px-2 py-1 border rounded text-sm"
+                                        value={editValues.weight_kg || ''}
+                                        onChange={(e) => setEditValues({ ...editValues, weight_kg: parseFloat(e.target.value) || undefined })}
+                                        placeholder="kg"
+                                      />
+                                    ) : (
+                                      test.weight_kg ? `${test.weight_kg.toFixed(1)}kg` : '-'
+                                    )}
+                                  </td>
+
+                                  <td className="px-4 py-3 text-gray-600">
+                                    {formatDate(test.test_date)}
+                                  </td>
                                 <td className="px-4 py-3">
                                   <span className="inline-flex items-center gap-1">
                                     {getProtocolIcon(test.validation.protocol_type)}
@@ -333,8 +441,42 @@ export function AdminDataPage({ user, onLogout, onNavigate }: AdminDataPageProps
                                 <td className="px-4 py-3 text-xs text-gray-500 max-w-xs truncate">
                                   {test.source_filename || '-'}
                                 </td>
+
+                                {/* 편집 버튼 */}
+                                <td className="px-4 py-3">
+                                  {isEditing ? (
+                                    <div className="flex gap-1">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => saveEdit(test.test_id)}
+                                        className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                      >
+                                        <Save className="w-4 h-4" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={cancelEdit}
+                                        className="text-gray-600 hover:text-gray-700 hover:bg-gray-100"
+                                      >
+                                        <XIcon className="w-4 h-4" />
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => startEdit(test)}
+                                      className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                    >
+                                      <Edit className="w-4 h-4" />
+                                    </Button>
+                                  )}
+                                </td>
                               </tr>
-                            ))}
+                            );
+                            })}
                           </tbody>
                         </table>
                       </div>
