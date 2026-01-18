@@ -13,11 +13,14 @@ Features:
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Dict, Any, Literal
 import math
+import logging
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.optimize import brentq
 from scipy.stats import trim_mean
+
+logger = logging.getLogger(__name__)
 
 try:
     from statsmodels.nonparametric.smoothers_lowess import lowess
@@ -283,6 +286,11 @@ class MetabolismAnalyzer:
 
     def _apply_phase_trimming(self, breath_data: List[Any]) -> List[Any]:
         """Phase trimming 적용: Rest, Warm-up, Recovery 구간 제외"""
+        # Debug: Check input data before filtering
+        if breath_data:
+            first = breath_data[0]
+            logger.warning(f"🔍 [PHASE_TRIM] Input: {len(breath_data)} points, first.vo2={getattr(first, 'vo2', 'MISSING')}")
+
         filtered = []
 
         for bd in breath_data:
@@ -334,6 +342,13 @@ class MetabolismAnalyzer:
 
             filtered.append(bd)
 
+        # Debug: Check output data after filtering
+        if filtered:
+            first = filtered[0]
+            logger.warning(f"🔍 [PHASE_TRIM] Output: {len(filtered)} points, first.vo2={getattr(first, 'vo2', 'MISSING')}")
+        else:
+            logger.warning(f"🔍 [PHASE_TRIM] Output: 0 points (all filtered out)")
+
         return filtered
 
     def _extract_raw_points(self, breath_data: List[Any]) -> List[ProcessedDataPoint]:
@@ -349,6 +364,13 @@ class MetabolismAnalyzer:
                 return f
             except (ValueError, TypeError):
                 return None
+
+        # Debug: Check first data point for vo2/vco2/hr fields
+        if breath_data:
+            first = breath_data[0]
+            logger.warning(f"🔍 [DEBUG] First breath_data point type: {type(first)}")
+            logger.warning(f"🔍 [DEBUG] vo2={getattr(first, 'vo2', 'MISSING')}, vco2={getattr(first, 'vco2', 'MISSING')}, hr={getattr(first, 'hr', 'MISSING')}")
+            logger.warning(f"🔍 [DEBUG] ve_vo2={getattr(first, 've_vo2', 'MISSING')}, ve_vco2={getattr(first, 've_vco2', 'MISSING')}")
 
         points = []
         for bd in breath_data:
@@ -693,6 +715,11 @@ class MetabolismAnalyzer:
                 )
 
             print(f"✅ Polynomial fit complete: {len(trend_points)} trend points generated")
+            # Debug: Check first trend point values
+            if trend_points:
+                tp = trend_points[0]
+                print(f"🔍 [TREND] First point: vo2={tp.vo2}, vco2={tp.vco2}, hr={tp.hr}, ve_vo2={tp.ve_vo2}, ve_vco2={tp.ve_vco2}")
+                print(f"🔍 [TREND] Polys: vo2_poly={vo2_poly is not None}, vco2_poly={vco2_poly is not None}, hr_poly={hr_poly is not None}")
             return trend_points
 
         except Exception as e:
