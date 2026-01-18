@@ -1016,6 +1016,8 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                     {QUAD_PRESETS.map((preset, presetIndex) => {
                       const { data: chartData, isProcessed } = getChartDataForPreset(preset.x, preset.yLeft, preset.yRight);
                       const xLabel = CHART_COLUMNS.find(c => c.key === preset.x)?.label || preset.x;
+                      // Debug: log isProcessed for each chart
+                      console.log(`📊 Chart ${preset.key}: isProcessed=${isProcessed}, dataLength=${chartData.length}, dataMode=${dataMode}`);
                       return (
                         <div key={preset.key} className="rounded-lg border border-gray-200 bg-white p-2">
                           <div className="flex items-center justify-between mb-1">
