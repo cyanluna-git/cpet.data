@@ -41,7 +41,7 @@ class ProcessedDataPoint:
     count: Optional[int] = None  # binned data only
     vo2: Optional[float] = None  # VO2 for relative calculations and VO2 Kinetics chart
     rer: Optional[float] = None  # RER
-    vco2: Optional[float] = None  #lrmad VCO2 for VO2 Kinetics chart
+    vco2: Optional[float] = None  # lrmad VCO2 for VO2 Kinetics chart
     hr: Optional[float] = None  # HR for VO2 Kinetics chart
     ve_vo2: Optional[float] = None  # VE/VO2 for VT Analysis chart
     ve_vco2: Optional[float] = None  # VE/VCO2 for VT Analysis chart
@@ -133,19 +133,43 @@ class ProcessedSeries:
 
 
 @dataclass
+class TrimRange:
+    """Analysis window trimming range (time-based)"""
+
+    start_sec: float  # Trimmed start time (seconds)
+    end_sec: float  # Trimmed end time (seconds)
+    auto_detected: bool = True  # False if manually specified
+    max_power_sec: Optional[float] = None  # Time of peak power (for reference)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "start_sec": round(self.start_sec, 1),
+            "end_sec": round(self.end_sec, 1),
+            "auto_detected": self.auto_detected,
+            "max_power_sec": (
+                round(self.max_power_sec, 1) if self.max_power_sec else None
+            ),
+        }
+
+
+@dataclass
 class MetabolismAnalysisResult:
     """대사 분석 결과"""
 
     processed_series: ProcessedSeries
     metabolic_markers: MetabolicMarkers
     warnings: List[str]
+    trim_range: Optional[TrimRange] = None  # Analysis window trimming info
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "processed_series": self.processed_series.to_dict(),
             "metabolic_markers": self.metabolic_markers.to_dict(),
             "warnings": self.warnings,
         }
+        if self.trim_range:
+            result["trim_range"] = self.trim_range.to_dict()
+        return result
 
 
 @dataclass
@@ -167,6 +191,13 @@ class AnalysisConfig:
     exclude_initial_hyperventilation: bool = True
     initial_time_threshold: float = 120.0  # seconds - first 2 minutes
     initial_power_threshold: int = 40  # watts - exclude low power data during startup
+    # Time-based analysis window trimming (excludes Rest/Recovery phases)
+    auto_trim_enabled: bool = True  # Enable auto-detection of analysis window
+    trim_start_sec: Optional[float] = None  # Manual override for start (seconds)
+    trim_end_sec: Optional[float] = None  # Manual override for end (seconds)
+    start_power_threshold: int = 20  # Watts - first power above this starts window
+    start_time_buffer: float = 30.0  # Seconds buffer after first power >= threshold
+    recovery_power_ratio: float = 0.8  # End when power drops below this * max_power
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -183,6 +214,12 @@ class AnalysisConfig:
             "exclude_initial_hyperventilation": self.exclude_initial_hyperventilation,
             "initial_time_threshold": self.initial_time_threshold,
             "initial_power_threshold": self.initial_power_threshold,
+            "auto_trim_enabled": self.auto_trim_enabled,
+            "trim_start_sec": self.trim_start_sec,
+            "trim_end_sec": self.trim_end_sec,
+            "start_power_threshold": self.start_power_threshold,
+            "start_time_buffer": self.start_time_buffer,
+            "recovery_power_ratio": self.recovery_power_ratio,
         }
 
 
@@ -235,6 +272,19 @@ class MetabolismAnalyzer:
             MetabolismAnalysisResult 또는 None (데이터 부족 시)
         """
         self.warnings = []
+        trim_range = None
+
+        # 0. Time-based analysis window trimming (before phase filtering)
+        if (
+            self.config.auto_trim_enabled
+            or self.config.trim_start_sec is not None
+            or self.config.trim_end_sec is not None
+        ):
+            breath_data, trim_range = self._detect_analysis_window(breath_data)
+            if trim_range:
+                logger.info(
+                    f"🔧 [TRIM] Applied window: {trim_range.start_sec:.1f}s - {trim_range.end_sec:.1f}s (auto={trim_range.auto_detected})"
+                )
 
         # Phase trimming: 구간별 제외 옵션 적용
         filtered_data = self._apply_phase_trimming(breath_data)
@@ -282,14 +332,126 @@ class MetabolismAnalyzer:
                 fat_max=fatmax_marker, crossover=crossover_marker
             ),
             warnings=self.warnings,
+            trim_range=trim_range,
         )
+
+    def _detect_analysis_window(
+        self, breath_data: List[Any]
+    ) -> Tuple[List[Any], Optional[TrimRange]]:
+        """
+        Auto-detect or apply manual analysis window, excluding Rest/Recovery.
+
+        Algorithm:
+        1. If manual trim_start_sec/trim_end_sec provided, use those
+        2. Otherwise auto-detect:
+           - End Point: Find max power index, scan forward until power < 0.8 * max
+           - Start Point: Find first power >= 20W, add 30s buffer
+
+        Returns:
+            Tuple of (trimmed_data, TrimRange)
+        """
+        if not breath_data:
+            return breath_data, None
+
+        # Extract t_sec and power values
+        data_with_time = []
+        for bd in breath_data:
+            t_sec = getattr(bd, "t_sec", None)
+            power = getattr(bd, "bike_power", None) or 0
+            if t_sec is not None:
+                data_with_time.append((t_sec, power, bd))
+
+        if not data_with_time:
+            logger.warning("🔧 [TRIM] No t_sec data found, skipping trimming")
+            return breath_data, None
+
+        # Sort by time
+        data_with_time.sort(key=lambda x: x[0])
+        times = [d[0] for d in data_with_time]
+        powers = [d[1] for d in data_with_time]
+
+        # Determine start and end times
+        manual_start = self.config.trim_start_sec
+        manual_end = self.config.trim_end_sec
+        auto_detected = manual_start is None and manual_end is None
+
+        # ========== AUTO-DETECT END POINT ==========
+        if manual_end is not None:
+            end_sec = manual_end
+            max_power_sec = None
+        else:
+            # Find max power and its index
+            max_power = max(powers) if powers else 0
+            max_power_idx = (
+                powers.index(max_power) if max_power > 0 else len(powers) - 1
+            )
+            max_power_sec = times[max_power_idx]
+
+            # Scan forward from max power to find recovery start
+            recovery_threshold = max_power * self.config.recovery_power_ratio
+            end_idx = max_power_idx
+
+            for i in range(max_power_idx + 1, len(powers)):
+                if powers[i] < recovery_threshold:
+                    end_idx = i
+                    break
+            else:
+                end_idx = len(powers) - 1
+
+            end_sec = times[end_idx]
+            logger.debug(
+                f"🔧 [TRIM] Auto-detected end: {end_sec:.1f}s (max_power={max_power:.0f}W at {max_power_sec:.1f}s)"
+            )
+
+        # ========== AUTO-DETECT START POINT ==========
+        if manual_start is not None:
+            start_sec = manual_start
+        else:
+            # Find first power >= threshold
+            start_threshold = self.config.start_power_threshold
+            start_idx = 0
+
+            for i, power in enumerate(powers):
+                if power >= start_threshold:
+                    start_idx = i
+                    break
+
+            # Add time buffer
+            initial_start_sec = times[start_idx]
+            start_sec = initial_start_sec + self.config.start_time_buffer
+
+            # Ensure start doesn't exceed end
+            if start_sec >= end_sec:
+                start_sec = initial_start_sec  # Fallback to first valid point
+
+            logger.debug(
+                f"🔧 [TRIM] Auto-detected start: {start_sec:.1f}s (first {start_threshold}W at {initial_start_sec:.1f}s)"
+            )
+
+        # ========== APPLY TRIMMING ==========
+        trimmed_data = [bd for t, p, bd in data_with_time if start_sec <= t <= end_sec]
+
+        logger.info(
+            f"🔧 [TRIM] Trimmed {len(breath_data)} -> {len(trimmed_data)} points ({start_sec:.1f}s - {end_sec:.1f}s)"
+        )
+
+        trim_range = TrimRange(
+            start_sec=start_sec,
+            end_sec=end_sec,
+            auto_detected=auto_detected,
+            max_power_sec=max_power_sec if auto_detected else None,
+        )
+
+        return trimmed_data, trim_range
 
     def _apply_phase_trimming(self, breath_data: List[Any]) -> List[Any]:
         """Phase trimming 적용: Rest, Warm-up, Recovery 구간 제외"""
         # Debug: Check input data before filtering
         if breath_data:
             first = breath_data[0]
-            logger.warning(f"🔍 [PHASE_TRIM] Input: {len(breath_data)} points, first.vo2={getattr(first, 'vo2', 'MISSING')}")
+            logger.warning(
+                f"🔍 [PHASE_TRIM] Input: {len(breath_data)} points, first.vo2={getattr(first, 'vo2', 'MISSING')}"
+            )
 
         filtered = []
 
@@ -345,7 +507,9 @@ class MetabolismAnalyzer:
         # Debug: Check output data after filtering
         if filtered:
             first = filtered[0]
-            logger.warning(f"🔍 [PHASE_TRIM] Output: {len(filtered)} points, first.vo2={getattr(first, 'vo2', 'MISSING')}")
+            logger.warning(
+                f"🔍 [PHASE_TRIM] Output: {len(filtered)} points, first.vo2={getattr(first, 'vo2', 'MISSING')}"
+            )
         else:
             logger.warning(f"🔍 [PHASE_TRIM] Output: 0 points (all filtered out)")
 
@@ -353,6 +517,7 @@ class MetabolismAnalyzer:
 
     def _extract_raw_points(self, breath_data: List[Any]) -> List[ProcessedDataPoint]:
         """호흡 데이터에서 raw 포인트 추출"""
+
         # Helper to safely convert to float (handles None, NaN, and 0 correctly)
         def safe_float(val):
             if val is None:
@@ -369,8 +534,12 @@ class MetabolismAnalyzer:
         if breath_data:
             first = breath_data[0]
             logger.warning(f"🔍 [DEBUG] First breath_data point type: {type(first)}")
-            logger.warning(f"🔍 [DEBUG] vo2={getattr(first, 'vo2', 'MISSING')}, vco2={getattr(first, 'vco2', 'MISSING')}, hr={getattr(first, 'hr', 'MISSING')}")
-            logger.warning(f"🔍 [DEBUG] ve_vo2={getattr(first, 've_vo2', 'MISSING')}, ve_vco2={getattr(first, 've_vco2', 'MISSING')}")
+            logger.warning(
+                f"🔍 [DEBUG] vo2={getattr(first, 'vo2', 'MISSING')}, vco2={getattr(first, 'vco2', 'MISSING')}, hr={getattr(first, 'hr', 'MISSING')}"
+            )
+            logger.warning(
+                f"🔍 [DEBUG] ve_vo2={getattr(first, 've_vo2', 'MISSING')}, ve_vco2={getattr(first, 've_vco2', 'MISSING')}"
+            )
 
         points = []
         for bd in breath_data:
@@ -380,11 +549,11 @@ class MetabolismAnalyzer:
                     fat_oxidation=safe_float(bd.fat_oxidation),
                     cho_oxidation=safe_float(bd.cho_oxidation),
                     rer=safe_float(bd.rer),
-                    vo2=safe_float(getattr(bd, 'vo2', None)),
-                    vco2=safe_float(getattr(bd, 'vco2', None)),
-                    hr=safe_float(getattr(bd, 'hr', None)),
-                    ve_vo2=safe_float(getattr(bd, 've_vo2', None)),
-                    ve_vco2=safe_float(getattr(bd, 've_vco2', None)),
+                    vo2=safe_float(getattr(bd, "vo2", None)),
+                    vco2=safe_float(getattr(bd, "vco2", None)),
+                    hr=safe_float(getattr(bd, "hr", None)),
+                    ve_vo2=safe_float(getattr(bd, "ve_vo2", None)),
+                    ve_vco2=safe_float(getattr(bd, "ve_vco2", None)),
                     count=1,
                 )
             )
@@ -425,7 +594,16 @@ class MetabolismAnalyzer:
         df["power_bin"] = (df["power"] / bin_size).round() * bin_size
 
         # 집계할 필드 목록
-        numeric_fields = ["fat_oxidation", "cho_oxidation", "rer", "vo2", "vco2", "hr", "ve_vo2", "ve_vco2"]
+        numeric_fields = [
+            "fat_oxidation",
+            "cho_oxidation",
+            "rer",
+            "vo2",
+            "vco2",
+            "hr",
+            "ve_vo2",
+            "ve_vco2",
+        ]
 
         # 집계 방법에 따른 그룹화
         agg_method = self.config.aggregation_method
@@ -462,8 +640,12 @@ class MetabolismAnalyzer:
         # 결과 변환
         binned_points = []
         for _, row in agg_df.iterrows():
-            fat_ox = float(row["fat_oxidation"]) if pd.notna(row["fat_oxidation"]) else None
-            cho_ox = float(row["cho_oxidation"]) if pd.notna(row["cho_oxidation"]) else None
+            fat_ox = (
+                float(row["fat_oxidation"]) if pd.notna(row["fat_oxidation"]) else None
+            )
+            cho_ox = (
+                float(row["cho_oxidation"]) if pd.notna(row["cho_oxidation"]) else None
+            )
             rer_val = float(row["rer"]) if pd.notna(row["rer"]) else None
             vo2_val = float(row["vo2"]) if pd.notna(row["vo2"]) else None
             vco2_val = float(row["vco2"]) if pd.notna(row["vco2"]) else None
@@ -521,14 +703,36 @@ class MetabolismAnalyzer:
 
         # 데이터 추출
         powers = np.array([p.power for p in binned_points])
-        fat_ox = np.array([p.fat_oxidation if p.fat_oxidation is not None else 0 for p in binned_points])
-        cho_ox = np.array([p.cho_oxidation if p.cho_oxidation is not None else 0 for p in binned_points])
-        rer_vals = np.array([p.rer if p.rer is not None else np.nan for p in binned_points])
-        vo2_vals = np.array([p.vo2 if p.vo2 is not None else np.nan for p in binned_points])
-        vco2_vals = np.array([p.vco2 if p.vco2 is not None else np.nan for p in binned_points])
-        hr_vals = np.array([p.hr if p.hr is not None else np.nan for p in binned_points])
-        ve_vo2_vals = np.array([p.ve_vo2 if p.ve_vo2 is not None else np.nan for p in binned_points])
-        ve_vco2_vals = np.array([p.ve_vco2 if p.ve_vco2 is not None else np.nan for p in binned_points])
+        fat_ox = np.array(
+            [
+                p.fat_oxidation if p.fat_oxidation is not None else 0
+                for p in binned_points
+            ]
+        )
+        cho_ox = np.array(
+            [
+                p.cho_oxidation if p.cho_oxidation is not None else 0
+                for p in binned_points
+            ]
+        )
+        rer_vals = np.array(
+            [p.rer if p.rer is not None else np.nan for p in binned_points]
+        )
+        vo2_vals = np.array(
+            [p.vo2 if p.vo2 is not None else np.nan for p in binned_points]
+        )
+        vco2_vals = np.array(
+            [p.vco2 if p.vco2 is not None else np.nan for p in binned_points]
+        )
+        hr_vals = np.array(
+            [p.hr if p.hr is not None else np.nan for p in binned_points]
+        )
+        ve_vo2_vals = np.array(
+            [p.ve_vo2 if p.ve_vo2 is not None else np.nan for p in binned_points]
+        )
+        ve_vco2_vals = np.array(
+            [p.ve_vco2 if p.ve_vco2 is not None else np.nan for p in binned_points]
+        )
 
         # LOESS smoothing
         try:
@@ -545,7 +749,12 @@ class MetabolismAnalyzer:
                     return None
                 valid_idx = ~np.isnan(vals)
                 if np.sum(valid_idx) >= min_points:
-                    return lowess(vals[valid_idx], powers[valid_idx], frac=frac, return_sorted=True)
+                    return lowess(
+                        vals[valid_idx],
+                        powers[valid_idx],
+                        frac=frac,
+                        return_sorted=True,
+                    )
                 return None
 
             rer_smoothed = smooth_optional(rer_vals, powers, frac)
@@ -635,21 +844,43 @@ class MetabolismAnalyzer:
 
             # 데이터 추출
             powers = np.array([p.power for p in binned_points])
-            fat_ox = np.array([p.fat_oxidation if p.fat_oxidation is not None else 0 for p in binned_points])
-            cho_ox = np.array([p.cho_oxidation if p.cho_oxidation is not None else 0 for p in binned_points])
-            rer_vals = np.array([p.rer if p.rer is not None else np.nan for p in binned_points])
-            vo2_vals = np.array([p.vo2 if p.vo2 is not None else np.nan for p in binned_points])
-            vco2_vals = np.array([p.vco2 if p.vco2 is not None else np.nan for p in binned_points])
-            hr_vals = np.array([p.hr if p.hr is not None else np.nan for p in binned_points])
-            ve_vo2_vals = np.array([p.ve_vo2 if p.ve_vo2 is not None else np.nan for p in binned_points])
-            ve_vco2_vals = np.array([p.ve_vco2 if p.ve_vco2 is not None else np.nan for p in binned_points])
+            fat_ox = np.array(
+                [
+                    p.fat_oxidation if p.fat_oxidation is not None else 0
+                    for p in binned_points
+                ]
+            )
+            cho_ox = np.array(
+                [
+                    p.cho_oxidation if p.cho_oxidation is not None else 0
+                    for p in binned_points
+                ]
+            )
+            rer_vals = np.array(
+                [p.rer if p.rer is not None else np.nan for p in binned_points]
+            )
+            vo2_vals = np.array(
+                [p.vo2 if p.vo2 is not None else np.nan for p in binned_points]
+            )
+            vco2_vals = np.array(
+                [p.vco2 if p.vco2 is not None else np.nan for p in binned_points]
+            )
+            hr_vals = np.array(
+                [p.hr if p.hr is not None else np.nan for p in binned_points]
+            )
+            ve_vo2_vals = np.array(
+                [p.ve_vo2 if p.ve_vo2 is not None else np.nan for p in binned_points]
+            )
+            ve_vco2_vals = np.array(
+                [p.ve_vco2 if p.ve_vco2 is not None else np.nan for p in binned_points]
+            )
 
             # Polynomial degrees per metric type
             DEGREE_FAT_CHO = 3  # Inverted U-shape for Fat, J-curve for CHO
-            DEGREE_RER = 3      # Slight dip at start, exponential rise at end
-            DEGREE_VO2_VCO2 = 2 # Linear efficiency (slight curve)
-            DEGREE_HR = 2       # Linear response
-            DEGREE_VT = 2       # U-shape for nadir detection
+            DEGREE_RER = 3  # Slight dip at start, exponential rise at end
+            DEGREE_VO2_VCO2 = 2  # Linear efficiency (slight curve)
+            DEGREE_HR = 2  # Linear response
+            DEGREE_VT = 2  # U-shape for nadir detection
 
             # Helper function for fitting polynomial with NaN handling
             def fit_poly(vals, powers, degree, min_points=4):
@@ -659,7 +890,9 @@ class MetabolismAnalyzer:
                 if np.sum(valid_idx) >= min_points:
                     # Limit degree if not enough points
                     effective_degree = min(degree, np.sum(valid_idx) - 1)
-                    coeffs = np.polyfit(powers[valid_idx], vals[valid_idx], effective_degree)
+                    coeffs = np.polyfit(
+                        powers[valid_idx], vals[valid_idx], effective_degree
+                    )
                     return np.poly1d(coeffs)
                 return None
 
@@ -714,12 +947,18 @@ class MetabolismAnalyzer:
                     )
                 )
 
-            print(f"✅ Polynomial fit complete: {len(trend_points)} trend points generated")
+            print(
+                f"✅ Polynomial fit complete: {len(trend_points)} trend points generated"
+            )
             # Debug: Check first trend point values
             if trend_points:
                 tp = trend_points[0]
-                print(f"🔍 [TREND] First point: vo2={tp.vo2}, vco2={tp.vco2}, hr={tp.hr}, ve_vo2={tp.ve_vo2}, ve_vco2={tp.ve_vco2}")
-                print(f"🔍 [TREND] Polys: vo2_poly={vo2_poly is not None}, vco2_poly={vco2_poly is not None}, hr_poly={hr_poly is not None}")
+                print(
+                    f"🔍 [TREND] First point: vo2={tp.vo2}, vco2={tp.vco2}, hr={tp.hr}, ve_vo2={tp.ve_vo2}, ve_vco2={tp.ve_vco2}"
+                )
+                print(
+                    f"🔍 [TREND] Polys: vo2_poly={vo2_poly is not None}, vco2_poly={vco2_poly is not None}, hr_poly={hr_poly is not None}"
+                )
             return trend_points
 
         except Exception as e:

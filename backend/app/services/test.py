@@ -14,9 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import CPETTest, BreathData, Subject
-from app.schemas.test import CPETTestCreate, CPETTestUpdate, TimeSeriesRequest, ProtocolType
+from app.schemas.test import (
+    CPETTestCreate,
+    CPETTestUpdate,
+    TimeSeriesRequest,
+    ProtocolType,
+)
 from app.services.cosmed_parser import COSMEDParser, ParsedCPETData
-from app.services.metabolism_analysis import MetabolismAnalyzer
+from app.services.metabolism_analysis import MetabolismAnalyzer, AnalysisConfig
 from app.services.data_validator import DataValidator
 
 
@@ -103,9 +108,7 @@ class TestService:
         await self.db.refresh(test)
         return test
 
-    async def update(
-        self, test_id: UUID, data: CPETTestUpdate
-    ) -> Optional[CPETTest]:
+    async def update(self, test_id: UUID, data: CPETTestUpdate) -> Optional[CPETTest]:
         """테스트 업데이트"""
         test = await self.get_by_id(test_id)
         if not test:
@@ -166,9 +169,12 @@ class TestService:
             if parsed_data.subject.birth_date and not subject.birth_date:
                 try:
                     from datetime import datetime as dt
+
                     # Parse birth_date string to date object
                     if isinstance(parsed_data.subject.birth_date, str):
-                        birth_date = dt.strptime(parsed_data.subject.birth_date, "%m/%d/%Y").date()
+                        birth_date = dt.strptime(
+                            parsed_data.subject.birth_date, "%m/%d/%Y"
+                        ).date()
                     else:
                         birth_date = parsed_data.subject.birth_date
                     subject.birth_date = birth_date
@@ -188,10 +194,10 @@ class TestService:
             # ========================================
             validator = DataValidator()
             validation_result = validator.validate(parsed_data.breath_data_df)
-            
+
             # Log validation summary
             print(validator.get_validation_summary(validation_result))
-            
+
             # 검증 실패 시 조기 반환 (데이터 저장은 하되 분석은 스킵)
             if not validation_result.is_valid:
                 test = CPETTest(
@@ -207,18 +213,18 @@ class TestService:
                     parsing_errors={
                         "validation_errors": validation_result.reason,
                         "quality_score": validation_result.quality_score,
-                        "metadata": validation_result.metadata
+                        "metadata": validation_result.metadata,
                     },
                     data_quality_score=validation_result.quality_score,
                 )
                 self.db.add(test)
                 await self.db.commit()
                 await self.db.refresh(test)
-                
+
                 errors = validation_result.reason
                 warnings = ["Data validation failed - test saved but not analyzed"]
                 return test, errors, warnings
-            
+
             # 프로토콜 타입이 RAMP가 아니면 분석 스킵
             if validation_result.protocol_type != ProtocolType.RAMP:
                 test = CPETTest(
@@ -235,48 +241,56 @@ class TestService:
                         "protocol_type": validation_result.protocol_type.value,
                         "reason": f"Protocol type {validation_result.protocol_type.value} is not suitable for standard analysis (FatMax/VT). Only RAMP protocols are supported.",
                         "quality_score": validation_result.quality_score,
-                        "metadata": validation_result.metadata
+                        "metadata": validation_result.metadata,
                     },
                     data_quality_score=validation_result.quality_score,
                 )
                 self.db.add(test)
                 await self.db.flush()
-                
+
                 # BreathData는 저장 (나중에 다른 분석 가능)
                 base_time = test.test_date
                 breath_batch = []
                 for idx, row in parsed_data.breath_data_df.iterrows():
-                    t_sec = row.get('t_sec') or row.get('t') or 0
+                    t_sec = row.get("t_sec") or row.get("t") or 0
                     timestamp = base_time + timedelta(seconds=float(t_sec))
-                    
+
                     breath = BreathData(
                         test_id=test.test_id,
                         time=timestamp,
                         t_sec=float(t_sec) if pd.notna(t_sec) else None,
-                        vo2=float(row.get('vo2')) if pd.notna(row.get('vo2')) else None,
-                        vco2=float(row.get('vco2')) if pd.notna(row.get('vco2')) else None,
-                        hr=int(row.get('hr')) if pd.notna(row.get('hr')) else None,
-                        bike_power=int(row.get('bike_power')) if pd.notna(row.get('bike_power')) else None,
+                        vo2=float(row.get("vo2")) if pd.notna(row.get("vo2")) else None,
+                        vco2=(
+                            float(row.get("vco2"))
+                            if pd.notna(row.get("vco2"))
+                            else None
+                        ),
+                        hr=int(row.get("hr")) if pd.notna(row.get("hr")) else None,
+                        bike_power=(
+                            int(row.get("bike_power"))
+                            if pd.notna(row.get("bike_power"))
+                            else None
+                        ),
                     )
                     breath_batch.append(breath)
-                    
+
                     if len(breath_batch) >= 100:
                         self.db.add_all(breath_batch)
                         await self.db.flush()
                         breath_batch = []
-                
+
                 if breath_batch:
                     self.db.add_all(breath_batch)
-                
+
                 await self.db.commit()
                 await self.db.refresh(test)
-                
+
                 warnings = [
                     f"Protocol type {validation_result.protocol_type.value} detected - standard analysis skipped",
-                    "Only raw data saved. RAMP protocol required for FatMax/VT analysis."
+                    "Only raw data saved. RAMP protocol required for FatMax/VT analysis.",
                 ]
                 return test, [], warnings
-            
+
             # ========================================
             # PROCEED WITH STANDARD ANALYSIS (RAMP)
             # ========================================
@@ -300,7 +314,9 @@ class TestService:
             fatmax_metrics = parser.find_fatmax(df_with_phases)
 
             # VT1/VT2 역치 감지
-            vt_thresholds = parser.detect_ventilatory_thresholds(df_with_phases, method='v_slope')
+            vt_thresholds = parser.detect_ventilatory_thresholds(
+                df_with_phases, method="v_slope"
+            )
 
             # CPETTest 생성
             test = CPETTest(
@@ -341,8 +357,14 @@ class TestService:
                 smoothing_window=smoothing_window,
                 source_filename=filename,
                 file_upload_timestamp=datetime.utcnow(),
-                parsing_status="success" if not parsed_data.parsing_errors else "warning",
-                parsing_errors={"errors": parsed_data.parsing_errors} if parsed_data.parsing_errors else None,
+                parsing_status=(
+                    "success" if not parsed_data.parsing_errors else "warning"
+                ),
+                parsing_errors=(
+                    {"errors": parsed_data.parsing_errors}
+                    if parsed_data.parsing_errors
+                    else None
+                ),
                 data_quality_score=validation_result.quality_score,
                 # 구간별 메트릭 저장 (JSON)
                 phase_metrics=phase_metrics if phase_metrics else None,
@@ -357,24 +379,36 @@ class TestService:
 
             # BxB 데이터의 경우 같은 t_sec에 여러 데이터가 있을 수 있음
             # 중복 키 방지를 위해 t_sec 기준으로 그룹화하여 평균값 사용
-            if 't_sec' in df_with_phases.columns:
+            if "t_sec" in df_with_phases.columns:
                 # 숫자 컬럼만 평균, 문자열 컬럼은 첫 번째 값 사용
-                numeric_cols = df_with_phases.select_dtypes(include=['number']).columns.tolist()
-                non_numeric_cols = [c for c in df_with_phases.columns if c not in numeric_cols and c != 't_sec']
+                numeric_cols = df_with_phases.select_dtypes(
+                    include=["number"]
+                ).columns.tolist()
+                non_numeric_cols = [
+                    c
+                    for c in df_with_phases.columns
+                    if c not in numeric_cols and c != "t_sec"
+                ]
 
-                agg_dict = {col: 'mean' for col in numeric_cols if col != 't_sec'}
+                agg_dict = {col: "mean" for col in numeric_cols if col != "t_sec"}
                 for col in non_numeric_cols:
-                    agg_dict[col] = 'first'
+                    agg_dict[col] = "first"
 
                 if agg_dict:
-                    df_with_phases = df_with_phases.groupby('t_sec', as_index=False).agg(agg_dict)
-                    df_with_phases = df_with_phases.sort_values('t_sec').reset_index(drop=True)
+                    df_with_phases = df_with_phases.groupby(
+                        "t_sec", as_index=False
+                    ).agg(agg_dict)
+                    df_with_phases = df_with_phases.sort_values("t_sec").reset_index(
+                        drop=True
+                    )
 
             for idx, row in df_with_phases.iterrows():
                 t_sec = row.get("t_sec", idx)
-                if t_sec is None or (isinstance(t_sec, float) and t_sec != t_sec):  # NaN check
+                if t_sec is None or (
+                    isinstance(t_sec, float) and t_sec != t_sec
+                ):  # NaN check
                     t_sec = float(idx)
-                
+
                 # Helper function to safely get values and convert NaN to None
                 def safe_get(key, convert_type=None):
                     val = row.get(key)
@@ -422,13 +456,13 @@ class TestService:
                     is_valid=True,
                 )
                 breath_batch.append(breath)
-                
+
                 # 배치 크기에 도달하면 flush
                 if len(breath_batch) >= batch_size:
                     self.db.add_all(breath_batch)
                     await self.db.flush()
                     breath_batch = []
-            
+
             # 남은 데이터 flush
             if breath_batch:
                 self.db.add_all(breath_batch)
@@ -436,7 +470,7 @@ class TestService:
 
             await self.db.commit()
             await self.db.refresh(test)
-            
+
             # DataFrame 메모리 해제
             del df_with_phases
             del df_with_metrics
@@ -569,17 +603,21 @@ class TestService:
             return {}
 
         # 페이즈별 통계
-        phases_query = select(
-            BreathData.phase,
-            func.min(BreathData.t_sec).label("start_sec"),
-            func.max(BreathData.t_sec).label("end_sec"),
-            func.count().label("count"),
-        ).where(
-            and_(
-                BreathData.test_id == test_id,
-                BreathData.phase.isnot(None),
+        phases_query = (
+            select(
+                BreathData.phase,
+                func.min(BreathData.t_sec).label("start_sec"),
+                func.max(BreathData.t_sec).label("end_sec"),
+                func.count().label("count"),
             )
-        ).group_by(BreathData.phase)
+            .where(
+                and_(
+                    BreathData.test_id == test_id,
+                    BreathData.phase.isnot(None),
+                )
+            )
+            .group_by(BreathData.phase)
+        )
 
         phases_result = await self.db.execute(phases_query)
         phases = {}
@@ -599,7 +637,11 @@ class TestService:
         duration_row = duration_result.first()
 
         test_duration_sec = None
-        if duration_row and duration_row.start is not None and duration_row.end is not None:
+        if (
+            duration_row
+            and duration_row.start is not None
+            and duration_row.end is not None
+        ):
             test_duration_sec = duration_row.end - duration_row.start
 
         return {
@@ -654,6 +696,7 @@ class TestService:
             data.append(row)
 
         return data
+
     async def get_analysis(
         self,
         test_id: UUID,
@@ -663,6 +706,8 @@ class TestService:
         bin_size: int = 10,
         aggregation_method: str = "median",
         min_power_threshold: Optional[int] = None,
+        trim_start_sec: Optional[float] = None,
+        trim_end_sec: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         테스트 분석 결과 조회 (대사 프로파일 차트용)
@@ -675,6 +720,8 @@ class TestService:
             bin_size: Power binning 크기 (W, 5~30)
             aggregation_method: 집계 방법 (median, mean, trimmed_mean)
             min_power_threshold: 최소 파워 임계값 (W, 이하 데이터 제외)
+            trim_start_sec: Manual trim start time (seconds, optional)
+            trim_end_sec: Manual trim end time (seconds, optional)
 
         Returns:
             - phase_boundaries: 구간 경계
@@ -685,15 +732,18 @@ class TestService:
             - 통계 요약
             - processed_series: 처리된 대사 데이터
             - metabolic_markers: FatMax/Crossover 마커
+            - used_trim_range: Applied trimming range (auto or manual)
         """
         test = await self.get_by_id(test_id)
         if not test:
             return {}
 
         # 모든 호흡 데이터 조회
-        query = select(BreathData).where(
-            BreathData.test_id == test_id
-        ).order_by(BreathData.t_sec)
+        query = (
+            select(BreathData)
+            .where(BreathData.test_id == test_id)
+            .order_by(BreathData.t_sec)
+        )
 
         result = await self.db.execute(query)
         breath_data = list(result.scalars().all())
@@ -705,6 +755,11 @@ class TestService:
                 "test_date": test.test_date,
                 "error": "No breath data found",
             }
+
+        # Calculate total duration for frontend slider
+        total_duration_sec = (
+            breath_data[-1].t_sec if breath_data and breath_data[-1].t_sec else 0
+        )
 
         # 구간 경계 계산
         phase_boundaries = self._calculate_phase_boundaries(breath_data)
@@ -723,19 +778,20 @@ class TestService:
         timeseries = self._downsample_for_chart(breath_data, interval_sec)
 
         # 총 연소량 계산
-        total_fat_g = sum(
-            bd.fat_oxidation for bd in breath_data
-            if bd.fat_oxidation is not None
-        ) / 60  # g/min → g (assuming 1 data point per second)
+        total_fat_g = (
+            sum(bd.fat_oxidation for bd in breath_data if bd.fat_oxidation is not None)
+            / 60
+        )  # g/min → g (assuming 1 data point per second)
 
-        total_cho_g = sum(
-            bd.cho_oxidation for bd in breath_data
-            if bd.cho_oxidation is not None
-        ) / 60
+        total_cho_g = (
+            sum(bd.cho_oxidation for bd in breath_data if bd.cho_oxidation is not None)
+            / 60
+        )
 
         # 평균 RER (Exercise 구간만)
         exercise_rers = [
-            bd.rer for bd in breath_data
+            bd.rer
+            for bd in breath_data
             if bd.rer is not None and bd.phase == "Exercise"
         ]
         avg_rer = sum(exercise_rers) / len(exercise_rers) if exercise_rers else None
@@ -752,25 +808,37 @@ class TestService:
         processed_series = None
         metabolic_markers = None
         analysis_warnings = None
+        used_trim_range = None
 
         if include_processed:
-            analyzer = MetabolismAnalyzer(
+            # Build AnalysisConfig with trim parameters
+            config = AnalysisConfig(
                 loess_frac=loess_frac,
-                bin_size=bin_size,
-                use_median=(aggregation_method == "median"),
+                bin_size=max(5, min(30, bin_size)),
+                aggregation_method=(
+                    aggregation_method
+                    if aggregation_method in ("median", "mean", "trimmed_mean")
+                    else "median"
+                ),
+                min_power_threshold=min_power_threshold,
+                # Trim parameters
+                auto_trim_enabled=True,
+                trim_start_sec=trim_start_sec,
+                trim_end_sec=trim_end_sec,
             )
-            # aggregation_method가 median이 아닌 경우 직접 설정
-            if aggregation_method in ("mean", "trimmed_mean"):
-                analyzer.config.aggregation_method = aggregation_method
-            # min_power_threshold 설정
-            if min_power_threshold is not None:
-                analyzer.config.min_power_threshold = min_power_threshold
-            
+
+            analyzer = MetabolismAnalyzer(config=config)
+
             analysis_result = analyzer.analyze(breath_data)
             if analysis_result:
                 processed_series = analysis_result.processed_series.to_dict()
                 metabolic_markers = analysis_result.metabolic_markers.to_dict()
-                analysis_warnings = analysis_result.warnings if analysis_result.warnings else None
+                analysis_warnings = (
+                    analysis_result.warnings if analysis_result.warnings else None
+                )
+                # Extract trim range for frontend
+                if analysis_result.trim_range:
+                    used_trim_range = analysis_result.trim_range.to_dict()
 
         return {
             "test_id": test_id,
@@ -795,9 +863,13 @@ class TestService:
             "processed_series": processed_series,
             "metabolic_markers": metabolic_markers,
             "analysis_warnings": analysis_warnings,
+            "used_trim_range": used_trim_range,
+            "total_duration_sec": total_duration_sec,
         }
 
-    def _calculate_phase_boundaries(self, breath_data: List[BreathData]) -> Dict[str, Any]:
+    def _calculate_phase_boundaries(
+        self, breath_data: List[BreathData]
+    ) -> Dict[str, Any]:
         """구간 경계 계산"""
         boundaries = {
             "rest_end_sec": None,
@@ -805,7 +877,7 @@ class TestService:
             "exercise_end_sec": None,
             "peak_sec": None,
             "total_duration_sec": breath_data[-1].t_sec if breath_data else 0,
-            "phases": []
+            "phases": [],
         }
 
         current_phase = None
@@ -815,11 +887,13 @@ class TestService:
             if bd.phase != current_phase:
                 # 이전 구간 종료
                 if current_phase is not None and phase_start is not None:
-                    boundaries["phases"].append({
-                        "phase": current_phase,
-                        "start_sec": phase_start,
-                        "end_sec": bd.t_sec or 0
-                    })
+                    boundaries["phases"].append(
+                        {
+                            "phase": current_phase,
+                            "start_sec": phase_start,
+                            "end_sec": bd.t_sec or 0,
+                        }
+                    )
 
                     if current_phase == "Rest":
                         boundaries["rest_end_sec"] = bd.t_sec
@@ -836,15 +910,19 @@ class TestService:
 
         # 마지막 구간
         if current_phase is not None and phase_start is not None:
-            boundaries["phases"].append({
-                "phase": current_phase,
-                "start_sec": phase_start,
-                "end_sec": breath_data[-1].t_sec if breath_data else 0
-            })
+            boundaries["phases"].append(
+                {
+                    "phase": current_phase,
+                    "start_sec": phase_start,
+                    "end_sec": breath_data[-1].t_sec if breath_data else 0,
+                }
+            )
 
         return boundaries
 
-    def _calculate_phase_metrics(self, breath_data: List[BreathData]) -> Dict[str, Dict]:
+    def _calculate_phase_metrics(
+        self, breath_data: List[BreathData]
+    ) -> Dict[str, Dict]:
         """구간별 메트릭 계산"""
         phases_data = {}
         for bd in breath_data:
@@ -882,12 +960,14 @@ class TestService:
 
         return metrics
 
-    def _find_fatmax_info(self, breath_data: List[BreathData], test: CPETTest) -> Dict[str, Any]:
+    def _find_fatmax_info(
+        self, breath_data: List[BreathData], test: CPETTest
+    ) -> Dict[str, Any]:
         """FATMAX 상세 정보"""
         fatmax_bd = max(
             (bd for bd in breath_data if bd.fat_oxidation is not None),
             key=lambda x: x.fat_oxidation,
-            default=None
+            default=None,
         )
 
         if not fatmax_bd:
@@ -902,12 +982,14 @@ class TestService:
             "fat_max_time_sec": fatmax_bd.t_sec,
         }
 
-    def _find_vo2max_info(self, breath_data: List[BreathData], test: CPETTest) -> Dict[str, Any]:
+    def _find_vo2max_info(
+        self, breath_data: List[BreathData], test: CPETTest
+    ) -> Dict[str, Any]:
         """VO2MAX 상세 정보"""
         vo2max_bd = max(
             (bd for bd in breath_data if bd.vo2 is not None),
             key=lambda x: x.vo2,
-            default=None
+            default=None,
         )
 
         if not vo2max_bd:
@@ -917,15 +999,14 @@ class TestService:
             "vo2_max": vo2max_bd.vo2 or test.vo2_max,
             "vo2_max_rel": vo2max_bd.vo2_rel or test.vo2_max_rel,
             "vco2_max": vo2max_bd.vco2 or test.vco2_max,
-            "hr_max": max((bd.hr for bd in breath_data if bd.hr), default=None) or test.hr_max,
+            "hr_max": max((bd.hr for bd in breath_data if bd.hr), default=None)
+            or test.hr_max,
             "rer_at_max": vo2max_bd.rer,
             "vo2_max_time_sec": vo2max_bd.t_sec,
         }
 
     def _downsample_for_chart(
-        self,
-        breath_data: List[BreathData],
-        interval_sec: int = 5
+        self, breath_data: List[BreathData], interval_sec: int = 5
     ) -> List[Dict[str, Any]]:
         """차트용 다운샘플링 (with kcal/day 환산)"""
         if not breath_data:
@@ -951,11 +1032,10 @@ class TestService:
         return result
 
     def _aggregate_for_chart(
-        self,
-        bucket: List[BreathData],
-        bucket_start: float
+        self, bucket: List[BreathData], bucket_start: float
     ) -> Dict[str, Any]:
         """차트용 버킷 집계 (with kcal/day 환산)"""
+
         def avg(vals):
             valid = [v for v in vals if v is not None]
             return sum(valid) / len(valid) if valid else None
@@ -976,10 +1056,18 @@ class TestService:
         return {
             "time_sec": bucket_start,
             "power": avg([bd.bike_power for bd in bucket]),
-            "hr": int(avg([bd.hr for bd in bucket])) if avg([bd.hr for bd in bucket]) else None,
+            "hr": (
+                int(avg([bd.hr for bd in bucket]))
+                if avg([bd.hr for bd in bucket])
+                else None
+            ),
             "vo2": avg([bd.vo2 for bd in bucket]),
             "vco2": avg([bd.vco2 for bd in bucket]),
-            "rer": round(avg([bd.rer for bd in bucket]), 3) if avg([bd.rer for bd in bucket]) else None,
+            "rer": (
+                round(avg([bd.rer for bd in bucket]), 3)
+                if avg([bd.rer for bd in bucket])
+                else None
+            ),
             "fat_oxidation": round(fat_ox, 4) if fat_ox else None,
             "cho_oxidation": round(cho_ox, 4) if cho_ox else None,
             "fat_kcal_day": round(fat_kcal_day, 1) if fat_kcal_day else None,
