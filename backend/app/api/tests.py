@@ -3,7 +3,16 @@
 from typing import Optional, List
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, Response, UploadFile, File, Form, status
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    File,
+    Form,
+    status,
+)
 
 from app.api.deps import CurrentUser, ResearcherUser, DBSession
 from app.schemas import (
@@ -14,8 +23,8 @@ from app.schemas import (
     TestUploadResponse,
 )
 from app.schemas.test import (
-    TimeSeriesRequest, 
-    TimeSeriesResponse, 
+    TimeSeriesRequest,
+    TimeSeriesResponse,
     TestAnalysisResponse,
     RawBreathDataResponse,
     RawBreathDataRow,
@@ -26,7 +35,9 @@ from app.utils.json_sanitizer import sanitize_for_json
 router = APIRouter(prefix="/tests", tags=["Tests"])
 
 
-@router.post("/upload", response_model=TestUploadResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/upload", response_model=TestUploadResponse, status_code=status.HTTP_201_CREATED
+)
 async def upload_test(
     db: DBSession,
     current_user: ResearcherUser,
@@ -37,21 +48,21 @@ async def upload_test(
 ):
     """
     COSMED 테스트 파일 업로드 및 파싱
-    
+
     - **file**: COSMED Excel 파일 (.xlsx)
     - **subject_id**: 연결할 피험자 ID
     - **calc_method**: 대사 계산 방법 (Frayn, Peronnet, Jeukendrup)
     - **smoothing_window**: 평활화 윈도우 크기
-    
+
     파일을 파싱하여 테스트 정보와 호흡 데이터를 저장합니다.
     """
     # 파일 타입 검증
-    if not file.filename.endswith(('.xlsx', '.xls')):
+    if not file.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only Excel files (.xlsx, .xls) are supported",
         )
-    
+
     # 파일 크기 제한 (50MB)
     contents = await file.read()
     if len(contents) > 50 * 1024 * 1024:
@@ -59,9 +70,9 @@ async def upload_test(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail="File size exceeds 50MB limit",
         )
-    
+
     service = TestService(db)
-    
+
     try:
         test, errors, warnings = await service.upload_and_parse(
             file_content=contents,
@@ -70,7 +81,7 @@ async def upload_test(
             calc_method=calc_method,
             smoothing_window=smoothing_window,
         )
-        
+
         return TestUploadResponse(
             test_id=test.test_id,
             subject_id=test.subject_id,
@@ -98,23 +109,23 @@ async def list_tests(
 ):
     """
     테스트 목록 조회
-    
+
     피험자는 본인 테스트만, 연구자는 전체 조회 가능
     """
     service = TestService(db)
-    
+
     # 피험자는 본인 데이터만
     if current_user.role == "subject":
         subject_id = current_user.subject_id
-    
+
     tests, total = await service.get_list(
         page=page,
         page_size=page_size,
         subject_id=subject_id,
     )
-    
+
     total_pages = (total + page_size - 1) // page_size
-    
+
     return CPETTestListResponse(
         items=[CPETTestResponse.model_validate(t) for t in tests],
         total=total,
@@ -133,14 +144,14 @@ async def get_test(
     테스트 상세 정보 조회
     """
     service = TestService(db)
-    
+
     test = await service.get_by_id(test_id)
     if not test:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Test not found",
         )
-    
+
     # 피험자는 본인 테스트만
     if current_user.role == "subject":
         if test.subject_id != current_user.subject_id:
@@ -148,7 +159,7 @@ async def get_test(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied",
             )
-    
+
     return CPETTestResponse.model_validate(test)
 
 
@@ -163,14 +174,14 @@ async def update_test(
     테스트 정보 수정 (연구자 이상 권한 필요)
     """
     service = TestService(db)
-    
+
     test = await service.get_by_id(test_id)
     if not test:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Test not found",
         )
-    
+
     updated = await service.update(test_id, data)
     return CPETTestResponse.model_validate(updated)
 
@@ -189,14 +200,14 @@ async def delete_test(
     테스트 삭제 (연구자 이상 권한 필요)
     """
     service = TestService(db)
-    
+
     test = await service.get_by_id(test_id)
     if not test:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Test not found",
         )
-    
+
     await service.delete(test_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -209,31 +220,32 @@ async def get_raw_breath_data(
 ):
     """
     테스트의 Raw Breath Data 조회 (데이터 분석용)
-    
+
     Admin 및 Researcher만 접근 가능.
     breath_data 테이블의 모든 컬럼을 반환합니다.
     """
     service = TestService(db)
-    
+
     test = await service.get_by_id(test_id)
     if not test:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Test not found",
         )
-    
+
     raw_data = await service.get_raw_breath_data(test_id)
-    
+
     # 피험자 이름 조회
     subject_name = None
     if test.subject_id:
         from app.models import Subject
         from sqlalchemy import select
+
         result = await db.execute(select(Subject).where(Subject.id == test.subject_id))
         subject = result.scalar_one_or_none()
         if subject:
             subject_name = subject.encrypted_name
-    
+
     # 각 row에 id 할당 (row index)
     data_rows = []
     for idx, row in enumerate(raw_data, start=1):
@@ -266,21 +278,21 @@ async def get_time_series(
 ):
     """
     테스트 시계열 데이터 조회 (다운샘플링 지원)
-    
+
     - **signals**: 조회할 신호 목록 (vo2, vco2, ve, hr, rer 등)
     - **interval**: 다운샘플 간격 (1s, 5s, 10s, 30s)
     - **method**: 집계 방법 (mean, median, max, min)
     - **start_sec/end_sec**: 시간 범위 필터 (초 단위)
     """
     service = TestService(db)
-    
+
     test = await service.get_by_id(test_id)
     if not test:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Test not found",
         )
-    
+
     # 권한 확인
     if current_user.role == "subject":
         if test.subject_id != current_user.subject_id:
@@ -288,9 +300,9 @@ async def get_time_series(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied",
             )
-    
+
     signal_list = [s.strip().lower() for s in signals.split(",")]
-    
+
     request = TimeSeriesRequest(
         signals=signal_list,
         interval=interval,
@@ -298,7 +310,7 @@ async def get_time_series(
         start_sec=start_sec,
         end_sec=end_sec,
     )
-    
+
     result = await service.get_time_series(test_id, request)
     return TimeSeriesResponse(**result)
 
@@ -311,18 +323,18 @@ async def get_test_metrics(
 ):
     """
     테스트 주요 지표 조회
-    
+
     VO2max, VT1, VT2, FatMax, RER 등 핵심 대사 지표 반환
     """
     service = TestService(db)
-    
+
     test = await service.get_by_id(test_id)
     if not test:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Test not found",
         )
-    
+
     # 권한 확인
     if current_user.role == "subject":
         if test.subject_id != current_user.subject_id:
@@ -330,7 +342,7 @@ async def get_test_metrics(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied",
             )
-    
+
     metrics = await service.get_metrics(test_id)
     return TestMetricsResponse(test_id=test_id, subject_id=test.subject_id, **metrics)
 
@@ -345,11 +357,25 @@ async def get_test_analysis(
     db: DBSession,
     current_user: CurrentUser,
     interval: str = Query("5s", description="시계열 다운샘플 간격 (예: 1s, 5s, 10s)"),
-    include_processed: bool = Query(True, description="처리된 시계열 데이터 포함 (LOESS, binning)"),
-    loess_frac: float = Query(0.25, ge=0.1, le=0.5, description="LOESS smoothing fraction (0.1~0.5)"),
+    include_processed: bool = Query(
+        True, description="처리된 시계열 데이터 포함 (LOESS, binning)"
+    ),
+    loess_frac: float = Query(
+        0.25, ge=0.1, le=0.5, description="LOESS smoothing fraction (0.1~0.5)"
+    ),
     bin_size: int = Query(10, ge=5, le=30, description="Power binning 크기 (W, 5~30)"),
-    aggregation_method: str = Query("median", description="집계 방법 (median, mean, trimmed_mean)"),
-    min_power_threshold: int = Query(0, ge=0, le=200, description="최소 파워 임계값 (W, 이하 데이터 제외)"),
+    aggregation_method: str = Query(
+        "median", description="집계 방법 (median, mean, trimmed_mean)"
+    ),
+    min_power_threshold: int = Query(
+        0, ge=0, le=200, description="최소 파워 임계값 (W, 이하 데이터 제외)"
+    ),
+    trim_start_sec: Optional[float] = Query(
+        None, description="Manual trim start time (seconds)"
+    ),
+    trim_end_sec: Optional[float] = Query(
+        None, description="Manual trim end time (seconds)"
+    ),
 ):
     """
     테스트 분석 결과 조회 (대사 프로파일 차트용)
@@ -363,7 +389,8 @@ async def get_test_analysis(
     - **통계 요약**: 총 지방/탄수화물 연소량, 평균 RER 등
     - **processed_series**: LOESS smoothing, Power binning 처리된 시계열
     - **metabolic_markers**: FatMax zone, Crossover point 마커
-    
+    - **used_trim_range**: Applied analysis window (auto-detected or manual)
+
     Processing Parameters:
     - **loess_frac**: LOESS 평활화 정도 (0.1=날카로움, 0.5=부드러움)
     - **bin_size**: 파워 구간 크기 (예: 10W → 0-10, 10-20, ...)
@@ -374,6 +401,10 @@ async def get_test_analysis(
     - **min_power_threshold**: 최소 파워 임계값 (W, 이하 데이터 제외)
       - 0: 제외 없음 (기본값)
       - 80: 80W 미만 데이터 제외 (웜업 아티팩트 제거에 유용)
+
+    Trim Parameters:
+    - **trim_start_sec**: Manual trim start (seconds). If not provided, auto-detected.
+    - **trim_end_sec**: Manual trim end (seconds). If not provided, auto-detected.
     """
     service = TestService(db)
 
@@ -405,11 +436,13 @@ async def get_test_analysis(
         bin_size=bin_size,
         aggregation_method=aggregation_method,
         min_power_threshold=min_power_threshold if min_power_threshold > 0 else None,
+        trim_start_sec=trim_start_sec,
+        trim_end_sec=trim_end_sec,
     )
-    
+
     # NaN/Inf 값을 None으로 변환
     analysis = sanitize_for_json(analysis)
-    
+
     return TestAnalysisResponse(**analysis)
 
 
@@ -429,7 +462,7 @@ async def list_subject_tests(
     특정 피험자의 테스트 목록 조회
     """
     service = TestService(db)
-    
+
     # 권한 확인
     if current_user.role == "subject":
         if current_user.subject_id != subject_id:
@@ -437,15 +470,15 @@ async def list_subject_tests(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied",
             )
-    
+
     tests, total = await service.get_list(
         page=page,
         page_size=page_size,
         subject_id=subject_id,
     )
-    
+
     total_pages = (total + page_size - 1) // page_size
-    
+
     return CPETTestListResponse(
         items=[CPETTestResponse.model_validate(t) for t in tests],
         total=total,

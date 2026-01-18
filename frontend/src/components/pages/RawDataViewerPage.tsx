@@ -2,10 +2,11 @@ import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { Navigation } from '@/components/layout/Navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Database, Download, ChevronLeft, ChevronRight, Settings2, Check, User, Calendar, LineChart, X } from 'lucide-react';
+import { Database, Download, ChevronLeft, ChevronRight, Settings2, Check, User, Calendar, LineChart, X, Scissors } from 'lucide-react';
 import { toast } from 'sonner';
 import { getErrorMessage, getAuthToken } from '@/utils/apiHelpers';
 import { useDebounce } from '@/hooks/useDebounce';
+import { Slider } from '@/components/ui/slider';
 import {
   ComposedChart,
   Line,
@@ -276,6 +277,15 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   const debouncedBin = useDebounce(analysisSettings.bin, 500);
   const debouncedMinPower = useDebounce(analysisSettings.minPower, 500);
 
+  // Trim range state (for analysis window)
+  interface TrimRange {
+    start: number;
+    end: number;
+  }
+  const [trimRange, setTrimRange] = useState<TrimRange | null>(null);
+  const [totalDuration, setTotalDuration] = useState<number>(600); // Default 10 min
+  const debouncedTrimRange = useDebounce(trimRange, 500);
+
   // 컬럼 선택 상태
   const [selectedColumns, setSelectedColumns] = useState<string[]>(DEFAULT_SELECTED_COLUMNS);
   const [showColumnSelector, setShowColumnSelector] = useState(false);
@@ -515,7 +525,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     if (selectedTestId && useProcessedData) {
       loadProcessedData();
     }
-  }, [selectedTestId, useProcessedData, dataMode, debouncedLoess, debouncedBin, debouncedMinPower, analysisSettings.method]);
+  }, [selectedTestId, useProcessedData, dataMode, debouncedLoess, debouncedBin, debouncedMinPower, analysisSettings.method, debouncedTrimRange]);
 
   // 선택한 테스트의 raw data 로드
   async function loadRawData() {
@@ -560,8 +570,22 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     try {
       setLoading(true);
       const token = getAuthToken();
+      // Build query params including trim range if set
+      const params = new URLSearchParams({
+        interval: '5s',
+        include_processed: 'true',
+        loess_frac: String(debouncedLoess),
+        bin_size: String(debouncedBin),
+        aggregation_method: analysisSettings.method,
+        min_power_threshold: String(debouncedMinPower),
+      });
+      // Add trim params if manually adjusted
+      if (debouncedTrimRange) {
+        params.set('trim_start_sec', String(debouncedTrimRange.start));
+        params.set('trim_end_sec', String(debouncedTrimRange.end));
+      }
       const response = await fetch(
-        `/api/tests/${selectedTestId}/analysis?interval=5s&include_processed=true&loess_frac=${debouncedLoess}&bin_size=${debouncedBin}&aggregation_method=${analysisSettings.method}&min_power_threshold=${debouncedMinPower}`,
+        `/api/tests/${selectedTestId}/analysis?${params.toString()}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -574,6 +598,19 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       console.log('📊 Analysis API Response:', data);
       console.log('📊 Available keys in processed_series:', Object.keys(data.processed_series || {}));
       console.log(`📊 trend data length: ${data.processed_series?.trend?.length || 0}`);
+
+      // Update trim range from API response (auto-detected or previous manual)
+      if (data.used_trim_range && !trimRange) {
+        setTrimRange({
+          start: data.used_trim_range.start_sec,
+          end: data.used_trim_range.end_sec,
+        });
+      }
+      // Update total duration for slider max
+      if (data.total_duration_sec) {
+        setTotalDuration(data.total_duration_sec);
+      }
+
       setAnalysisData(data);
 
       // currentMode에 따라 적절한 데이터 소스 선택
@@ -876,6 +913,41 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                 </select>
               </div>
             </div>
+
+            {/* Analysis Window Trim Slider */}
+            {useProcessedData && trimRange && (
+              <div className="flex items-center gap-4 py-2 px-3 bg-gray-50 rounded-lg border border-gray-200">
+                <div className="flex items-center gap-1.5 min-w-[100px]">
+                  <Scissors className="w-4 h-4 text-orange-500" />
+                  <span className="text-xs font-medium text-gray-700">Analysis Window</span>
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                  <Slider
+                    min={0}
+                    max={totalDuration}
+                    step={5}
+                    value={[trimRange.start, trimRange.end]}
+                    onValueChange={(values) => {
+                      setTrimRange({ start: values[0], end: values[1] });
+                    }}
+                    className="w-full"
+                  />
+                </div>
+                <div className="text-xs text-gray-600 min-w-[120px] text-right">
+                  {Math.round(trimRange.start)}s - {Math.round(trimRange.end)}s
+                  <span className="ml-1.5 text-gray-400">
+                    ({Math.round(trimRange.end - trimRange.start)}s)
+                  </span>
+                </div>
+                <button
+                  onClick={() => setTrimRange(null)}
+                  className="p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-gray-600"
+                  title="Reset to auto-detect"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
 
             {/* CSV 다운로드 */}
             <Button variant="outline" size="sm" onClick={downloadCSV} disabled={!rawData && !processedData} className="ml-auto">
