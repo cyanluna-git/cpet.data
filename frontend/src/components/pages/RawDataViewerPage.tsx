@@ -2,11 +2,12 @@ import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { Navigation } from '@/components/layout/Navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Database, Download, ChevronLeft, ChevronRight, Settings2, Check, User, Calendar, LineChart, X, Scissors } from 'lucide-react';
+import { Database, Download, ChevronLeft, ChevronRight, Settings2, Check, User, Calendar, LineChart, X, Scissors, Save, RotateCcw, AlertTriangle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getErrorMessage, getAuthToken } from '@/utils/apiHelpers';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Slider } from '@/components/ui/slider';
+import { api, type MetabolismConfigApi } from '@/lib/api';
 import {
   ComposedChart,
   Line,
@@ -286,6 +287,50 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   const [totalDuration, setTotalDuration] = useState<number>(600); // Default 10 min
   const debouncedTrimRange = useDebounce(trimRange, 500);
 
+  // ========== Persistence State ==========
+  // Server config: what's saved in DB (or default from server)
+  interface ServerConfig {
+    loess: number;
+    bin: number;
+    method: 'median' | 'mean' | 'trimmed_mean';
+    minPower: number;
+    trimStart: number | null;
+    trimEnd: number | null;
+  }
+  const [serverConfig, setServerConfig] = useState<ServerConfig | null>(null);
+  const [isServerPersisted, setIsServerPersisted] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [persistenceLoaded, setPersistenceLoaded] = useState(false);
+
+  // Calculate isDirty by comparing local state to server config
+  const isDirty = useMemo(() => {
+    if (!serverConfig) return false;
+
+    // Helper for floating point comparison with epsilon
+    const floatEq = (a: number, b: number, epsilon = 0.001) => Math.abs(a - b) < epsilon;
+
+    // Compare analysis settings
+    if (!floatEq(analysisSettings.loess, serverConfig.loess)) return true;
+    if (analysisSettings.bin !== serverConfig.bin) return true;
+    if (analysisSettings.method !== serverConfig.method) return true;
+    if (analysisSettings.minPower !== serverConfig.minPower) return true;
+
+    // Compare trim range
+    const localTrimStart = trimRange?.start ?? null;
+    const localTrimEnd = trimRange?.end ?? null;
+
+    if (localTrimStart === null && serverConfig.trimStart !== null) return true;
+    if (localTrimStart !== null && serverConfig.trimStart === null) return true;
+    if (localTrimStart !== null && serverConfig.trimStart !== null && !floatEq(localTrimStart, serverConfig.trimStart, 1)) return true;
+
+    if (localTrimEnd === null && serverConfig.trimEnd !== null) return true;
+    if (localTrimEnd !== null && serverConfig.trimEnd === null) return true;
+    if (localTrimEnd !== null && serverConfig.trimEnd !== null && !floatEq(localTrimEnd, serverConfig.trimEnd, 1)) return true;
+
+    return false;
+  }, [serverConfig, analysisSettings, trimRange]);
+
   // 컬럼 선택 상태
   const [selectedColumns, setSelectedColumns] = useState<string[]>(DEFAULT_SELECTED_COLUMNS);
   const [showColumnSelector, setShowColumnSelector] = useState(false);
@@ -420,6 +465,177 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     return result;
   }, [processedChartData, rawChartData, useProcessedData]);
 
+  // ========== Persistence Functions ==========
+
+  // Load saved config from server when test changes
+  const loadSavedConfig = useCallback(async (testId: string) => {
+    try {
+      setPersistenceLoaded(false);
+      const response = await api.getProcessedMetabolism(testId);
+
+      // Apply server config to both serverConfig and local state
+      const config = response.config;
+
+      // IMPORTANT: serverConfig should only contain what's actually SAVED in DB
+      // NOT auto-detected values from the analysis response
+      const newServerConfig: ServerConfig = {
+        loess: config.loess_frac,
+        bin: config.bin_size,
+        method: config.aggregation_method,
+        minPower: config.min_power_threshold ?? 0,
+        // Only include trim values if they were explicitly saved (is_persisted=true)
+        // or if config explicitly has them set
+        trimStart: config.trim_start_sec,
+        trimEnd: config.trim_end_sec,
+      };
+
+      setServerConfig(newServerConfig);
+      setIsServerPersisted(response.is_persisted);
+
+      // Apply to local state (analysis settings)
+      setAnalysisSettings({
+        loess: config.loess_frac,
+        bin: config.bin_size,
+        method: config.aggregation_method,
+        minPower: config.min_power_threshold ?? 0,
+      });
+
+      // Apply trim range to local state
+      // If config has explicit trim values, use them
+      // Otherwise, use auto-detected from response (but don't save to serverConfig)
+      if (config.trim_start_sec !== null && config.trim_end_sec !== null) {
+        setTrimRange({
+          start: config.trim_start_sec,
+          end: config.trim_end_sec,
+        });
+      } else if (response.trim_range) {
+        // Use auto-detected range from response for local state only
+        // This allows user to see the auto-detected range but it's considered "dirty"
+        // if they keep it (since serverConfig.trimStart/End are null)
+        setTrimRange({
+          start: response.trim_range.start_sec,
+          end: response.trim_range.end_sec,
+        });
+      } else {
+        // No trim range, set to null
+        setTrimRange(null);
+      }
+
+      console.log('[Persistence] Loaded config:', {
+        isServerPersisted: response.is_persisted,
+        serverConfig: newServerConfig,
+        autoDetectedTrimRange: response.trim_range,
+      });
+    } catch (error) {
+      console.warn('[Persistence] Failed to load saved config, using defaults:', error);
+      // Keep current defaults
+    } finally {
+      setPersistenceLoaded(true);
+    }
+  }, []);
+
+  // Save current settings to server
+  const handleSaveSettings = useCallback(async () => {
+    if (!selectedTestId || isSaving) return;
+
+    setIsSaving(true);
+    try {
+      const configToSave: MetabolismConfigApi = {
+        bin_size: analysisSettings.bin,
+        aggregation_method: analysisSettings.method,
+        loess_frac: analysisSettings.loess,
+        smoothing_method: 'loess',
+        exclude_rest: true,
+        exclude_warmup: true,
+        exclude_recovery: true,
+        min_power_threshold: analysisSettings.minPower === 0 ? null : analysisSettings.minPower,
+        trim_start_sec: trimRange?.start ?? null,
+        trim_end_sec: trimRange?.end ?? null,
+        fatmax_zone_threshold: 0.90,
+      };
+
+      const response = await api.saveProcessedMetabolism(selectedTestId, configToSave, true);
+
+      // Update server config to match what we just saved
+      const newServerConfig: ServerConfig = {
+        loess: response.config.loess_frac,
+        bin: response.config.bin_size,
+        method: response.config.aggregation_method,
+        minPower: response.config.min_power_threshold ?? 0,
+        trimStart: response.config.trim_start_sec,
+        trimEnd: response.config.trim_end_sec,
+      };
+
+      setServerConfig(newServerConfig);
+      setIsServerPersisted(true);
+
+      toast.success('분석 설정이 저장되었습니다.');
+      console.log('[Persistence] Saved config:', newServerConfig);
+    } catch (error: any) {
+      console.error('[Persistence] Failed to save:', error);
+      toast.error('설정 저장에 실패했습니다: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setIsSaving(false);
+    }
+  }, [selectedTestId, analysisSettings, trimRange, isSaving]);
+
+  // Reset to server defaults
+  const handleResetSettings = useCallback(async () => {
+    if (!selectedTestId || isResetting) return;
+
+    setIsResetting(true);
+    try {
+      await api.deleteProcessedMetabolism(selectedTestId);
+
+      // Reload default config from server
+      const response = await api.getProcessedMetabolism(selectedTestId);
+
+      const config = response.config;
+      const newServerConfig: ServerConfig = {
+        loess: config.loess_frac,
+        bin: config.bin_size,
+        method: config.aggregation_method,
+        minPower: config.min_power_threshold ?? 0,
+        trimStart: config.trim_start_sec,
+        trimEnd: config.trim_end_sec,
+      };
+
+      setServerConfig(newServerConfig);
+      setIsServerPersisted(false);
+
+      // Apply to local state
+      setAnalysisSettings({
+        loess: config.loess_frac,
+        bin: config.bin_size,
+        method: config.aggregation_method,
+        minPower: config.min_power_threshold ?? 0,
+      });
+
+      // Reset trim range
+      if (config.trim_start_sec !== null && config.trim_end_sec !== null) {
+        setTrimRange({
+          start: config.trim_start_sec,
+          end: config.trim_end_sec,
+        });
+      } else {
+        setTrimRange(null);
+      }
+
+      toast.success('기본 설정으로 리셋되었습니다.');
+      console.log('[Persistence] Reset to defaults:', newServerConfig);
+
+      // Reload processed data with new settings
+      if (useProcessedData) {
+        loadProcessedData();
+      }
+    } catch (error: any) {
+      console.error('[Persistence] Failed to reset:', error);
+      toast.error('리셋에 실패했습니다: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setIsResetting(false);
+    }
+  }, [selectedTestId, isResetting, useProcessedData]);
+
   // 피험자 목록 로드
   useEffect(() => {
     loadSubjects();
@@ -507,6 +723,14 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       setAnalysisData(null);
     }
   }, [selectedSubjectId, tests]);
+
+  // 테스트 선택 시 저장된 설정 먼저 로드
+  useEffect(() => {
+    if (selectedTestId) {
+      console.log('[RawDataViewer] Loading saved config for test:', selectedTestId);
+      loadSavedConfig(selectedTestId);
+    }
+  }, [selectedTestId, loadSavedConfig]);
 
   // 테스트 선택 시 자동으로 데이터 로드
   useEffect(() => {
@@ -958,6 +1182,61 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                     <X className="w-3.5 h-3.5" />
                   </button>
                 )}
+              </div>
+            )}
+
+            {/* Persistence Controls - Save/Reset buttons with status */}
+            {useProcessedData && selectedTestId && persistenceLoaded && (
+              <div className="flex items-center gap-3 py-2 px-3 bg-white rounded-lg border border-gray-200 shadow-sm">
+                {/* Status Badge */}
+                {isDirty ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-amber-100 text-amber-700 rounded-full">
+                    <AlertTriangle className="w-3 h-3" />
+                    저장 안됨
+                  </span>
+                ) : isServerPersisted ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-full">
+                    <Check className="w-3 h-3" />
+                    저장됨
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">
+                    기본값
+                  </span>
+                )}
+
+                {/* Save Button */}
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleSaveSettings}
+                  disabled={!isDirty || isSaving}
+                  className="gap-1"
+                >
+                  {isSaving ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Save className="w-3.5 h-3.5" />
+                  )}
+                  저장
+                </Button>
+
+                {/* Reset Button */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResetSettings}
+                  disabled={isResetting}
+                  className="gap-1 text-gray-600 hover:text-gray-900"
+                  title="기본 설정으로 리셋"
+                >
+                  {isResetting ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  )}
+                  리셋
+                </Button>
               </div>
             )}
 
