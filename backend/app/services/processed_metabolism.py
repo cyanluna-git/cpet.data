@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import ProcessedMetabolism
+from app.models import ProcessedMetabolism, CPETTest
 from app.services.metabolism_analysis import AnalysisConfig, MetabolismAnalyzer
 
 # Algorithm version for reproducibility and future compatibility
@@ -161,6 +161,9 @@ class ProcessedMetabolismService:
         # Set algorithm version for reproducibility
         record.algorithm_version = CURRENT_ALGORITHM_VERSION
 
+        # Sync denormalized fields to parent cpet_test
+        await self._sync_parent_test_on_save(test_id)
+
         await self.db.commit()
         await self.db.refresh(record)
 
@@ -178,6 +181,10 @@ class ProcessedMetabolismService:
             return False
 
         await self.db.delete(existing)
+
+        # Sync denormalized fields to parent cpet_test (reset to 'none')
+        await self._sync_parent_test_on_delete(test_id)
+
         await self.db.commit()
         return True
 
@@ -215,3 +222,39 @@ class ProcessedMetabolismService:
         }
 
         return result_dict
+
+    async def _sync_parent_test_on_save(self, test_id: UUID) -> None:
+        """
+        Sync denormalized processing status to parent CPETTest on save.
+
+        Updates:
+            - processing_status = 'complete'
+            - last_analysis_version = CURRENT_ALGORITHM_VERSION
+            - analysis_saved_at = now()
+        """
+        result = await self.db.execute(
+            select(CPETTest).where(CPETTest.test_id == test_id)
+        )
+        test = result.scalar_one_or_none()
+        if test:
+            test.processing_status = "complete"
+            test.last_analysis_version = CURRENT_ALGORITHM_VERSION
+            test.analysis_saved_at = datetime.utcnow()
+
+    async def _sync_parent_test_on_delete(self, test_id: UUID) -> None:
+        """
+        Sync denormalized processing status to parent CPETTest on delete.
+
+        Resets:
+            - processing_status = 'none'
+            - last_analysis_version = None
+            - analysis_saved_at = None
+        """
+        result = await self.db.execute(
+            select(CPETTest).where(CPETTest.test_id == test_id)
+        )
+        test = result.scalar_one_or_none()
+        if test:
+            test.processing_status = "none"
+            test.last_analysis_version = None
+            test.analysis_saved_at = None
