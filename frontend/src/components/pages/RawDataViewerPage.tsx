@@ -305,31 +305,59 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
 
   // Calculate isDirty by comparing local state to server config
   const isDirty = useMemo(() => {
-    if (!serverConfig) return false;
+    // If persistence hasn't loaded yet, we can't determine dirty state
+    if (!persistenceLoaded) {
+      console.log('[isDirty] persistenceLoaded is false, returning false');
+      return false;
+    }
+
+    // If nothing is persisted on the server, ANY local state is considered dirty
+    // This ensures the user can always save their first configuration
+    if (!isServerPersisted) {
+      console.log('[isDirty] isServerPersisted is false, returning true (any change is saveable)');
+      return true;
+    }
+
+    // If serverConfig hasn't loaded yet, we can't determine dirty state
+    if (!serverConfig) {
+      console.log('[isDirty] serverConfig is null, returning false');
+      return false;
+    }
 
     // Helper for floating point comparison with epsilon
     const floatEq = (a: number, b: number, epsilon = 0.001) => Math.abs(a - b) < epsilon;
 
     // Compare analysis settings
-    if (!floatEq(analysisSettings.loess, serverConfig.loess)) return true;
-    if (analysisSettings.bin !== serverConfig.bin) return true;
-    if (analysisSettings.method !== serverConfig.method) return true;
-    if (analysisSettings.minPower !== serverConfig.minPower) return true;
+    const loessDiff = !floatEq(analysisSettings.loess, serverConfig.loess);
+    const binDiff = analysisSettings.bin !== serverConfig.bin;
+    const methodDiff = analysisSettings.method !== serverConfig.method;
+    const minPowerDiff = analysisSettings.minPower !== serverConfig.minPower;
 
     // Compare trim range
     const localTrimStart = trimRange?.start ?? null;
     const localTrimEnd = trimRange?.end ?? null;
 
-    if (localTrimStart === null && serverConfig.trimStart !== null) return true;
-    if (localTrimStart !== null && serverConfig.trimStart === null) return true;
-    if (localTrimStart !== null && serverConfig.trimStart !== null && !floatEq(localTrimStart, serverConfig.trimStart, 1)) return true;
+    const trimStartDiff =
+      (localTrimStart === null && serverConfig.trimStart !== null) ||
+      (localTrimStart !== null && serverConfig.trimStart === null) ||
+      (localTrimStart !== null && serverConfig.trimStart !== null && !floatEq(localTrimStart, serverConfig.trimStart, 1));
 
-    if (localTrimEnd === null && serverConfig.trimEnd !== null) return true;
-    if (localTrimEnd !== null && serverConfig.trimEnd === null) return true;
-    if (localTrimEnd !== null && serverConfig.trimEnd !== null && !floatEq(localTrimEnd, serverConfig.trimEnd, 1)) return true;
+    const trimEndDiff =
+      (localTrimEnd === null && serverConfig.trimEnd !== null) ||
+      (localTrimEnd !== null && serverConfig.trimEnd === null) ||
+      (localTrimEnd !== null && serverConfig.trimEnd !== null && !floatEq(localTrimEnd, serverConfig.trimEnd, 1));
 
-    return false;
-  }, [serverConfig, analysisSettings, trimRange]);
+    const result = loessDiff || binDiff || methodDiff || minPowerDiff || trimStartDiff || trimEndDiff;
+
+    console.log('[isDirty] Comparison:', {
+      result,
+      local: { loess: analysisSettings.loess, bin: analysisSettings.bin, method: analysisSettings.method, minPower: analysisSettings.minPower, trimStart: localTrimStart, trimEnd: localTrimEnd },
+      server: serverConfig,
+      diffs: { loessDiff, binDiff, methodDiff, minPowerDiff, trimStartDiff, trimEndDiff },
+    });
+
+    return result;
+  }, [serverConfig, analysisSettings, trimRange, persistenceLoaded, isServerPersisted]);
 
   // 컬럼 선택 상태
   const [selectedColumns, setSelectedColumns] = useState<string[]>(DEFAULT_SELECTED_COLUMNS);
