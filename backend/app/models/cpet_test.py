@@ -100,6 +100,18 @@ class CPETTest(Base):
     # Other
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     data_quality_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # Processing status (denormalized from processed_metabolism for list performance)
+    processing_status: Mapped[str] = mapped_column(
+        String(20), default="none", nullable=False
+    )  # 'none', 'complete'
+    last_analysis_version: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True
+    )  # Algorithm version (e.g., '1.0.0')
+    analysis_saved_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )  # When analysis was last saved
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

@@ -130,6 +130,17 @@ class CPETTestResponse(BaseModel):
         None, description="데이터 유효성 (quality_score >= 0.7)"
     )
 
+    # Processing status (denormalized from processed_metabolism)
+    processing_status: str = Field(
+        default="none", description="분석 저장 상태 ('none', 'complete')"
+    )
+    last_analysis_version: Optional[str] = Field(
+        None, description="마지막 분석 알고리즘 버전 (e.g., '1.0.0')"
+    )
+    analysis_saved_at: Optional[datetime] = Field(
+        None, description="분석 저장 시각"
+    )
+
     notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime
