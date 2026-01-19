@@ -10,7 +10,8 @@
       "Bash(xargs ls:*)",
       "Bash(grep:*)",
       "Bash(docker ps:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

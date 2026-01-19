@@ -599,12 +599,16 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       console.log('📊 Available keys in processed_series:', Object.keys(data.processed_series || {}));
       console.log(`📊 trend data length: ${data.processed_series?.trend?.length || 0}`);
 
-      // Update trim range from API response (auto-detected or previous manual)
-      if (data.used_trim_range && !trimRange) {
-        setTrimRange({
-          start: data.used_trim_range.start_sec,
-          end: data.used_trim_range.end_sec,
-        });
+      // Update trim range from API response (auto-detected value)
+      // Always update if not manually set (trimRange === null), otherwise keep user's manual setting
+      if (data.used_trim_range) {
+        // Only set auto-detected range if user hasn't manually adjusted
+        if (trimRange === null) {
+          setTrimRange({
+            start: data.used_trim_range.start_sec,
+            end: data.used_trim_range.end_sec,
+          });
+        }
       }
       // Update total duration for slider max
       if (data.total_duration_sec) {
@@ -915,7 +919,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
             </div>
 
             {/* Analysis Window Trim Slider */}
-            {useProcessedData && trimRange && (
+            {useProcessedData && (
               <div className="flex items-center gap-4 py-2 px-3 bg-gray-50 rounded-lg border border-gray-200">
                 <div className="flex items-center gap-1.5 min-w-[100px]">
                   <Scissors className="w-4 h-4 text-orange-500" />
@@ -926,7 +930,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                     min={0}
                     max={totalDuration}
                     step={5}
-                    value={[trimRange.start, trimRange.end]}
+                    value={trimRange ? [trimRange.start, trimRange.end] : [0, totalDuration]}
                     onValueChange={(values) => {
                       setTrimRange({ start: values[0], end: values[1] });
                     }}
@@ -934,18 +938,26 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                   />
                 </div>
                 <div className="text-xs text-gray-600 min-w-[120px] text-right">
-                  {Math.round(trimRange.start)}s - {Math.round(trimRange.end)}s
-                  <span className="ml-1.5 text-gray-400">
-                    ({Math.round(trimRange.end - trimRange.start)}s)
-                  </span>
+                  {trimRange ? (
+                    <>
+                      {Math.round(trimRange.start)}s - {Math.round(trimRange.end)}s
+                      <span className="ml-1.5 text-gray-400">
+                        ({Math.round(trimRange.end - trimRange.start)}s)
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-gray-400">Auto-detect</span>
+                  )}
                 </div>
-                <button
-                  onClick={() => setTrimRange(null)}
-                  className="p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-gray-600"
-                  title="Reset to auto-detect"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+                {trimRange && (
+                  <button
+                    onClick={() => setTrimRange(null)}
+                    className="p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-gray-600"
+                    title="Reset to auto-detect"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             )}
 
