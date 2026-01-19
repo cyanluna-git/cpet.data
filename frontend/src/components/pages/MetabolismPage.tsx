@@ -1,8 +1,19 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, lazy, Suspense, useCallback } from 'react';
 import { sampleSubjects, generateMetabolismData, getFatMaxPoint } from '@/utils/sampleData';
 import { Navigation } from '@/components/layout/Navigation';
-import { api, type TestAnalysis, type Subject as ApiSubject, type CPETTest } from '@/lib/api';
+import { api, type TestAnalysis, type Subject as ApiSubject, type CPETTest, type ProcessedMetabolismApiResponse, type MetabolismConfigApi } from '@/lib/api';
 import type { DataMode } from './MetabolismChart';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
+import { Save, RotateCcw, Undo2, AlertTriangle, Check, Loader2 } from 'lucide-react';
+import {
+  type MetabolismConfig,
+  DEFAULT_METABOLISM_CONFIG,
+  isConfigEqual,
+  validateConfig,
+  formatSecondsToMMSS,
+} from '@/types/metabolism';
 
 // Lazy load chart components to reduce initial bundle size
 const MetabolismChart = lazy(() => import('./MetabolismChart').then(module => ({ default: module.MetabolismChart })));
@@ -53,6 +64,233 @@ function transformAnalysisToChartData(analysis: TestAnalysis) {
   return chartData;
 }
 
+// ============================================================================
+// Analysis Control Panel Component
+// ============================================================================
+
+interface AnalysisControlPanelProps {
+  testId: string;
+  localConfig: MetabolismConfig;
+  serverConfig: MetabolismConfig;
+  isServerPersisted: boolean;
+  trimRange: { start_sec: number; end_sec: number } | null;
+  totalDuration: number;
+  onConfigChange: (config: MetabolismConfig) => void;
+  onSave: () => Promise<void>;
+  onReset: () => Promise<void>;
+  onUndo: () => void;
+  isSaving: boolean;
+  isResetting: boolean;
+  canEdit: boolean;
+}
+
+function AnalysisControlPanel({
+  localConfig,
+  serverConfig,
+  isServerPersisted,
+  trimRange,
+  totalDuration,
+  onConfigChange,
+  onSave,
+  onReset,
+  onUndo,
+  isSaving,
+  isResetting,
+  canEdit,
+}: AnalysisControlPanelProps) {
+  const isDirty = !isConfigEqual(localConfig, serverConfig);
+  const validation = validateConfig(localConfig);
+
+  // Calculate trim values for slider
+  const trimStart = localConfig.trim_start_sec ?? trimRange?.start_sec ?? 0;
+  const trimEnd = localConfig.trim_end_sec ?? trimRange?.end_sec ?? totalDuration;
+  const maxDuration = Math.max(totalDuration, trimEnd, 1800); // At least 30 minutes
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
+      {/* Status Badge Row */}
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-gray-700">분석 설정</h3>
+        <div className="flex items-center gap-2">
+          {isDirty ? (
+            <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-amber-100 text-amber-700 rounded-full">
+              <AlertTriangle className="w-3 h-3" />
+              저장되지 않은 변경
+            </span>
+          ) : isServerPersisted ? (
+            <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-full">
+              <Check className="w-3 h-3" />
+              저장됨
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">
+              기본값
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Validation Errors */}
+      {!validation.valid && (
+        <div className="mb-4 p-2 bg-red-50 border border-red-200 rounded-md">
+          <p className="text-xs text-red-700">{validation.errors.join(', ')}</p>
+        </div>
+      )}
+
+      {/* Control Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+        {/* LOESS Fraction */}
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-gray-600">
+            LOESS Smoothing: {localConfig.loess_frac.toFixed(2)}
+          </label>
+          <Slider
+            value={[localConfig.loess_frac]}
+            onValueChange={([value]) => onConfigChange({ ...localConfig, loess_frac: value })}
+            min={0.1}
+            max={0.5}
+            step={0.05}
+            disabled={!canEdit}
+            className="w-full"
+          />
+          <span className="text-xs text-gray-400">0.1=날카로움, 0.5=부드러움</span>
+        </div>
+
+        {/* Bin Size */}
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-gray-600">
+            Bin Size: {localConfig.bin_size}W
+          </label>
+          <Slider
+            value={[localConfig.bin_size]}
+            onValueChange={([value]) => onConfigChange({ ...localConfig, bin_size: value })}
+            min={5}
+            max={30}
+            step={5}
+            disabled={!canEdit}
+            className="w-full"
+          />
+          <span className="text-xs text-gray-400">5W=상세, 30W=개괄</span>
+        </div>
+
+        {/* Min Power Threshold */}
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-gray-600">
+            Min Power: {localConfig.min_power_threshold ?? '없음'}W
+          </label>
+          <Slider
+            value={[localConfig.min_power_threshold ?? 0]}
+            onValueChange={([value]) => onConfigChange({
+              ...localConfig,
+              min_power_threshold: value === 0 ? null : value
+            })}
+            min={0}
+            max={200}
+            step={10}
+            disabled={!canEdit}
+            className="w-full"
+          />
+          <span className="text-xs text-gray-400">0=임계값 없음</span>
+        </div>
+
+        {/* Aggregation Method */}
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-gray-600">집계 방법</label>
+          <select
+            value={localConfig.aggregation_method}
+            onChange={(e) => onConfigChange({
+              ...localConfig,
+              aggregation_method: e.target.value as 'median' | 'mean' | 'trimmed_mean'
+            })}
+            disabled={!canEdit}
+            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+          >
+            <option value="median">Median (이상치 저항)</option>
+            <option value="mean">Mean (평균)</option>
+            <option value="trimmed_mean">Trimmed Mean (10% 절삭)</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Data Trimming Range */}
+      <div className="space-y-2 mb-4 p-3 bg-gray-50 rounded-md">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-medium text-gray-600">
+            데이터 트림 범위: {formatSecondsToMMSS(trimStart)} - {formatSecondsToMMSS(trimEnd)}
+          </label>
+          {trimRange?.start_sec !== undefined && localConfig.trim_start_sec === null && (
+            <span className="text-xs text-blue-600">Auto-detected</span>
+          )}
+        </div>
+        <Slider
+          value={[trimStart, trimEnd]}
+          onValueChange={([start, end]) => onConfigChange({
+            ...localConfig,
+            trim_start_sec: start,
+            trim_end_sec: end,
+          })}
+          min={0}
+          max={maxDuration}
+          step={10}
+          disabled={!canEdit}
+          className="w-full"
+        />
+        <div className="flex justify-between text-xs text-gray-400">
+          <span>0:00</span>
+          <span>{formatSecondsToMMSS(maxDuration)}</span>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      {canEdit && (
+        <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+          <Button
+            onClick={onSave}
+            disabled={!isDirty || !validation.valid || isSaving}
+            size="sm"
+          >
+            {isSaving ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
+            설정 저장
+          </Button>
+
+          <Button
+            onClick={onReset}
+            disabled={!isServerPersisted || isResetting}
+            variant="outline"
+            size="sm"
+          >
+            {isResetting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RotateCcw className="w-4 h-4" />
+            )}
+            기본값으로 리셋
+          </Button>
+
+          {isDirty && (
+            <Button
+              onClick={onUndo}
+              variant="ghost"
+              size="sm"
+            >
+              <Undo2 className="w-4 h-4" />
+              변경 취소
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Main MetabolismPage Component
+// ============================================================================
+
 export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPageProps) {
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [selectedTestId, setSelectedTestId] = useState<string | null>(null);
@@ -64,21 +302,22 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
   const [loadingTests, setLoadingTests] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Consolidated analysis settings state
+  // Persistent analysis state
+  const [processedMetabolism, setProcessedMetabolism] = useState<ProcessedMetabolismApiResponse | null>(null);
+  const [localConfig, setLocalConfig] = useState<MetabolismConfig>({ ...DEFAULT_METABOLISM_CONFIG });
+  const [serverConfig, setServerConfig] = useState<MetabolismConfig>({ ...DEFAULT_METABOLISM_CONFIG });
+  const [isSaving, setIsSaving] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+
+  // UI state
   const [analysisSettings, setAnalysisSettings] = useState({
     dataMode: 'smoothed' as DataMode,
     showRawOverlay: false,
-    loessFrac: 0.25,
-    binSize: 10,
-    aggregationMethod: 'median' as 'median' | 'mean' | 'trimmed_mean',
-    showAdvancedControls: false,
+    showAdvancedControls: true,
   });
 
-  // Debounced parameters for API calls
-  const [debouncedParams, setDebouncedParams] = useState({
-    loessFrac: analysisSettings.loessFrac,
-    binSize: analysisSettings.binSize,
-  });
+  // Check if user can edit (researcher or admin only)
+  const canEdit = user.role === 'admin' || user.role === 'researcher';
 
   // Load subjects from API
   useEffect(() => {
@@ -111,17 +350,6 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
     loadSubjects();
   }, [user.role, user.id]);
 
-  // Debounce loessFrac and binSize changes to prevent excessive API calls
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedParams({
-        loessFrac: analysisSettings.loessFrac,
-        binSize: analysisSettings.binSize,
-      });
-    }, 500); // 500ms delay after user stops adjusting
-    return () => clearTimeout(timer);
-  }, [analysisSettings.loessFrac, analysisSettings.binSize]);
-
   // Available subjects: use API data if available, otherwise fallback to sample
   const availableSubjects = subjects.length > 0
     ? (user.role === 'subject' ? subjects.filter(s => s.id === user.id) : subjects)
@@ -136,6 +364,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
       setTests([]);
       setSelectedTestId(null);
       setAnalysis(null);
+      setProcessedMetabolism(null);
       setError(null);
 
       try {
@@ -161,38 +390,126 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
     }
   }, [selectedSubjectId, showCohortAverage]);
 
-  // Load analysis when test changes or parameters change
+  // Load analysis and processed metabolism when test changes
   useEffect(() => {
-    async function loadAnalysis() {
+    async function loadAnalysisAndProcessed() {
       if (!selectedTestId) return;
 
       setLoading(true);
       setError(null);
 
       try {
-        // Get analysis data for selected test with processing parameters
-        const analysisData = await api.getTestAnalysis(
-          selectedTestId,
-          '5s',
-          true,
-          debouncedParams.loessFrac,
-          debouncedParams.binSize,
-          analysisSettings.aggregationMethod
-        );
+        // Load both regular analysis and processed metabolism in parallel
+        const [analysisData, processedData] = await Promise.all([
+          api.getTestAnalysis(
+            selectedTestId,
+            '5s',
+            true,
+            localConfig.loess_frac,
+            localConfig.bin_size,
+            localConfig.aggregation_method
+          ),
+          api.getProcessedMetabolism(selectedTestId),
+        ]);
+
         setAnalysis(analysisData);
+        setProcessedMetabolism(processedData);
+
+        // Initialize config from server response
+        const config = processedData.config as MetabolismConfig;
+        setServerConfig(config);
+        setLocalConfig(config);
+
       } catch (err: any) {
         console.warn('Failed to load analysis from API:', err);
         setError('분석 데이터를 불러올 수 없습니다. 샘플 데이터를 표시합니다.');
         setAnalysis(null);
+        setProcessedMetabolism(null);
       } finally {
         setLoading(false);
       }
     }
 
     if (!showCohortAverage && selectedTestId) {
-      loadAnalysis();
+      loadAnalysisAndProcessed();
     }
-  }, [selectedTestId, showCohortAverage, debouncedParams, analysisSettings.aggregationMethod]);
+  }, [selectedTestId, showCohortAverage]);
+
+  // Handle config change (local only, no API call)
+  const handleConfigChange = useCallback((newConfig: MetabolismConfig) => {
+    setLocalConfig(newConfig);
+  }, []);
+
+  // Handle save
+  const handleSave = useCallback(async () => {
+    if (!selectedTestId) return;
+
+    setIsSaving(true);
+    try {
+      const response = await api.saveProcessedMetabolism(
+        selectedTestId,
+        localConfig as MetabolismConfigApi,
+        true
+      );
+
+      setProcessedMetabolism(response);
+      setServerConfig(response.config as MetabolismConfig);
+      setLocalConfig(response.config as MetabolismConfig);
+
+      // Update the analysis display with new processed data
+      if (analysis && response.processed_series) {
+        setAnalysis({
+          ...analysis,
+          processed_series: response.processed_series as any,
+          metabolic_markers: response.metabolic_markers as any,
+        });
+      }
+
+      toast.success('설정이 저장되었습니다.');
+    } catch (err: any) {
+      console.error('Failed to save processed metabolism:', err);
+      toast.error('설정 저장에 실패했습니다: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setIsSaving(false);
+    }
+  }, [selectedTestId, localConfig, analysis]);
+
+  // Handle reset
+  const handleReset = useCallback(async () => {
+    if (!selectedTestId) return;
+
+    setIsResetting(true);
+    try {
+      await api.deleteProcessedMetabolism(selectedTestId);
+
+      // Reload processed metabolism (will return defaults)
+      const response = await api.getProcessedMetabolism(selectedTestId);
+      setProcessedMetabolism(response);
+      setServerConfig(response.config as MetabolismConfig);
+      setLocalConfig(response.config as MetabolismConfig);
+
+      // Update analysis display
+      if (analysis && response.processed_series) {
+        setAnalysis({
+          ...analysis,
+          processed_series: response.processed_series as any,
+          metabolic_markers: response.metabolic_markers as any,
+        });
+      }
+
+      toast.success('기본 설정으로 리셋되었습니다.');
+    } catch (err: any) {
+      console.error('Failed to reset processed metabolism:', err);
+      toast.error('리셋에 실패했습니다: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setIsResetting(false);
+    }
+  }, [selectedTestId, analysis]);
+
+  // Handle undo
+  const handleUndo = useCallback(() => {
+    setLocalConfig(serverConfig);
+  }, [serverConfig]);
 
   // Calculate cohort average data
   const calculateCohortAverage = () => {
@@ -257,7 +574,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
             </p>
           </div>
 
-          {/* Controls - Only for researchers/admin */}
+          {/* Subject/Test Controls */}
           {user.role !== 'subject' && (
             <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
               <div className="flex flex-wrap gap-4 items-center">
@@ -385,84 +702,31 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                       className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
                     >
                       <span>{analysisSettings.showAdvancedControls ? '▼' : '▶'}</span>
-                      <span>고급 설정</span>
+                      <span>분석 설정</span>
                     </button>
                   </>
                 )}
               </div>
-
-              {/* Advanced Processing Controls - Collapsible */}
-              {!showCohortAverage && analysisSettings.showAdvancedControls && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <div className="flex flex-wrap gap-6 items-end">
-                    {/* LOESS Fraction Slider */}
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-medium text-gray-600">
-                        LOESS Smoothing: {analysisSettings.loessFrac.toFixed(2)}
-                      </label>
-                      <input
-                        type="range"
-                        min="0.1"
-                        max="0.5"
-                        step="0.05"
-                        value={analysisSettings.loessFrac}
-                        onChange={(e) => setAnalysisSettings(prev => ({ ...prev, loessFrac: parseFloat(e.target.value) }))}
-                        className="w-32 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                      />
-                      <span className="text-xs text-gray-500">0.1=날카로움, 0.5=부드러움</span>
-                    </div>
-
-                    {/* Bin Size */}
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-medium text-gray-600">
-                        Bin Size: {analysisSettings.binSize}W
-                      </label>
-                      <select
-                        value={analysisSettings.binSize}
-                        onChange={(e) => setAnalysisSettings(prev => ({ ...prev, binSize: parseInt(e.target.value) }))}
-                        className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value={5}>5W</option>
-                        <option value={10}>10W</option>
-                        <option value={15}>15W</option>
-                        <option value={20}>20W</option>
-                        <option value={25}>25W</option>
-                        <option value={30}>30W</option>
-                      </select>
-                    </div>
-
-                    {/* Aggregation Method */}
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-medium text-gray-600">집계 방법</label>
-                      <select
-                        value={analysisSettings.aggregationMethod}
-                        onChange={(e) => setAnalysisSettings(prev => ({ ...prev, aggregationMethod: e.target.value as 'median' | 'mean' | 'trimmed_mean' }))}
-                        className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="median">Median (이상치 저항)</option>
-                        <option value="mean">Mean (평균)</option>
-                        <option value="trimmed_mean">Trimmed Mean (10% 절삭)</option>
-                      </select>
-                    </div>
-
-                    {/* Reset Button */}
-                    <button
-                      onClick={() => {
-                        setAnalysisSettings(prev => ({
-                          ...prev,
-                          loessFrac: 0.25,
-                          binSize: 10,
-                          aggregationMethod: 'median'
-                        }));
-                      }}
-                      className="px-3 py-1 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md"
-                    >
-                      기본값 복원
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
+          )}
+
+          {/* Analysis Control Panel (for researchers/admin) */}
+          {user.role !== 'subject' && !showCohortAverage && analysis && analysisSettings.showAdvancedControls && (
+            <AnalysisControlPanel
+              testId={selectedTestId || ''}
+              localConfig={localConfig}
+              serverConfig={serverConfig}
+              isServerPersisted={processedMetabolism?.is_persisted ?? false}
+              trimRange={processedMetabolism?.trim_range ?? null}
+              totalDuration={analysis.exercise_duration_sec || 1200}
+              onConfigChange={handleConfigChange}
+              onSave={handleSave}
+              onReset={handleReset}
+              onUndo={handleUndo}
+              isSaving={isSaving}
+              isResetting={isResetting}
+              canEdit={canEdit}
+            />
           )}
 
           {/* Main Chart */}

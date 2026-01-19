@@ -10,6 +10,7 @@ from app.api import (
     subjects_router,
     tests_router,
     subject_tests_router,
+    processed_metabolism_router,
 )
 
 app = FastAPI(
@@ -53,3 +54,4 @@ app.include_router(admin_router, prefix="/api")
 app.include_router(subjects_router, prefix="/api")
 app.include_router(tests_router, prefix="/api")
 app.include_router(subject_tests_router, prefix="/api")
+app.include_router(processed_metabolism_router, prefix="/api")
