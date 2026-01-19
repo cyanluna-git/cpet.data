@@ -216,6 +216,7 @@ def _build_response(
         processing_warnings=result_dict.get("warnings"),
         processing_status=result_dict.get("processing_status", "completed"),
         processed_at=result_dict.get("processed_at"),
+        algorithm_version=result_dict.get("algorithm_version", "1.0.0"),
         is_persisted=is_persisted,
         created_at=result_dict.get("created_at"),
         updated_at=result_dict.get("updated_at"),

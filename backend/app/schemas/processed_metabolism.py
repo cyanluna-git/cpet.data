@@ -109,6 +109,11 @@ class ProcessedMetabolismResponse(BaseModel):
         default=None, description="When processing completed"
     )
 
+    # Algorithm version for reproducibility
+    algorithm_version: str = Field(
+        default="1.0.0", description="Algorithm version used for processing (read-only)"
+    )
+
     # Persistence state
     is_persisted: bool = Field(
         default=False, description="Whether this data is saved to database"
