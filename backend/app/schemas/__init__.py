@@ -40,6 +40,11 @@ from app.schemas.cohort import (
     ComparisonResponse,
     MetricComparison,
 )
+from app.schemas.processed_metabolism import (
+    MetabolismConfig,
+    ProcessedMetabolismCreate,
+    ProcessedMetabolismResponse,
+)
 
 __all__ = [
     # Auth
@@ -78,4 +83,8 @@ __all__ = [
     "ComparisonRequest",
     "ComparisonResponse",
     "MetricComparison",
+    # Processed Metabolism
+    "MetabolismConfig",
+    "ProcessedMetabolismCreate",
+    "ProcessedMetabolismResponse",
 ]

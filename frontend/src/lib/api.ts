@@ -944,4 +944,207 @@ export const api = {
     const response = await client.post('/tests', testData);
     return response.data;
   },
+
+  // =====================
+  // Processed Metabolism (Persistent Analysis)
+  // =====================
+
+  /**
+   * Get processed metabolism analysis for a test
+   * - Returns saved data if available (is_persisted=true)
+   * - Otherwise calculates with defaults (is_persisted=false)
+   */
+  async getProcessedMetabolism(testId: string): Promise<ProcessedMetabolismApiResponse> {
+    if (isDemoMode()) {
+      return {
+        id: null,
+        cpet_test_id: testId,
+        config: {
+          bin_size: 10,
+          aggregation_method: 'median',
+          loess_frac: 0.25,
+          smoothing_method: 'loess',
+          exclude_rest: true,
+          exclude_warmup: true,
+          exclude_recovery: true,
+          min_power_threshold: null,
+          trim_start_sec: null,
+          trim_end_sec: null,
+          fatmax_zone_threshold: 0.90,
+        },
+        is_manual_override: false,
+        processed_series: {
+          raw: [
+            { power: 80, fat_oxidation: 0.35, cho_oxidation: 0.22 },
+            { power: 100, fat_oxidation: 0.52, cho_oxidation: 0.35 },
+            { power: 120, fat_oxidation: 0.65, cho_oxidation: 0.48 },
+            { power: 140, fat_oxidation: 0.68, cho_oxidation: 0.62 },
+            { power: 160, fat_oxidation: 0.58, cho_oxidation: 0.85 },
+            { power: 180, fat_oxidation: 0.42, cho_oxidation: 1.15 },
+            { power: 200, fat_oxidation: 0.28, cho_oxidation: 1.52 },
+          ],
+          binned: [
+            { power: 80, fat_oxidation: 0.35, cho_oxidation: 0.22, count: 12 },
+            { power: 100, fat_oxidation: 0.52, cho_oxidation: 0.35, count: 15 },
+            { power: 120, fat_oxidation: 0.65, cho_oxidation: 0.48, count: 18 },
+            { power: 140, fat_oxidation: 0.68, cho_oxidation: 0.62, count: 20 },
+            { power: 160, fat_oxidation: 0.58, cho_oxidation: 0.85, count: 22 },
+            { power: 180, fat_oxidation: 0.42, cho_oxidation: 1.15, count: 18 },
+            { power: 200, fat_oxidation: 0.28, cho_oxidation: 1.52, count: 15 },
+          ],
+          smoothed: [
+            { power: 80, fat_oxidation: 0.36, cho_oxidation: 0.21 },
+            { power: 100, fat_oxidation: 0.51, cho_oxidation: 0.34 },
+            { power: 120, fat_oxidation: 0.64, cho_oxidation: 0.49 },
+            { power: 140, fat_oxidation: 0.67, cho_oxidation: 0.63 },
+            { power: 160, fat_oxidation: 0.57, cho_oxidation: 0.86 },
+            { power: 180, fat_oxidation: 0.41, cho_oxidation: 1.16 },
+            { power: 200, fat_oxidation: 0.27, cho_oxidation: 1.53 },
+          ],
+          trend: [
+            { power: 80, fat_oxidation: 0.37, cho_oxidation: 0.20 },
+            { power: 100, fat_oxidation: 0.53, cho_oxidation: 0.33 },
+            { power: 120, fat_oxidation: 0.63, cho_oxidation: 0.50 },
+            { power: 140, fat_oxidation: 0.66, cho_oxidation: 0.65 },
+            { power: 160, fat_oxidation: 0.56, cho_oxidation: 0.88 },
+            { power: 180, fat_oxidation: 0.40, cho_oxidation: 1.18 },
+            { power: 200, fat_oxidation: 0.26, cho_oxidation: 1.55 },
+          ],
+        },
+        metabolic_markers: {
+          fat_max: {
+            power: 140,
+            mfo: 0.68,
+            zone_min: 120,
+            zone_max: 160,
+          },
+          crossover: {
+            power: 165,
+            fat_value: 0.55,
+            cho_value: 0.55,
+          },
+        },
+        stats: {
+          total_data_points: 300,
+          exercise_data_points: 200,
+          binned_data_points: 15,
+        },
+        trim_range: {
+          start_sec: 180,
+          end_sec: 900,
+          auto_detected: true,
+        },
+        processing_warnings: [],
+        processing_status: 'completed',
+        processed_at: new Date().toISOString(),
+        is_persisted: false,
+        created_at: null,
+        updated_at: null,
+      };
+    }
+    const response = await client.get(`/tests/${testId}/processed-metabolism`);
+    return response.data;
+  },
+
+  /**
+   * Save/upsert processed metabolism configuration and results
+   * Only Researcher or Admin users can save configurations
+   */
+  async saveProcessedMetabolism(
+    testId: string,
+    config: MetabolismConfigApi,
+    isManualOverride: boolean = true
+  ): Promise<ProcessedMetabolismApiResponse> {
+    if (isDemoMode()) {
+      // Simulate save by returning the config as persisted
+      const existing = await this.getProcessedMetabolism(testId);
+      return {
+        ...existing,
+        config,
+        is_manual_override: isManualOverride,
+        is_persisted: true,
+        processed_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    }
+    const response = await client.post(`/tests/${testId}/processed-metabolism`, {
+      config,
+      is_manual_override: isManualOverride,
+    });
+    return response.data;
+  },
+
+  /**
+   * Delete saved processed metabolism record
+   * After deletion, GET will return calculated defaults with is_persisted=false
+   * Only Researcher or Admin users can delete saved configurations
+   */
+  async deleteProcessedMetabolism(testId: string): Promise<void> {
+    if (isDemoMode()) {
+      return;
+    }
+    await client.delete(`/tests/${testId}/processed-metabolism`);
+  },
 };
+
+// =====================
+// Processed Metabolism Types (for API)
+// =====================
+
+export interface MetabolismConfigApi {
+  bin_size: number;
+  aggregation_method: 'median' | 'mean' | 'trimmed_mean';
+  loess_frac: number;
+  smoothing_method: 'loess' | 'savgol' | 'moving_avg';
+  exclude_rest: boolean;
+  exclude_warmup: boolean;
+  exclude_recovery: boolean;
+  min_power_threshold: number | null;
+  trim_start_sec: number | null;
+  trim_end_sec: number | null;
+  fatmax_zone_threshold: number;
+}
+
+export interface ProcessedMetabolismApiResponse {
+  id: string | null;
+  cpet_test_id: string;
+  config: MetabolismConfigApi;
+  is_manual_override: boolean;
+  processed_series: {
+    raw: Array<{ power: number; fat_oxidation: number | null; cho_oxidation: number | null; count?: number }>;
+    binned: Array<{ power: number; fat_oxidation: number | null; cho_oxidation: number | null; count?: number }>;
+    smoothed: Array<{ power: number; fat_oxidation: number | null; cho_oxidation: number | null }>;
+    trend?: Array<{ power: number; fat_oxidation: number | null; cho_oxidation: number | null }>;
+  } | null;
+  metabolic_markers: {
+    fat_max: {
+      power: number;
+      mfo: number;
+      zone_min: number;
+      zone_max: number;
+    };
+    crossover: {
+      power: number | null;
+      fat_value: number | null;
+      cho_value: number | null;
+    };
+  } | null;
+  stats: {
+    total_data_points: number;
+    exercise_data_points: number;
+    binned_data_points: number;
+  } | null;
+  trim_range: {
+    start_sec: number;
+    end_sec: number;
+    auto_detected: boolean;
+    max_power_sec?: number;
+  } | null;
+  processing_warnings: string[] | null;
+  processing_status: string;
+  processed_at: string | null;
+  is_persisted: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}

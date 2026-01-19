@@ -54,6 +54,8 @@ uploads/
 *.log
 logs/
 
+/Knowledge
+
 # OS
 .DS_Store
 Thumbs.db
