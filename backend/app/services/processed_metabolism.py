@@ -10,6 +10,35 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import ProcessedMetabolism
 from app.services.metabolism_analysis import AnalysisConfig, MetabolismAnalyzer
 
+# Algorithm version for reproducibility and future compatibility
+# Increment this when the calculation logic changes
+CURRENT_ALGORITHM_VERSION = "1.0.0"
+
+
+def _sort_series_by_time(series: Optional[List[Dict[str, Any]]]) -> Optional[List[Dict[str, Any]]]:
+    """
+    Sort a time-series by t_sec or power (fallback) in ascending order.
+
+    This is critical for ODE-based simulations which require strict time ordering.
+
+    Args:
+        series: List of data point dictionaries
+
+    Returns:
+        Sorted list or None if input is None/empty
+    """
+    if not series:
+        return series
+
+    # Determine sort key: prefer t_sec, fallback to power
+    if "t_sec" in series[0]:
+        return sorted(series, key=lambda x: x.get("t_sec", 0))
+    elif "power" in series[0]:
+        # For binned/smoothed/trend series that use power as x-axis
+        return sorted(series, key=lambda x: x.get("power", 0))
+
+    return series
+
 
 class ProcessedMetabolismService:
     """Service for managing processed metabolism data persistence"""
@@ -97,11 +126,12 @@ class ProcessedMetabolismService:
         record.is_manual_override = is_manual_override
 
         # Update processed data from analysis result
+        # IMPORTANT: Sort all series by time/power for ODE simulation compatibility
         ps = analysis_result.get("processed_series", {})
-        record.raw_series = ps.get("raw")
-        record.binned_series = ps.get("binned")
-        record.smoothed_series = ps.get("smoothed")
-        record.trend_series = ps.get("trend")
+        record.raw_series = _sort_series_by_time(ps.get("raw"))
+        record.binned_series = _sort_series_by_time(ps.get("binned"))
+        record.smoothed_series = _sort_series_by_time(ps.get("smoothed"))
+        record.trend_series = _sort_series_by_time(ps.get("trend"))
 
         # Update metabolic markers
         markers = analysis_result.get("metabolic_markers", {})
@@ -127,6 +157,9 @@ class ProcessedMetabolismService:
         record.processing_status = "completed"
         record.processed_at = datetime.utcnow()
         record.updated_at = datetime.utcnow()
+
+        # Set algorithm version for reproducibility
+        record.algorithm_version = CURRENT_ALGORITHM_VERSION
 
         await self.db.commit()
         await self.db.refresh(record)

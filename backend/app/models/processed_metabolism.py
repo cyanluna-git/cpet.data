@@ -95,6 +95,9 @@ class ProcessedMetabolism(Base):
     processing_warnings: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     processing_status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, completed, failed
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Algorithm version for reproducibility and future compatibility
+    algorithm_version: Mapped[str] = mapped_column(String(20), default="1.0.0", nullable=False)
     
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -156,6 +159,7 @@ class ProcessedMetabolism(Base):
             "processing_warnings": self.processing_warnings,
             "processing_status": self.processing_status,
             "processed_at": self.processed_at.isoformat() if self.processed_at else None,
+            "algorithm_version": self.algorithm_version,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
