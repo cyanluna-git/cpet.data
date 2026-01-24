@@ -1,29 +1,29 @@
 """CPETTest model - CPET 테스트 메타데이터"""
 
+import uuid
 from datetime import datetime
 from datetime import time as time_type
 from typing import TYPE_CHECKING, Optional
-import uuid
 
 from sqlalchemy import (
-    String,
-    Integer,
+    JSON,
+    DateTime,
     Float,
-    Text,
     ForeignKey,
     Index,
-    DateTime,
+    Integer,
+    String,
+    Text,
     Time,
     Uuid,
-    JSON,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
 if TYPE_CHECKING:
-    from app.models.subject import Subject
     from app.models.breath_data import BreathData
+    from app.models.subject import Subject
 
 
 class CPETTest(Base):
@@ -93,9 +93,11 @@ class CPETTest(Base):
     file_upload_timestamp: Mapped[Optional[datetime]] = mapped_column(
         DateTime, nullable=True
     )
-    parsing_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    parsing_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     parsing_errors: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    phase_metrics: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # 구간별 메트릭
+    phase_metrics: Mapped[Optional[dict]] = mapped_column(
+        JSON, nullable=True
+    )  # 구간별 메트릭
 
     # Other
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
