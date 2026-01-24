@@ -323,7 +323,11 @@ async def list_all_tests(
             parsing_status=test.parsing_status,
             validation=validation_info,
             vo2_max=sanitize_float(test.vo2_max) if test.vo2_max is not None else None,
-            fat_max_watt=sanitize_float(test.fat_max_watt) if test.fat_max_watt is not None else None
+            fat_max_watt=sanitize_float(test.fat_max_watt) if test.fat_max_watt is not None else None,
+            # Processing status (denormalized from processed_metabolism)
+            processing_status=test.processing_status or "none",
+            last_analysis_version=test.last_analysis_version,
+            analysis_saved_at=test.analysis_saved_at,
         )
         
         test_rows.append(test_row)

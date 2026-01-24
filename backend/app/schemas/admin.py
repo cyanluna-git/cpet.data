@@ -93,7 +93,18 @@ class AdminTestRow(BaseModel):
     # 분석 결과 (있으면)
     vo2_max: Optional[float] = None
     fat_max_watt: Optional[float] = None
-    
+
+    # Processing status (denormalized from processed_metabolism)
+    processing_status: str = Field(
+        default="none", description="분석 저장 상태 ('none', 'complete')"
+    )
+    last_analysis_version: Optional[str] = Field(
+        None, description="마지막 분석 알고리즘 버전 (e.g., '1.0.0')"
+    )
+    analysis_saved_at: Optional[datetime] = Field(
+        None, description="분석 저장 시각"
+    )
+
     model_config = {"from_attributes": True}
 
 
