@@ -384,6 +384,7 @@ class ProcessedDataPoint(BaseModel):
     rer: Optional[float] = None
     count: Optional[int] = None  # binned data only
     vo2: Optional[float] = None  # VO2 for VO2 Kinetics chart
+    vo2_rel: Optional[float] = None  # VO2/kg for FATMAX chart
     vco2: Optional[float] = None  # VCO2 for VO2 Kinetics chart
     hr: Optional[float] = None  # HR for VO2 Kinetics chart
     ve_vo2: Optional[float] = None  # VE/VO2 for VT Analysis chart
