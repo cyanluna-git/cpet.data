@@ -1,24 +1,25 @@
-import axios, { AxiosError } from 'axios';
-import { sampleTestData, sampleSubjects } from '@/utils/sampleData';
+import axios, { AxiosError } from "axios";
+import { sampleTestData, sampleSubjects } from "@/utils/sampleData";
 
 // 환경변수에서 API URL 가져오기 (기본값: /api)
 // - 상대경로('/api')면 Vite proxy를 사용
 // - 절대 URL('http://host:port')이면 FastAPI가 /api prefix를 쓰므로 '/api'를 자동으로 붙임
-const RAW_API_BASE: string = import.meta.env.VITE_API_URL || '/api';
-const API_BASE = RAW_API_BASE === '/api' || RAW_API_BASE.endsWith('/api')
-  ? RAW_API_BASE
-  : `${RAW_API_BASE.replace(/\/+$/, '')}/api`;
+const RAW_API_BASE: string = import.meta.env.VITE_API_URL || "/api";
+const API_BASE =
+  RAW_API_BASE === "/api" || RAW_API_BASE.endsWith("/api")
+    ? RAW_API_BASE
+    : `${RAW_API_BASE.replace(/\/+$/, "")}/api`;
 
 // axios 인스턴스 생성
 const client = axios.create({
   baseURL: API_BASE,
-  headers: { 'Content-Type': 'application/json' },
+  headers: { "Content-Type": "application/json" },
   timeout: 30000,
 });
 
 // 요청 인터셉터: JWT 토큰 자동 추가
 client.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
+  const token = localStorage.getItem("access_token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -30,39 +31,39 @@ client.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('demoMode');
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("demoMode");
       // 로그인 페이지로 리다이렉트 (선택적)
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
       }
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 // 데모 모드 체크
 function isDemoMode() {
-  return localStorage.getItem('demoMode') === 'true';
+  return localStorage.getItem("demoMode") === "true";
 }
 
-function roleFromBackend(role: string): 'admin' | 'researcher' | 'subject' {
-  if (role === 'user') return 'subject';
-  if (role === 'subject') return 'subject';
-  if (role === 'admin' || role === 'researcher') return role;
-  return 'researcher';
+function roleFromBackend(role: string): "admin" | "researcher" | "subject" {
+  if (role === "user") return "subject";
+  if (role === "subject") return "subject";
+  if (role === "admin" || role === "researcher") return role;
+  return "researcher";
 }
 
-function roleToBackend(role: string): 'admin' | 'researcher' | 'user' {
-  if (role === 'subject') return 'user';
-  if (role === 'admin' || role === 'researcher' || role === 'user') return role;
-  return 'user';
+function roleToBackend(role: string): "admin" | "researcher" | "user" {
+  if (role === "subject") return "user";
+  if (role === "admin" || role === "researcher" || role === "user") return role;
+  return "user";
 }
 
 export interface AdminUser {
   user_id: string;
   email: string;
-  role: 'admin' | 'researcher' | 'user';
+  role: "admin" | "researcher" | "user";
   subject_id?: string | null;
   is_active: boolean;
   last_login?: string | null;
@@ -123,7 +124,7 @@ export interface CPETTest {
   hr_max?: number;
   created_at: string;
   // Processing status (denormalized from processed_metabolism)
-  processing_status?: 'none' | 'complete';
+  processing_status?: "none" | "complete";
   last_analysis_version?: string;
   analysis_saved_at?: string;
 }
@@ -136,6 +137,19 @@ export interface TimeSeriesData {
   timestamps: number[];
   data: Record<string, number[]>;
   total_points: number;
+}
+
+export interface TestUploadAutoResponse {
+  test_id: string;
+  subject_id: string;
+  subject_created: boolean;
+  subject_name: string;
+  source_filename: string;
+  parsing_status: string;
+  parsing_errors: string[] | null;
+  parsing_warnings: string[] | null;
+  data_points_count: number;
+  created_at: string;
 }
 
 export interface TestMetrics {
@@ -220,28 +234,28 @@ export interface ProcessedDataPoint {
   power: number;
   fat_oxidation: number | null;
   cho_oxidation: number | null;
-  rer?: number | null;  // RER value
-  count?: number;  // binned data only
+  rer?: number | null; // RER value
+  count?: number; // binned data only
 }
 
 export interface ProcessedSeries {
   raw: ProcessedDataPoint[];
   binned: ProcessedDataPoint[];
   smoothed: ProcessedDataPoint[];
-  trend?: ProcessedDataPoint[];  // Polynomial fit
+  trend?: ProcessedDataPoint[]; // Polynomial fit
 }
 
 export interface FatMaxMarker {
-  power: number;           // FatMax 지점 파워 (W)
-  mfo: number;             // Maximum Fat Oxidation (g/min)
-  zone_min: number;        // FatMax zone 하한 (W)
-  zone_max: number;        // FatMax zone 상한 (W)
+  power: number; // FatMax 지점 파워 (W)
+  mfo: number; // Maximum Fat Oxidation (g/min)
+  zone_min: number; // FatMax zone 하한 (W)
+  zone_max: number; // FatMax zone 상한 (W)
 }
 
 export interface CrossoverMarker {
-  power: number | null;         // Crossover 지점 파워 (W), 없으면 null
-  fat_value: number | null;     // 교차 지점 FatOx 값
-  cho_value: number | null;     // 교차 지점 CHOOx 값
+  power: number | null; // Crossover 지점 파워 (W), 없으면 null
+  fat_value: number | null; // 교차 지점 FatOx 값
+  cho_value: number | null; // 교차 지점 CHOOx 값
 }
 
 export interface MetabolicMarkers {
@@ -279,14 +293,17 @@ export interface CohortSummary {
   total_subjects: number;
   total_tests: number;
   filters_applied: Record<string, any>;
-  metrics: Record<string, {
-    count: number;
-    mean: number;
-    std: number;
-    min: number;
-    max: number;
-    median: number;
-  }>;
+  metrics: Record<
+    string,
+    {
+      count: number;
+      mean: number;
+      std: number;
+      min: number;
+      max: number;
+      median: number;
+    }
+  >;
 }
 
 // API Functions
@@ -296,52 +313,55 @@ export const api = {
   // =====================
   async signIn(email: string, password: string) {
     if (isDemoMode()) {
-      return { user: { email }, session: { access_token: 'demo-token' } };
+      return { user: { email }, session: { access_token: "demo-token" } };
     }
     // FastAPI OAuth2 Password Flow 형식
     const formData = new URLSearchParams();
-    formData.append('username', email);
-    formData.append('password', password);
+    formData.append("username", email);
+    formData.append("password", password);
 
-    const response = await client.post('/auth/login', formData, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    const response = await client.post("/auth/login", formData, {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
     });
 
-    localStorage.setItem('access_token', response.data.access_token);
+    localStorage.setItem("access_token", response.data.access_token);
     return response.data;
   },
 
   async signOut() {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('demoMode');
-    localStorage.removeItem('demoRole');
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("demoMode");
+    localStorage.removeItem("demoRole");
   },
 
   async getSession() {
     if (isDemoMode()) {
-      return { access_token: 'demo-token' };
+      return { access_token: "demo-token" };
     }
-    const token = localStorage.getItem('access_token');
+    const token = localStorage.getItem("access_token");
     return token ? { access_token: token } : null;
   },
 
   async getCurrentUser() {
     if (isDemoMode()) {
-      const role = localStorage.getItem('demoRole') || 'researcher';
+      const role = localStorage.getItem("demoRole") || "researcher";
       return {
-        id: role === 'subject' ? '660e8400-e29b-41d4-a716-446655440001' : 'demo-researcher-1',
-        email: role === 'subject' ? 'demo@subject.com' : 'demo@researcher.com',
-        name: role === 'subject' ? '박용두' : '연구자 데모',
+        id:
+          role === "subject"
+            ? "660e8400-e29b-41d4-a716-446655440001"
+            : "demo-researcher-1",
+        email: role === "subject" ? "demo@subject.com" : "demo@researcher.com",
+        name: role === "subject" ? "박용두" : "연구자 데모",
         role: role,
       };
     }
-    const response = await client.get('/auth/me');
+    const response = await client.get("/auth/me");
     const raw = response.data as any;
     // backend(UserResponse): user_id/email/role/is_active/last_login/created_at
     return {
       id: raw.user_id ?? raw.id,
       email: raw.email,
-      name: (raw.email || '').split('@')[0] || raw.email,
+      name: (raw.email || "").split("@")[0] || raw.email,
       role: roleFromBackend(raw.role),
     };
   },
@@ -351,7 +371,11 @@ export const api = {
       return { success: true };
     }
     // backend는 name을 저장하지 않으므로 전송하지 않음
-    const response = await client.post('/auth/register', { email, password, role: roleToBackend(role) });
+    const response = await client.post("/auth/register", {
+      email,
+      password,
+      role: roleToBackend(role),
+    });
     return response.data;
   },
 
@@ -369,7 +393,7 @@ export const api = {
         tests_total: 1,
       };
     }
-    const response = await client.get('/admin/stats');
+    const response = await client.get("/admin/stats");
     return response.data;
   },
 
@@ -379,23 +403,52 @@ export const api = {
     search?: string;
     role?: string;
     is_active?: boolean;
-    sort_by?: 'created_at' | 'last_login' | 'email' | 'role';
-    sort_order?: 'asc' | 'desc';
+    sort_by?: "created_at" | "last_login" | "email" | "role";
+    sort_order?: "asc" | "desc";
   }): Promise<PaginatedResponse<AdminUser>> {
     if (isDemoMode()) {
       const now = new Date().toISOString();
       const items: AdminUser[] = [
-        { user_id: 'demo-admin-1', email: 'admin@demo.local', role: 'admin', is_active: true, created_at: now },
-        { user_id: 'demo-researcher-1', email: 'researcher@demo.local', role: 'researcher', is_active: true, created_at: now },
-        { user_id: 'demo-user-1', email: 'subject@demo.local', role: 'user', is_active: true, created_at: now },
+        {
+          user_id: "demo-admin-1",
+          email: "admin@demo.local",
+          role: "admin",
+          is_active: true,
+          created_at: now,
+        },
+        {
+          user_id: "demo-researcher-1",
+          email: "researcher@demo.local",
+          role: "researcher",
+          is_active: true,
+          created_at: now,
+        },
+        {
+          user_id: "demo-user-1",
+          email: "subject@demo.local",
+          role: "user",
+          is_active: true,
+          created_at: now,
+        },
       ];
-      return { items, total: items.length, page: 1, page_size: 20, total_pages: 1 };
+      return {
+        items,
+        total: items.length,
+        page: 1,
+        page_size: 20,
+        total_pages: 1,
+      };
     }
-    const response = await client.get('/admin/users', { params });
+    const response = await client.get("/admin/users", { params });
     return response.data;
   },
 
-  async adminCreateUser(data: { email: string; password: string; role: string; subject_id?: string | null }): Promise<AdminUser> {
+  async adminCreateUser(data: {
+    email: string;
+    password: string;
+    role: string;
+    subject_id?: string | null;
+  }): Promise<AdminUser> {
     if (isDemoMode()) {
       return {
         user_id: `demo-${crypto.randomUUID()}`,
@@ -407,19 +460,28 @@ export const api = {
         last_login: null,
       };
     }
-    const response = await client.post('/admin/users', {
+    const response = await client.post("/admin/users", {
       ...data,
       role: roleToBackend(data.role),
     });
     return response.data;
   },
 
-  async adminUpdateUser(userId: string, data: Partial<{ email: string; password: string; role: string; is_active: boolean; subject_id: string | null }>): Promise<AdminUser> {
+  async adminUpdateUser(
+    userId: string,
+    data: Partial<{
+      email: string;
+      password: string;
+      role: string;
+      is_active: boolean;
+      subject_id: string | null;
+    }>,
+  ): Promise<AdminUser> {
     if (isDemoMode()) {
       return {
         user_id: userId,
-        email: data.email ?? 'demo@updated.local',
-        role: roleToBackend(data.role ?? 'user'),
+        email: data.email ?? "demo@updated.local",
+        role: roleToBackend(data.role ?? "user"),
         subject_id: data.subject_id ?? null,
         is_active: data.is_active ?? true,
         created_at: new Date().toISOString(),
@@ -439,11 +501,11 @@ export const api = {
   },
 
   async refreshToken() {
-    const token = localStorage.getItem('access_token');
+    const token = localStorage.getItem("access_token");
     if (!token) return null;
 
-    const response = await client.post('/auth/refresh');
-    localStorage.setItem('access_token', response.data.access_token);
+    const response = await client.post("/auth/refresh");
+    localStorage.setItem("access_token", response.data.access_token);
     return response.data;
   },
 
@@ -470,23 +532,26 @@ export const api = {
         total_pages: 1,
       };
     }
-    const response = await client.get('/subjects', { params });
+    const response = await client.get("/subjects", { params });
     return response.data;
   },
 
   async getSubject(id: string): Promise<Subject & { tests: CPETTest[] }> {
     if (isDemoMode()) {
-      const subject = sampleSubjects.find(s => s.id === id) || sampleSubjects[0];
+      const subject =
+        sampleSubjects.find((s) => s.id === id) || sampleSubjects[0];
       return { ...subject, tests: [sampleTestData] } as any;
     }
     const response = await client.get(`/subjects/${id}`);
     return response.data;
   },
 
-  async createSubject(data: Partial<Subject> & { research_id: string }): Promise<Subject> {
+  async createSubject(
+    data: Partial<Subject> & { research_id: string },
+  ): Promise<Subject> {
     if (isDemoMode()) {
       return {
-        id: 'demo-new-subject',
+        id: "demo-new-subject",
         ...data,
         created_at: data.created_at || new Date().toISOString(),
         updated_at: data.updated_at || new Date().toISOString(),
@@ -505,9 +570,11 @@ export const api = {
     };
 
     // Drop undefined to keep payload clean
-    Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
+    Object.keys(payload).forEach(
+      (k) => payload[k] === undefined && delete payload[k],
+    );
 
-    const response = await client.post('/subjects', payload);
+    const response = await client.post("/subjects", payload);
     return response.data;
   },
 
@@ -542,7 +609,7 @@ export const api = {
         total_pages: 1,
       };
     }
-    const response = await client.get('/tests', { params });
+    const response = await client.get("/tests", { params });
     return response.data;
   },
 
@@ -554,7 +621,11 @@ export const api = {
     return response.data;
   },
 
-  async uploadTest(file: File, subjectId: string, notes?: string): Promise<{
+  async uploadTest(
+    file: File,
+    subjectId: string,
+    notes?: string,
+  ): Promise<{
     test: CPETTest;
     breath_data_count: number;
     message: string;
@@ -563,16 +634,61 @@ export const api = {
       return {
         test: sampleTestData as any,
         breath_data_count: 500,
-        message: 'Demo upload successful',
+        message: "Demo upload successful",
       };
     }
     const formData = new FormData();
-    formData.append('file', file);
-    formData.append('subject_id', subjectId);
-    if (notes) formData.append('notes', notes);
+    formData.append("file", file);
+    formData.append("subject_id", subjectId);
+    if (notes) formData.append("notes", notes);
 
-    const response = await client.post('/tests/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    const response = await client.post("/tests/upload", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 120000, // 2분 타임아웃 (대용량 파일)
+    });
+    return response.data;
+  },
+
+  /**
+   * 피험자 자동 매칭/생성 후 테스트 업로드
+   * - Excel 파일에서 피험자 정보 추출
+   * - 기존 피험자와 매칭 시도 (research_id → 이름 기반 ID → encrypted_name)
+   * - 매칭 실패 시 새 피험자 생성
+   */
+  async uploadTestAuto(
+    file: File,
+    options?: {
+      calc_method?: "Frayn" | "Jeukendrup";
+      smoothing_window?: number;
+    },
+  ): Promise<TestUploadAutoResponse> {
+    if (isDemoMode()) {
+      // Simulate auto-upload with new subject creation
+      await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate processing
+      return {
+        test_id: "demo-test-" + Date.now(),
+        subject_id: "demo-subject-" + Date.now(),
+        subject_created: true,
+        subject_name: "Demo Subject",
+        source_filename: file.name,
+        parsing_status: "success",
+        parsing_errors: null,
+        parsing_warnings: null,
+        data_points_count: 500,
+        created_at: new Date().toISOString(),
+      };
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("calc_method", options?.calc_method || "Frayn");
+    formData.append(
+      "smoothing_window",
+      String(options?.smoothing_window || 10),
+    );
+
+    const response = await client.post("/tests/upload-auto", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
       timeout: 120000, // 2분 타임아웃 (대용량 파일)
     });
     return response.data;
@@ -594,28 +710,34 @@ export const api = {
   // =====================
   // Time Series & Metrics
   // =====================
-  async getTimeSeries(testId: string, params?: {
-    signals?: string;
-    interval?: string;
-    method?: string;
-    start_time?: number;
-    end_time?: number;
-    max_points?: number;
-  }): Promise<TimeSeriesData> {
+  async getTimeSeries(
+    testId: string,
+    params?: {
+      signals?: string;
+      interval?: string;
+      method?: string;
+      start_time?: number;
+      end_time?: number;
+      max_points?: number;
+    },
+  ): Promise<TimeSeriesData> {
     if (isDemoMode()) {
       // 데모 시계열 데이터 생성
-      const signals = (params?.signals || 'VO2,VCO2,HR').split(',');
+      const signals = (params?.signals || "VO2,VCO2,HR").split(",");
       const points = 100;
       const timestamps = Array.from({ length: points }, (_, i) => i * 6);
       const data: Record<string, number[]> = {};
-      signals.forEach(signal => {
-        data[signal] = Array.from({ length: points }, () => Math.random() * 50 + 20);
+      signals.forEach((signal) => {
+        data[signal] = Array.from(
+          { length: points },
+          () => Math.random() * 50 + 20,
+        );
       });
       return {
         test_id: testId,
         signals,
-        interval: params?.interval || '1s',
-        method: params?.method || 'mean',
+        interval: params?.interval || "1s",
+        method: params?.method || "mean",
         timestamps,
         data,
         total_points: points,
@@ -654,28 +776,34 @@ export const api = {
    */
   async getTestAnalysis(
     testId: string,
-    interval: string = '5s',
+    interval: string = "5s",
     include_processed: boolean = true,
     loess_frac: number = 0.25,
     bin_size: number = 10,
-    aggregation_method: string = 'median'
+    aggregation_method: string = "median",
   ): Promise<TestAnalysis> {
     if (isDemoMode()) {
       // 데모 분석 데이터 생성
       const timeseries: MetabolismDataPoint[] = [];
       for (let t = 0; t <= 1500; t += 5) {
         const progress = t / 1500;
-        const power = t < 180 ? 0 : t < 360 ? 50 + (t - 180) * 0.5 : Math.min(50 + (t - 180) * 0.3, 260);
+        const power =
+          t < 180
+            ? 0
+            : t < 360
+              ? 50 + (t - 180) * 0.5
+              : Math.min(50 + (t - 180) * 0.3, 260);
         const hr = 70 + progress * 120;
         const vo2 = 300 + progress * 3500;
-        const fatOx = t < 180 ? 0.1 : Math.max(0.05, 0.6 - Math.pow(progress - 0.4, 2) * 2);
+        const fatOx =
+          t < 180 ? 0.1 : Math.max(0.05, 0.6 - Math.pow(progress - 0.4, 2) * 2);
         const choOx = t < 180 ? 0.1 : 0.2 + progress * 1.5;
 
-        let phase = 'Rest';
-        if (t >= 180 && t < 360) phase = 'Warm-up';
-        else if (t >= 360 && t < 1320) phase = 'Exercise';
-        else if (t >= 1320 && t < 1380) phase = 'Peak';
-        else if (t >= 1380) phase = 'Recovery';
+        let phase = "Rest";
+        if (t >= 180 && t < 360) phase = "Warm-up";
+        else if (t >= 360 && t < 1320) phase = "Exercise";
+        else if (t >= 1320 && t < 1380) phase = "Peak";
+        else if (t >= 1380) phase = "Recovery";
 
         timeseries.push({
           time_sec: t,
@@ -694,10 +822,10 @@ export const api = {
 
       return {
         test_id: testId,
-        subject_id: 'demo-subject',
+        subject_id: "demo-subject",
         test_date: new Date().toISOString(),
-        protocol_type: 'MIX',
-        calc_method: 'Frayn',
+        protocol_type: "MIX",
+        calc_method: "Frayn",
         phase_boundaries: {
           rest_end_sec: 180,
           warmup_end_sec: 360,
@@ -705,19 +833,41 @@ export const api = {
           peak_sec: 1320,
           total_duration_sec: 1500,
           phases: [
-            { phase: 'Rest', start_sec: 0, end_sec: 180 },
-            { phase: 'Warm-up', start_sec: 180, end_sec: 360 },
-            { phase: 'Exercise', start_sec: 360, end_sec: 1320 },
-            { phase: 'Peak', start_sec: 1320, end_sec: 1380 },
-            { phase: 'Recovery', start_sec: 1380, end_sec: 1500 },
+            { phase: "Rest", start_sec: 0, end_sec: 180 },
+            { phase: "Warm-up", start_sec: 180, end_sec: 360 },
+            { phase: "Exercise", start_sec: 360, end_sec: 1320 },
+            { phase: "Peak", start_sec: 1320, end_sec: 1380 },
+            { phase: "Recovery", start_sec: 1380, end_sec: 1500 },
           ],
         },
         phase_metrics: {
-          'Rest': { duration_sec: 180, avg_hr: 72, avg_vo2: 350, avg_rer: 0.82 },
-          'Warm-up': { duration_sec: 180, avg_hr: 105, avg_vo2: 1200, avg_rer: 0.85 },
-          'Exercise': { duration_sec: 960, avg_hr: 155, avg_vo2: 2800, avg_rer: 0.95 },
-          'Peak': { duration_sec: 60, avg_hr: 185, max_hr: 188, avg_vo2: 3800, max_vo2: 3850, avg_rer: 1.12 },
-          'Recovery': { duration_sec: 120, avg_hr: 140, avg_vo2: 1500, avg_rer: 1.0 },
+          Rest: { duration_sec: 180, avg_hr: 72, avg_vo2: 350, avg_rer: 0.82 },
+          "Warm-up": {
+            duration_sec: 180,
+            avg_hr: 105,
+            avg_vo2: 1200,
+            avg_rer: 0.85,
+          },
+          Exercise: {
+            duration_sec: 960,
+            avg_hr: 155,
+            avg_vo2: 2800,
+            avg_rer: 0.95,
+          },
+          Peak: {
+            duration_sec: 60,
+            avg_hr: 185,
+            max_hr: 188,
+            avg_vo2: 3800,
+            max_vo2: 3850,
+            avg_rer: 1.12,
+          },
+          Recovery: {
+            duration_sec: 120,
+            avg_hr: 140,
+            avg_vo2: 1500,
+            avg_rer: 1.0,
+          },
         },
         fatmax: {
           fat_max_g_min: 0.68,
@@ -797,7 +947,13 @@ export const api = {
       };
     }
     const response = await client.get(`/tests/${testId}/analysis`, {
-      params: { interval, include_processed, loess_frac, bin_size, aggregation_method }
+      params: {
+        interval,
+        include_processed,
+        loess_frac,
+        bin_size,
+        aggregation_method,
+      },
     });
     return response.data;
   },
@@ -805,10 +961,13 @@ export const api = {
   // =====================
   // Subject Tests (alternative path)
   // =====================
-  async getSubjectTests(subjectId: string, params?: {
-    page?: number;
-    page_size?: number;
-  }): Promise<PaginatedResponse<CPETTest>> {
+  async getSubjectTests(
+    subjectId: string,
+    params?: {
+      page?: number;
+      page_size?: number;
+    },
+  ): Promise<PaginatedResponse<CPETTest>> {
     if (isDemoMode()) {
       return {
         items: [sampleTestData] as any,
@@ -818,7 +977,9 @@ export const api = {
         total_pages: 1,
       };
     }
-    const response = await client.get(`/subjects/${subjectId}/tests`, { params });
+    const response = await client.get(`/subjects/${subjectId}/tests`, {
+      params,
+    });
     return response.data;
   },
 
@@ -839,13 +1000,34 @@ export const api = {
         total_tests: 10,
         filters_applied: params || {},
         metrics: {
-          VO2max: { count: 10, mean: 45.2, std: 8.5, min: 32.1, max: 58.7, median: 44.5 },
-          VO2max_kg: { count: 10, mean: 52.3, std: 7.2, min: 42.0, max: 65.0, median: 51.8 },
-          HRmax: { count: 10, mean: 182, std: 12, min: 165, max: 198, median: 183 },
+          VO2max: {
+            count: 10,
+            mean: 45.2,
+            std: 8.5,
+            min: 32.1,
+            max: 58.7,
+            median: 44.5,
+          },
+          VO2max_kg: {
+            count: 10,
+            mean: 52.3,
+            std: 7.2,
+            min: 42.0,
+            max: 65.0,
+            median: 51.8,
+          },
+          HRmax: {
+            count: 10,
+            mean: 182,
+            std: 12,
+            min: 165,
+            max: 198,
+            median: 183,
+          },
         },
       };
     }
-    const response = await client.get('/cohorts/summary', { params });
+    const response = await client.get("/cohorts/summary", { params });
     return response.data;
   },
 
@@ -871,7 +1053,7 @@ export const api = {
         filters_applied: params,
       };
     }
-    const response = await client.get('/cohorts/distribution', { params });
+    const response = await client.get("/cohorts/distribution", { params });
     return response.data;
   },
 
@@ -883,17 +1065,17 @@ export const api = {
     compare_age_range?: number;
   }) {
     if (isDemoMode()) {
-      const metrics = (params.metrics || 'VO2max,VO2max_kg').split(',');
+      const metrics = (params.metrics || "VO2max,VO2max_kg").split(",");
       return {
         subject_id: params.subject_id,
-        test_id: params.test_id || 'demo-test',
+        test_id: params.test_id || "demo-test",
         percentiles: Object.fromEntries(
-          metrics.map(m => [m, { value: 45, percentile: 72 }])
+          metrics.map((m) => [m, { value: 45, percentile: 72 }]),
         ),
-        comparison_group: { total: 50, gender: 'M', age_range: '20-30' },
+        comparison_group: { total: 50, gender: "M", age_range: "20-30" },
       };
     }
-    const response = await client.get('/cohorts/percentile', { params });
+    const response = await client.get("/cohorts/percentile", { params });
     return response.data;
   },
 
@@ -906,13 +1088,21 @@ export const api = {
       return {
         group_by: params.group_by,
         groups: [
-          { group: 'M', count: 30, metrics: { VO2max: { mean: 48.5, std: 7.2 } } },
-          { group: 'F', count: 20, metrics: { VO2max: { mean: 42.1, std: 6.8 } } },
+          {
+            group: "M",
+            count: 30,
+            metrics: { VO2max: { mean: 48.5, std: 7.2 } },
+          },
+          {
+            group: "F",
+            count: 20,
+            metrics: { VO2max: { mean: 42.1, std: 6.8 } },
+          },
         ],
         filters_applied: params,
       };
     }
-    const response = await client.get('/cohorts/comparison', { params });
+    const response = await client.get("/cohorts/comparison", { params });
     return response.data;
   },
 
@@ -923,10 +1113,10 @@ export const api = {
         total_tests: 15,
         total_breath_data_points: 75000,
         gender_distribution: { M: 8, F: 7 },
-        age_distribution: { '20s': 5, '30s': 6, '40s': 4 },
+        age_distribution: { "20s": 5, "30s": 6, "40s": 4 },
       };
     }
-    const response = await client.get('/cohorts/stats');
+    const response = await client.get("/cohorts/stats");
     return response.data;
   },
 
@@ -935,17 +1125,19 @@ export const api = {
   // =====================
   /** @deprecated Use getCohortSummary instead */
   async getCohortStats(filters: any) {
-    console.warn('api.getCohortStats is deprecated. Use api.getCohortSummary instead.');
+    console.warn(
+      "api.getCohortStats is deprecated. Use api.getCohortSummary instead.",
+    );
     return this.getCohortSummary(filters);
   },
 
   /** @deprecated Use uploadTest instead */
   async createTest(testData: any) {
-    console.warn('api.createTest is deprecated. Use api.uploadTest instead.');
+    console.warn("api.createTest is deprecated. Use api.uploadTest instead.");
     if (isDemoMode()) {
       return { success: true, test: testData };
     }
-    const response = await client.post('/tests', testData);
+    const response = await client.post("/tests", testData);
     return response.data;
   },
 
@@ -958,23 +1150,25 @@ export const api = {
    * - Returns saved data if available (is_persisted=true)
    * - Otherwise calculates with defaults (is_persisted=false)
    */
-  async getProcessedMetabolism(testId: string): Promise<ProcessedMetabolismApiResponse> {
+  async getProcessedMetabolism(
+    testId: string,
+  ): Promise<ProcessedMetabolismApiResponse> {
     if (isDemoMode()) {
       return {
         id: null,
         cpet_test_id: testId,
         config: {
           bin_size: 10,
-          aggregation_method: 'median',
+          aggregation_method: "median",
           loess_frac: 0.25,
-          smoothing_method: 'loess',
+          smoothing_method: "loess",
           exclude_rest: true,
           exclude_warmup: true,
           exclude_recovery: true,
           min_power_threshold: null,
           trim_start_sec: null,
           trim_end_sec: null,
-          fatmax_zone_threshold: 0.90,
+          fatmax_zone_threshold: 0.9,
         },
         is_manual_override: false,
         processed_series: {
@@ -1006,12 +1200,12 @@ export const api = {
             { power: 200, fat_oxidation: 0.27, cho_oxidation: 1.53 },
           ],
           trend: [
-            { power: 80, fat_oxidation: 0.37, cho_oxidation: 0.20 },
+            { power: 80, fat_oxidation: 0.37, cho_oxidation: 0.2 },
             { power: 100, fat_oxidation: 0.53, cho_oxidation: 0.33 },
-            { power: 120, fat_oxidation: 0.63, cho_oxidation: 0.50 },
+            { power: 120, fat_oxidation: 0.63, cho_oxidation: 0.5 },
             { power: 140, fat_oxidation: 0.66, cho_oxidation: 0.65 },
             { power: 160, fat_oxidation: 0.56, cho_oxidation: 0.88 },
-            { power: 180, fat_oxidation: 0.40, cho_oxidation: 1.18 },
+            { power: 180, fat_oxidation: 0.4, cho_oxidation: 1.18 },
             { power: 200, fat_oxidation: 0.26, cho_oxidation: 1.55 },
           ],
         },
@@ -1039,7 +1233,7 @@ export const api = {
           auto_detected: true,
         },
         processing_warnings: [],
-        processing_status: 'completed',
+        processing_status: "completed",
         processed_at: new Date().toISOString(),
         is_persisted: false,
         created_at: null,
@@ -1057,7 +1251,7 @@ export const api = {
   async saveProcessedMetabolism(
     testId: string,
     config: MetabolismConfigApi,
-    isManualOverride: boolean = true
+    isManualOverride: boolean = true,
   ): Promise<ProcessedMetabolismApiResponse> {
     if (isDemoMode()) {
       // Simulate save by returning the config as persisted
@@ -1072,10 +1266,13 @@ export const api = {
         updated_at: new Date().toISOString(),
       };
     }
-    const response = await client.post(`/tests/${testId}/processed-metabolism`, {
-      config,
-      is_manual_override: isManualOverride,
-    });
+    const response = await client.post(
+      `/tests/${testId}/processed-metabolism`,
+      {
+        config,
+        is_manual_override: isManualOverride,
+      },
+    );
     return response.data;
   },
 
@@ -1098,9 +1295,9 @@ export const api = {
 
 export interface MetabolismConfigApi {
   bin_size: number;
-  aggregation_method: 'median' | 'mean' | 'trimmed_mean';
+  aggregation_method: "median" | "mean" | "trimmed_mean";
   loess_frac: number;
-  smoothing_method: 'loess' | 'savgol' | 'moving_avg';
+  smoothing_method: "loess" | "savgol" | "moving_avg";
   exclude_rest: boolean;
   exclude_warmup: boolean;
   exclude_recovery: boolean;
@@ -1116,10 +1313,28 @@ export interface ProcessedMetabolismApiResponse {
   config: MetabolismConfigApi;
   is_manual_override: boolean;
   processed_series: {
-    raw: Array<{ power: number; fat_oxidation: number | null; cho_oxidation: number | null; count?: number }>;
-    binned: Array<{ power: number; fat_oxidation: number | null; cho_oxidation: number | null; count?: number }>;
-    smoothed: Array<{ power: number; fat_oxidation: number | null; cho_oxidation: number | null }>;
-    trend?: Array<{ power: number; fat_oxidation: number | null; cho_oxidation: number | null }>;
+    raw: Array<{
+      power: number;
+      fat_oxidation: number | null;
+      cho_oxidation: number | null;
+      count?: number;
+    }>;
+    binned: Array<{
+      power: number;
+      fat_oxidation: number | null;
+      cho_oxidation: number | null;
+      count?: number;
+    }>;
+    smoothed: Array<{
+      power: number;
+      fat_oxidation: number | null;
+      cho_oxidation: number | null;
+    }>;
+    trend?: Array<{
+      power: number;
+      fat_oxidation: number | null;
+      cho_oxidation: number | null;
+    }>;
   } | null;
   metabolic_markers: {
     fat_max: {

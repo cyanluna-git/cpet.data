@@ -28,8 +28,10 @@ from app.schemas.test import (
     TestAnalysisResponse,
     RawBreathDataResponse,
     RawBreathDataRow,
+    TestUploadAutoResponse,
 )
 from app.services import TestService
+from app.services.cosmed_parser import COSMEDParser
 from app.utils.json_sanitizer import sanitize_for_json
 
 router = APIRouter(prefix="/tests", tags=["Tests"])
@@ -96,6 +98,107 @@ async def upload_test(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
+        )
+
+
+@router.post(
+    "/upload-auto",
+    response_model=TestUploadAutoResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_test_auto(
+    db: DBSession,
+    current_user: ResearcherUser,
+    file: UploadFile = File(..., description="COSMED Excel 파일 (.xlsx)"),
+    calc_method: str = Form("Frayn", description="대사 계산 방법"),
+    smoothing_window: int = Form(10, description="평활화 윈도우"),
+):
+    """
+    피험자 자동 매칭/생성 후 테스트 업로드
+
+    피험자를 자동으로 매칭하거나 새로 생성합니다:
+    1. Excel 파일에서 피험자 정보 추출 (이름, research_id 등)
+    2. 기존 피험자와 매칭 시도 (research_id → 이름 기반 ID → encrypted_name)
+    3. 매칭 실패 시 새 피험자 생성
+    4. 테스트 파싱 및 저장
+
+    - **file**: COSMED Excel 파일 (.xlsx, .xls)
+    - **calc_method**: 대사 계산 방법 (Frayn, Jeukendrup)
+    - **smoothing_window**: 평활화 윈도우 크기
+    """
+    import tempfile
+    import os
+    from pathlib import Path
+
+    # 파일 타입 검증
+    if not file.filename.endswith((".xlsx", ".xls")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only Excel files (.xlsx, .xls) are supported",
+        )
+
+    # 파일 크기 제한 (50MB)
+    contents = await file.read()
+    if len(contents) > 50 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File size exceeds 50MB limit",
+        )
+
+    service = TestService(db)
+
+    try:
+        # 1. 파일에서 피험자 정보만 먼저 추출
+        suffix = Path(file.filename).suffix
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(contents)
+            tmp_path = tmp.name
+
+        try:
+            parser = COSMEDParser()
+            parsed_data = parser.parse_file(tmp_path)
+        finally:
+            os.unlink(tmp_path)
+
+        # 2. 피험자 자동 매칭/생성
+        subject, subject_created = await service.find_or_create_subject(
+            parsed_data.subject
+        )
+
+        # 피험자 이름 결정
+        subject_name = subject.encrypted_name or subject.research_id
+
+        # 3. 테스트 업로드 진행
+        test, errors, warnings = await service.upload_and_parse(
+            file_content=contents,
+            filename=file.filename,
+            subject_id=subject.id,
+            calc_method=calc_method,
+            smoothing_window=smoothing_window,
+        )
+
+        return TestUploadAutoResponse(
+            test_id=test.test_id,
+            subject_id=test.subject_id,
+            subject_created=subject_created,
+            subject_name=subject_name,
+            source_filename=file.filename,
+            parsing_status=test.parsing_status or "success",
+            parsing_errors=errors if errors else None,
+            parsing_warnings=warnings if warnings else None,
+            data_points_count=0,  # TODO: breath data 개수 계산
+            created_at=test.created_at,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process file: {str(e)}",
         )
 
 
