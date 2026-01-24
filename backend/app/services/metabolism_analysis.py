@@ -40,6 +40,7 @@ class ProcessedDataPoint:
     cho_oxidation: Optional[float]
     count: Optional[int] = None  # binned data only
     vo2: Optional[float] = None  # VO2 for relative calculations and VO2 Kinetics chart
+    vo2_rel: Optional[float] = None  # VO2/kg (ml/min/kg) for FATMAX chart
     rer: Optional[float] = None  # RER
     vco2: Optional[float] = None  # lrmad VCO2 for VO2 Kinetics chart
     hr: Optional[float] = None  # HR for VO2 Kinetics chart
@@ -54,6 +55,7 @@ class ProcessedDataPoint:
             "cho_oxidation": self.cho_oxidation,
             "count": self.count,
             "vo2": self.vo2,
+            "vo2_rel": self.vo2_rel,
             "vco2": self.vco2,
             "rer": self.rer,
             "hr": self.hr,
@@ -550,6 +552,7 @@ class MetabolismAnalyzer:
                     cho_oxidation=safe_float(bd.cho_oxidation),
                     rer=safe_float(bd.rer),
                     vo2=safe_float(getattr(bd, "vo2", None)),
+                    vo2_rel=safe_float(getattr(bd, "vo2_rel", None)),
                     vco2=safe_float(getattr(bd, "vco2", None)),
                     hr=safe_float(getattr(bd, "hr", None)),
                     ve_vo2=safe_float(getattr(bd, "ve_vo2", None)),
@@ -580,6 +583,7 @@ class MetabolismAnalyzer:
                     "cho_oxidation": p.cho_oxidation,
                     "rer": p.rer,
                     "vo2": p.vo2,
+                    "vo2_rel": p.vo2_rel,
                     "vco2": p.vco2,
                     "hr": p.hr,
                     "ve_vo2": p.ve_vo2,
@@ -599,6 +603,7 @@ class MetabolismAnalyzer:
             "cho_oxidation",
             "rer",
             "vo2",
+            "vo2_rel",
             "vco2",
             "hr",
             "ve_vo2",
@@ -648,6 +653,7 @@ class MetabolismAnalyzer:
             )
             rer_val = float(row["rer"]) if pd.notna(row["rer"]) else None
             vo2_val = float(row["vo2"]) if pd.notna(row["vo2"]) else None
+            vo2_rel_val = float(row["vo2_rel"]) if pd.notna(row["vo2_rel"]) else None
             vco2_val = float(row["vco2"]) if pd.notna(row["vco2"]) else None
             hr_val = float(row["hr"]) if pd.notna(row["hr"]) else None
             ve_vo2_val = float(row["ve_vo2"]) if pd.notna(row["ve_vo2"]) else None
@@ -667,6 +673,7 @@ class MetabolismAnalyzer:
                     cho_oxidation=cho_ox,
                     rer=rer_val,
                     vo2=vo2_val,
+                    vo2_rel=vo2_rel_val,
                     vco2=vco2_val,
                     hr=hr_val,
                     ve_vo2=ve_vo2_val,
@@ -721,6 +728,9 @@ class MetabolismAnalyzer:
         vo2_vals = np.array(
             [p.vo2 if p.vo2 is not None else np.nan for p in binned_points]
         )
+        vo2_rel_vals = np.array(
+            [p.vo2_rel if p.vo2_rel is not None else np.nan for p in binned_points]
+        )
         vco2_vals = np.array(
             [p.vco2 if p.vco2 is not None else np.nan for p in binned_points]
         )
@@ -759,6 +769,7 @@ class MetabolismAnalyzer:
 
             rer_smoothed = smooth_optional(rer_vals, powers, frac)
             vo2_smoothed = smooth_optional(vo2_vals, powers, frac)
+            vo2_rel_smoothed = smooth_optional(vo2_rel_vals, powers, frac)
             vco2_smoothed = smooth_optional(vco2_vals, powers, frac)
             hr_smoothed = smooth_optional(hr_vals, powers, frac)
             ve_vo2_smoothed = smooth_optional(ve_vo2_vals, powers, frac)
@@ -799,6 +810,7 @@ class MetabolismAnalyzer:
                         cho_oxidation=cho_val,
                         rer=get_interpolated_val(rer_smoothed, power_val, (0.5, 1.5)),
                         vo2=get_interpolated_val(vo2_smoothed, power_val),
+                        vo2_rel=get_interpolated_val(vo2_rel_smoothed, power_val),
                         vco2=get_interpolated_val(vco2_smoothed, power_val),
                         hr=get_interpolated_val(hr_smoothed, power_val),
                         ve_vo2=get_interpolated_val(ve_vo2_smoothed, power_val),
@@ -862,6 +874,9 @@ class MetabolismAnalyzer:
             vo2_vals = np.array(
                 [p.vo2 if p.vo2 is not None else np.nan for p in binned_points]
             )
+            vo2_rel_vals = np.array(
+                [p.vo2_rel if p.vo2_rel is not None else np.nan for p in binned_points]
+            )
             vco2_vals = np.array(
                 [p.vco2 if p.vco2 is not None else np.nan for p in binned_points]
             )
@@ -878,7 +893,7 @@ class MetabolismAnalyzer:
             # Polynomial degrees per metric type
             DEGREE_FAT_CHO = 3  # Inverted U-shape for Fat, J-curve for CHO
             DEGREE_RER = 3  # Slight dip at start, exponential rise at end
-            DEGREE_VO2_VCO2 = 2  # Linear efficiency (slight curve)
+            DEGREE_VO2_VCO2 = 2  # Linear efficiency (slight curve) - also for VO2/kg
             DEGREE_HR = 2  # Linear response
             DEGREE_VT = 2  # U-shape for nadir detection
 
@@ -901,6 +916,7 @@ class MetabolismAnalyzer:
             cho_poly = np.poly1d(np.polyfit(powers, cho_ox, DEGREE_FAT_CHO))
             rer_poly = fit_poly(rer_vals, powers, DEGREE_RER)
             vo2_poly = fit_poly(vo2_vals, powers, DEGREE_VO2_VCO2)
+            vo2_rel_poly = fit_poly(vo2_rel_vals, powers, DEGREE_VO2_VCO2)
             vco2_poly = fit_poly(vco2_vals, powers, DEGREE_VO2_VCO2)
             hr_poly = fit_poly(hr_vals, powers, DEGREE_HR)
             ve_vo2_poly = fit_poly(ve_vo2_vals, powers, DEGREE_VT)
@@ -939,6 +955,7 @@ class MetabolismAnalyzer:
                         cho_oxidation=cho_val,
                         rer=eval_poly(rer_poly, p, constraint=(0.5, 1.5)),
                         vo2=eval_poly(vo2_poly, p),
+                        vo2_rel=eval_poly(vo2_rel_poly, p),
                         vco2=eval_poly(vco2_poly, p),
                         hr=eval_poly(hr_poly, p),
                         ve_vo2=eval_poly(ve_vo2_poly, p),
