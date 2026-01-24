@@ -20,9 +20,10 @@ from app.schemas.test import (
     TimeSeriesRequest,
     ProtocolType,
 )
-from app.services.cosmed_parser import COSMEDParser, ParsedCPETData
+from app.services.cosmed_parser import COSMEDParser, ParsedCPETData, SubjectInfo
 from app.services.metabolism_analysis import MetabolismAnalyzer, AnalysisConfig
 from app.services.data_validator import DataValidator
+import pandas as pd
 
 
 class TestService:
@@ -132,6 +133,132 @@ class TestService:
         await self.db.delete(test)
         await self.db.commit()
         return True
+
+    async def find_or_create_subject(
+        self,
+        subject_info: SubjectInfo,
+    ) -> Tuple[Subject, bool]:
+        """
+        피험자 자동 매칭/생성
+
+        매칭 우선순위:
+        1. research_id 정확히 일치
+        2. last_name + first_name으로 생성한 research_id 일치
+        3. encrypted_name 일치
+
+        없으면 새 피험자 생성
+
+        Returns:
+            (Subject, created: bool) - 생성 여부
+        """
+        # 이름 정리
+        first_name = (subject_info.first_name or "").strip()
+        last_name = (subject_info.last_name or "").strip()
+        research_id = (subject_info.research_id or "").strip()
+
+        # 이름 기반 research_id 생성 (형식: "LastName_FirstName")
+        name_based_id = f"{last_name}_{first_name}" if last_name and first_name else ""
+        # 대소문자 구분 없이 매칭용
+        name_based_id_lower = name_based_id.lower()
+
+        # encrypted_name (표시용 이름)
+        full_name = f"{first_name} {last_name}".strip()
+
+        # 1. research_id로 검색 (파일에서 추출된 ID가 있는 경우)
+        if research_id:
+            result = await self.db.execute(
+                select(Subject).where(
+                    func.lower(Subject.research_id) == research_id.lower()
+                )
+            )
+            subject = result.scalar_one_or_none()
+            if subject:
+                return subject, False
+
+        # 2. name_based_id로 검색
+        if name_based_id:
+            result = await self.db.execute(
+                select(Subject).where(
+                    func.lower(Subject.research_id) == name_based_id_lower
+                )
+            )
+            subject = result.scalar_one_or_none()
+            if subject:
+                return subject, False
+
+        # 3. encrypted_name으로 검색
+        if full_name:
+            result = await self.db.execute(
+                select(Subject).where(
+                    func.lower(Subject.encrypted_name) == full_name.lower()
+                )
+            )
+            subject = result.scalar_one_or_none()
+            if subject:
+                return subject, False
+
+        # 4. 매칭 실패 → 새 피험자 생성
+        # research_id 결정: 파일의 research_id > name_based_id > "unknown_{timestamp}"
+        final_research_id = (
+            research_id
+            or name_based_id
+            or f"unknown_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+        )
+
+        # 중복 방지: 이미 존재하면 숫자 suffix 추가
+        base_id = final_research_id
+        counter = 1
+        while True:
+            result = await self.db.execute(
+                select(Subject).where(
+                    func.lower(Subject.research_id) == final_research_id.lower()
+                )
+            )
+            if result.scalar_one_or_none() is None:
+                break
+            final_research_id = f"{base_id}_{counter}"
+            counter += 1
+
+        # Gender 변환 (Male/Female → M/F)
+        gender = None
+        if subject_info.gender:
+            g = subject_info.gender.strip().lower()
+            if g in ("male", "m"):
+                gender = "M"
+            elif g in ("female", "f"):
+                gender = "F"
+
+        # birth_date 파싱
+        birth_date = None
+        birth_year = None
+        if subject_info.birth_date:
+            try:
+                if isinstance(subject_info.birth_date, str):
+                    birth_date = datetime.strptime(
+                        subject_info.birth_date, "%m/%d/%Y"
+                    ).date()
+                    birth_year = birth_date.year
+                else:
+                    birth_date = subject_info.birth_date
+                    birth_year = birth_date.year
+            except Exception:
+                pass
+
+        # 새 피험자 생성
+        new_subject = Subject(
+            research_id=final_research_id,
+            encrypted_name=full_name or None,
+            birth_year=birth_year,
+            birth_date=birth_date,
+            gender=gender,
+            height_cm=subject_info.height_cm,
+            weight_kg=subject_info.weight_kg,
+        )
+        self.db.add(new_subject)
+        await self.db.flush()
+        await self.db.refresh(new_subject)
+
+        return new_subject, True
 
     async def upload_and_parse(
         self,

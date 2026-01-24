@@ -257,6 +257,21 @@ class TestUploadResponse(BaseModel):
     created_at: datetime
 
 
+class TestUploadAutoResponse(BaseModel):
+    """피험자 자동 매칭/생성 업로드 응답 스키마"""
+
+    test_id: UUID
+    subject_id: UUID
+    subject_created: bool = Field(..., description="피험자가 새로 생성되었는지 여부")
+    subject_name: str = Field(..., description="피험자 이름")
+    source_filename: str
+    parsing_status: str
+    parsing_errors: Optional[List[str]] = None
+    parsing_warnings: Optional[List[str]] = None
+    data_points_count: int
+    created_at: datetime
+
+
 # =========================================
 # 분석 결과 스키마 (Analysis)
 # =========================================
