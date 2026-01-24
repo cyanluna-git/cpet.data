@@ -1,12 +1,11 @@
 """CPET Test schemas - 테스트 관련 Pydantic 스키마"""
 
 from datetime import datetime, time
-from typing import Optional, Dict, Any, List
-from uuid import UUID
 from enum import Enum
+from typing import Any, Dict, List, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
-
 
 # =========================================
 # Data Validation Schemas
@@ -17,9 +16,37 @@ class ProtocolType(str, Enum):
     """프로토콜 타입 열거형"""
 
     RAMP = "RAMP"  # 선형 증가 프로토콜 (r >= 0.85)
+    HYBRID = "HYBRID"  # 복합 프로토콜: 2분 계단식 RAMP (대사) + 10초 RAMP (VO2max)
     INTERVAL = "INTERVAL"  # 인터벌 트레이닝 (r < 0.85, 변동 심함)
     STEADY_STATE = "STEADY_STATE"  # 정상 상태 (r < 0.85, 변동 적음)
     UNKNOWN = "UNKNOWN"  # 분류 불가
+
+
+class SegmentInfo(BaseModel):
+    """세그먼트 정보 스키마 (HYBRID 프로토콜 분석용)"""
+
+    start_sec: float = Field(..., description="세그먼트 시작 시간 (초)")
+    end_sec: float = Field(..., description="세그먼트 종료 시간 (초)")
+    segment_type: str = Field(
+        ..., description="세그먼트 타입 (ramp/recovery/warmup/cooldown)"
+    )
+    correlation: Optional[float] = Field(None, description="Power-Time 상관계수")
+    avg_power: Optional[float] = Field(None, description="평균 파워 (W)")
+    max_power: Optional[float] = Field(None, description="최대 파워 (W)")
+
+
+class HybridPhases(BaseModel):
+    """HYBRID 프로토콜의 Phase 정보"""
+
+    metabolic_phase: Optional[SegmentInfo] = Field(
+        None, description="대사 분석 구간 (2분 간격 RAMP)"
+    )
+    recovery_phase: Optional[SegmentInfo] = Field(
+        None, description="휴식/리커버리 구간"
+    )
+    vo2max_phase: Optional[SegmentInfo] = Field(
+        None, description="VO2max 분석 구간 (10초 간격 RAMP)"
+    )
 
 
 class ValidationResult(BaseModel):
@@ -47,6 +74,14 @@ class ValidationResult(BaseModel):
     # 프로토콜 분류 메트릭
     power_time_correlation: Optional[float] = Field(
         None, description="Power-Time 상관계수 (r)"
+    )
+
+    # HYBRID 프로토콜 관련 필드
+    segments: Optional[List[SegmentInfo]] = Field(
+        None, description="감지된 세그먼트 목록"
+    )
+    hybrid_phases: Optional[HybridPhases] = Field(
+        None, description="HYBRID 프로토콜의 Phase 정보"
     )
 
     model_config = {"from_attributes": True}
@@ -137,9 +172,7 @@ class CPETTestResponse(BaseModel):
     last_analysis_version: Optional[str] = Field(
         None, description="마지막 분석 알고리즘 버전 (e.g., '1.0.0')"
     )
-    analysis_saved_at: Optional[datetime] = Field(
-        None, description="분석 저장 시각"
-    )
+    analysis_saved_at: Optional[datetime] = Field(None, description="분석 저장 시각")
 
     notes: Optional[str] = None
     created_at: datetime
