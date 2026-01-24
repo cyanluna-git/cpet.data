@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   CircleDashed,
   Upload,
+  Trash2,
 } from "lucide-react";
 import { TestUploadModal } from "@/components/TestUploadModal";
 import { api, type AdminStats } from "@/lib/api";
@@ -198,6 +199,45 @@ export function AdminDataPage({
       await loadTests();
     } catch (error) {
       console.error("Update error:", error);
+      toast.error(getErrorMessage(error));
+    }
+  }
+
+  async function deleteTest(testId: string, subjectName: string) {
+    // 확인 다이얼로그
+    const confirmed = window.confirm(
+      `정말로 "${subjectName}"의 테스트 데이터를 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`,
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const token = localStorage.getItem("access_token");
+      if (!token) {
+        throw new Error("No access token found");
+      }
+
+      const response = await fetch(`/api/tests/${testId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response
+          .json()
+          .catch(() => ({ detail: "Failed to delete" }));
+        throw new Error(errorData.detail || "Failed to delete");
+      }
+
+      toast.success("테스트가 삭제되었습니다");
+
+      // Reload tests and stats
+      await loadTests();
+      await load();
+    } catch (error) {
+      console.error("Delete error:", error);
       toast.error(getErrorMessage(error));
     }
   }
@@ -448,7 +488,7 @@ export function AdminDataPage({
                                 파일명
                               </th>
                               <th className="px-4 py-3 text-left font-medium text-gray-700">
-                                편집
+                                액션
                               </th>
                             </tr>
                           </thead>
@@ -609,7 +649,7 @@ export function AdminDataPage({
                                     {test.source_filename || "-"}
                                   </td>
 
-                                  {/* 편집 버튼 */}
+                                  {/* 액션 버튼 (편집 + 삭제) */}
                                   <td className="px-4 py-3">
                                     {isEditing ? (
                                       <div className="flex gap-1">
@@ -631,14 +671,31 @@ export function AdminDataPage({
                                         </Button>
                                       </div>
                                     ) : (
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => startEdit(test)}
-                                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                      >
-                                        <Edit className="w-4 h-4" />
-                                      </Button>
+                                      <div className="flex gap-1">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => startEdit(test)}
+                                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                          title="편집"
+                                        >
+                                          <Edit className="w-4 h-4" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() =>
+                                            deleteTest(
+                                              test.test_id,
+                                              test.subject_name,
+                                            )
+                                          }
+                                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                          title="삭제"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                      </div>
                                     )}
                                   </td>
                                 </tr>

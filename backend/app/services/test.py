@@ -1,29 +1,29 @@
 """Test Service - CPET 테스트 관련 비즈니스 로직"""
 
+import math
+import os
+import tempfile
 from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
-from typing import Optional, List, Tuple, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
-import tempfile
-import os
-import math
 
-from sqlalchemy import select, func, desc, and_
+import pandas as pd
+from sqlalchemy import and_, delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import CPETTest, BreathData, Subject
+from app.models import BreathData, CPETTest, Subject
 from app.schemas.test import (
     CPETTestCreate,
     CPETTestUpdate,
-    TimeSeriesRequest,
     ProtocolType,
+    TimeSeriesRequest,
 )
 from app.services.cosmed_parser import COSMEDParser, ParsedCPETData, SubjectInfo
-from app.services.metabolism_analysis import MetabolismAnalyzer, AnalysisConfig
 from app.services.data_validator import DataValidator
-import pandas as pd
+from app.services.metabolism_analysis import AnalysisConfig, MetabolismAnalyzer
 
 
 class TestService:
@@ -255,7 +255,8 @@ class TestService:
             weight_kg=subject_info.weight_kg,
         )
         self.db.add(new_subject)
-        await self.db.flush()
+        # 피험자 생성 즉시 커밋 - 테스트 업로드 실패해도 피험자는 유지
+        await self.db.commit()
         await self.db.refresh(new_subject)
 
         return new_subject, True
@@ -281,6 +282,24 @@ class TestService:
         subject = subject_result.scalar_one_or_none()
         if not subject:
             raise ValueError(f"Subject not found: {subject_id}")
+
+        # 중복 테스트 체크 및 삭제 (같은 피험자 + 같은 파일명 = override)
+        existing_test_result = await self.db.execute(
+            select(CPETTest).where(
+                CPETTest.subject_id == subject_id,
+                CPETTest.source_filename == filename,
+            )
+        )
+        existing_test = existing_test_result.scalar_one_or_none()
+        if existing_test:
+            # 기존 테스트의 BreathData 먼저 삭제
+            await self.db.execute(
+                delete(BreathData).where(BreathData.test_id == existing_test.test_id)
+            )
+            # 기존 테스트 삭제
+            await self.db.delete(existing_test)
+            await self.db.flush()
+            print(f"[OVERRIDE] Deleted existing test: {existing_test.test_id}")
 
         # 임시 파일로 저장 후 파싱
         suffix = Path(filename).suffix
@@ -352,8 +371,11 @@ class TestService:
                 warnings = ["Data validation failed - test saved but not analyzed"]
                 return test, errors, warnings
 
-            # 프로토콜 타입이 RAMP가 아니면 분석 스킵
-            if validation_result.protocol_type != ProtocolType.RAMP:
+            # 프로토콜 타입이 RAMP 또는 HYBRID가 아니면 분석 스킵
+            if validation_result.protocol_type not in (
+                ProtocolType.RAMP,
+                ProtocolType.HYBRID,
+            ):
                 test = CPETTest(
                     subject_id=subject_id,
                     test_date=parsed_data.test.test_date or datetime.now(),
@@ -366,7 +388,7 @@ class TestService:
                     parsing_status="skipped_protocol_mismatch",
                     parsing_errors={
                         "protocol_type": validation_result.protocol_type.value,
-                        "reason": f"Protocol type {validation_result.protocol_type.value} is not suitable for standard analysis (FatMax/VT). Only RAMP protocols are supported.",
+                        "reason": f"Protocol type {validation_result.protocol_type.value} is not suitable for standard analysis (FatMax/VT). Only RAMP or HYBRID protocols are supported.",
                         "quality_score": validation_result.quality_score,
                         "metadata": validation_result.metadata,
                     },
@@ -376,9 +398,25 @@ class TestService:
                 await self.db.flush()
 
                 # BreathData는 저장 (나중에 다른 분석 가능)
+                # BxB 데이터의 경우 같은 t_sec에 여러 데이터가 있을 수 있음
+                # 중복 키 방지를 위해 t_sec 기준으로 그룹화하여 평균값 사용
+                df_for_breath = parsed_data.breath_data_df.copy()
+                if "t_sec" in df_for_breath.columns:
+                    numeric_cols = df_for_breath.select_dtypes(
+                        include=["number"]
+                    ).columns.tolist()
+                    agg_dict = {col: "mean" for col in numeric_cols if col != "t_sec"}
+                    if agg_dict:
+                        df_for_breath = df_for_breath.groupby(
+                            "t_sec", as_index=False
+                        ).agg(agg_dict)
+                        df_for_breath = df_for_breath.sort_values("t_sec").reset_index(
+                            drop=True
+                        )
+
                 base_time = test.test_date
                 breath_batch = []
-                for idx, row in parsed_data.breath_data_df.iterrows():
+                for idx, row in df_for_breath.iterrows():
                     t_sec = row.get("t_sec") or row.get("t") or 0
                     timestamp = base_time + timedelta(seconds=float(t_sec))
 
@@ -417,6 +455,260 @@ class TestService:
                     "Only raw data saved. RAMP protocol required for FatMax/VT analysis.",
                 ]
                 return test, [], warnings
+
+            # ========================================
+            # HYBRID 프로토콜 처리: 2개의 RAMP 구간을 분리 분석
+            # ========================================
+            if (
+                validation_result.protocol_type == ProtocolType.HYBRID
+                and validation_result.hybrid_phases
+            ):
+                hybrid_phases = validation_result.hybrid_phases
+                print(f"[HYBRID] Detected hybrid protocol with phases:")
+                if hybrid_phases.metabolic_phase:
+                    print(
+                        f"  - Metabolic phase: {hybrid_phases.metabolic_phase.start_sec}s ~ {hybrid_phases.metabolic_phase.end_sec}s"
+                    )
+                if hybrid_phases.recovery_phase:
+                    print(
+                        f"  - Recovery phase: {hybrid_phases.recovery_phase.start_sec}s ~ {hybrid_phases.recovery_phase.end_sec}s"
+                    )
+                if hybrid_phases.vo2max_phase:
+                    print(
+                        f"  - VO2max phase: {hybrid_phases.vo2max_phase.start_sec}s ~ {hybrid_phases.vo2max_phase.end_sec}s"
+                    )
+
+                # 전체 데이터에 대해 대사 지표 계산
+                df_with_metrics = parser.calculate_metabolic_metrics(
+                    parsed_data,
+                    calc_method=calc_method,
+                    smoothing_window=smoothing_window,
+                )
+
+                # Phase 1: 대사 분석용 데이터 (FatMax 계산)
+                fatmax_metrics = {}
+                vt_thresholds = {}
+                if hybrid_phases.metabolic_phase:
+                    metabolic_start = hybrid_phases.metabolic_phase.start_sec
+                    metabolic_end = hybrid_phases.metabolic_phase.end_sec
+                    df_metabolic = df_with_metrics[
+                        (df_with_metrics["t_sec"] >= metabolic_start)
+                        & (df_with_metrics["t_sec"] <= metabolic_end)
+                    ].copy()
+
+                    if len(df_metabolic) > 10:
+                        # FatMax 분석
+                        df_metabolic_phases = parser.detect_phases(df_metabolic)
+                        fatmax_metrics = parser.find_fatmax(df_metabolic_phases)
+                        # VT 역치 감지 (대사 구간에서)
+                        vt_thresholds = parser.detect_ventilatory_thresholds(
+                            df_metabolic_phases, method="v_slope"
+                        )
+                        print(
+                            f"[HYBRID] Metabolic phase FatMax: {fatmax_metrics.get('fat_max_watt')}W"
+                        )
+
+                # Phase 2: VO2max 분석용 데이터
+                vo2max_metrics = {}
+                if hybrid_phases.vo2max_phase:
+                    vo2max_start = hybrid_phases.vo2max_phase.start_sec
+                    vo2max_end = hybrid_phases.vo2max_phase.end_sec
+                    df_vo2max = df_with_metrics[
+                        (df_with_metrics["t_sec"] >= vo2max_start)
+                        & (df_with_metrics["t_sec"] <= vo2max_end)
+                    ].copy()
+
+                    if len(df_vo2max) > 10:
+                        df_vo2max_phases = parser.detect_phases(df_vo2max)
+                        vo2max_metrics = parser.find_vo2max(df_vo2max_phases)
+                        print(
+                            f"[HYBRID] VO2max phase metrics: VO2max={vo2max_metrics.get('vo2_max')}, HR_max={vo2max_metrics.get('hr_max')}"
+                        )
+
+                # 전체 데이터에 대해 phase 감지 (전체 구조 파악용)
+                df_with_phases = parser.detect_phases(df_with_metrics)
+                phase_boundaries = parser.get_phase_boundaries(df_with_phases)
+                phase_metrics = parser.calculate_phase_metrics(df_with_phases)
+
+                # HYBRID 분석 결과를 phase_metrics에 추가
+                phase_metrics["hybrid_analysis"] = {
+                    "metabolic_phase": (
+                        {
+                            "start_sec": hybrid_phases.metabolic_phase.start_sec,
+                            "end_sec": hybrid_phases.metabolic_phase.end_sec,
+                            "correlation": hybrid_phases.metabolic_phase.correlation,
+                        }
+                        if hybrid_phases.metabolic_phase
+                        else None
+                    ),
+                    "recovery_phase": (
+                        {
+                            "start_sec": hybrid_phases.recovery_phase.start_sec,
+                            "end_sec": hybrid_phases.recovery_phase.end_sec,
+                        }
+                        if hybrid_phases.recovery_phase
+                        else None
+                    ),
+                    "vo2max_phase": (
+                        {
+                            "start_sec": hybrid_phases.vo2max_phase.start_sec,
+                            "end_sec": hybrid_phases.vo2max_phase.end_sec,
+                            "correlation": hybrid_phases.vo2max_phase.correlation,
+                        }
+                        if hybrid_phases.vo2max_phase
+                        else None
+                    ),
+                }
+
+                # CPETTest 생성 (HYBRID)
+                test = CPETTest(
+                    subject_id=subject_id,
+                    test_date=parsed_data.test.test_date or datetime.now(),
+                    test_time=parsed_data.test.test_time,
+                    protocol_name=parsed_data.test.protocol,
+                    protocol_type="HYBRID",  # HYBRID로 명시
+                    test_type=parsed_data.test.test_type or "Maximal",
+                    maximal_effort=parsed_data.test.maximal_effort,
+                    test_duration=parsed_data.test.test_duration,
+                    exercise_duration=parsed_data.test.exercise_duration,
+                    barometric_pressure=parsed_data.environment.barometric_pressure,
+                    ambient_temp=parsed_data.environment.ambient_temp,
+                    ambient_humidity=parsed_data.environment.ambient_humidity,
+                    device_temp=parsed_data.environment.device_temp,
+                    age=parsed_data.subject.age,
+                    height_cm=subject.height_cm or parsed_data.subject.height_cm,
+                    weight_kg=subject.weight_kg or parsed_data.subject.weight_kg,
+                    bsa=parsed_data.environment.bsa,
+                    bmi=parsed_data.environment.bmi,
+                    # VO2max 메트릭 (vo2max_phase에서)
+                    vo2_max=vo2max_metrics.get("vo2_max"),
+                    vo2_max_rel=vo2max_metrics.get("vo2_max_rel"),
+                    vco2_max=vo2max_metrics.get("vco2_max"),
+                    hr_max=vo2max_metrics.get("hr_max"),
+                    # FatMax 메트릭 (metabolic_phase에서)
+                    fat_max_hr=fatmax_metrics.get("fat_max_hr"),
+                    fat_max_watt=fatmax_metrics.get("fat_max_watt"),
+                    fat_max_g_min=fatmax_metrics.get("fat_max_g_min"),
+                    # VT 역치 (metabolic_phase에서)
+                    vt1_hr=vt_thresholds.get("vt1_hr"),
+                    vt1_vo2=vt_thresholds.get("vt1_vo2"),
+                    vt2_hr=vt_thresholds.get("vt2_hr"),
+                    vt2_vo2=vt_thresholds.get("vt2_vo2"),
+                    # 구간 경계 시간
+                    warmup_end_sec=phase_boundaries.get("warmup_end_sec"),
+                    test_end_sec=phase_boundaries.get("exercise_end_sec"),
+                    calc_method=calc_method,
+                    smoothing_window=smoothing_window,
+                    source_filename=filename,
+                    file_upload_timestamp=datetime.utcnow(),
+                    parsing_status=(
+                        "success" if not parsed_data.parsing_errors else "warning"
+                    ),
+                    parsing_errors=(
+                        {"errors": parsed_data.parsing_errors}
+                        if parsed_data.parsing_errors
+                        else None
+                    ),
+                    data_quality_score=validation_result.quality_score,
+                    phase_metrics=phase_metrics if phase_metrics else None,
+                )
+                self.db.add(test)
+                await self.db.flush()
+
+                # BreathData 저장 로직은 RAMP와 동일
+                # (아래 코드 블록으로 점프 - goto 없으므로 공통 함수로 분리 필요)
+                # 지금은 코드 중복으로 처리
+                base_time = test.test_date
+                breath_batch = []
+                batch_size = 100
+
+                if "t_sec" in df_with_phases.columns:
+                    numeric_cols = df_with_phases.select_dtypes(
+                        include=["number"]
+                    ).columns.tolist()
+                    non_numeric_cols = [
+                        c
+                        for c in df_with_phases.columns
+                        if c not in numeric_cols and c != "t_sec"
+                    ]
+                    agg_dict = {col: "mean" for col in numeric_cols if col != "t_sec"}
+                    for col in non_numeric_cols:
+                        agg_dict[col] = "first"
+                    if agg_dict:
+                        df_with_phases = df_with_phases.groupby(
+                            "t_sec", as_index=False
+                        ).agg(agg_dict)
+                        df_with_phases = df_with_phases.sort_values(
+                            "t_sec"
+                        ).reset_index(drop=True)
+
+                for idx, row in df_with_phases.iterrows():
+                    t_sec = row.get("t_sec", idx)
+                    if t_sec is None or (isinstance(t_sec, float) and t_sec != t_sec):
+                        t_sec = float(idx)
+
+                    def safe_get(key, convert_type=None):
+                        val = row.get(key)
+                        if val is None:
+                            return None
+                        if isinstance(val, float):
+                            if math.isnan(val) or math.isinf(val):
+                                return None
+                        if convert_type == int and val is not None:
+                            try:
+                                return int(val)
+                            except (ValueError, TypeError):
+                                return None
+                        return val
+
+                    breath = BreathData(
+                        time=base_time + timedelta(seconds=float(t_sec)),
+                        test_id=test.test_id,
+                        t_sec=t_sec,
+                        rf=safe_get("rf"),
+                        vt=safe_get("vt"),
+                        vo2=safe_get("vo2"),
+                        vco2=safe_get("vco2"),
+                        ve=safe_get("ve"),
+                        hr=safe_get("hr", int),
+                        vo2_hr=safe_get("vo2_hr"),
+                        bike_power=safe_get("bike_power", int),
+                        bike_torque=safe_get("bike_torque"),
+                        cadence=safe_get("cadence", int),
+                        feo2=safe_get("feo2"),
+                        feco2=safe_get("feco2"),
+                        feto2=safe_get("feto2"),
+                        fetco2=safe_get("fetco2"),
+                        ve_vo2=safe_get("ve_vo2"),
+                        ve_vco2=safe_get("ve_vco2"),
+                        rer=safe_get("rer"),
+                        fat_oxidation=safe_get("fat_oxidation"),
+                        cho_oxidation=safe_get("cho_oxidation"),
+                        vo2_rel=safe_get("vo2_rel"),
+                        mets=safe_get("mets"),
+                        ee_total=safe_get("ee_total_calc"),
+                        phase=safe_get("phase"),
+                        data_source=parsed_data.protocol_type,
+                        is_valid=True,
+                    )
+                    breath_batch.append(breath)
+
+                    if len(breath_batch) >= batch_size:
+                        self.db.add_all(breath_batch)
+                        await self.db.flush()
+                        breath_batch = []
+
+                if breath_batch:
+                    self.db.add_all(breath_batch)
+                    await self.db.flush()
+
+                await self.db.commit()
+                await self.db.refresh(test)
+
+                del df_with_phases
+                del df_with_metrics
+
+                return test, parsed_data.parsing_errors, parsed_data.parsing_warnings
 
             # ========================================
             # PROCEED WITH STANDARD ANALYSIS (RAMP)
@@ -461,8 +753,8 @@ class TestService:
                 ambient_humidity=parsed_data.environment.ambient_humidity,
                 device_temp=parsed_data.environment.device_temp,
                 age=parsed_data.subject.age,
-                height_cm=parsed_data.subject.height_cm,
-                weight_kg=parsed_data.subject.weight_kg or subject.weight_kg,
+                height_cm=subject.height_cm or parsed_data.subject.height_cm,
+                weight_kg=subject.weight_kg or parsed_data.subject.weight_kg,
                 bsa=parsed_data.environment.bsa,
                 bmi=parsed_data.environment.bmi,
                 vo2_max=vo2max_metrics.get("vo2_max"),
@@ -586,17 +878,29 @@ class TestService:
 
                 # 배치 크기에 도달하면 flush
                 if len(breath_batch) >= batch_size:
-                    self.db.add_all(breath_batch)
-                    await self.db.flush()
+                    try:
+                        self.db.add_all(breath_batch)
+                        await self.db.flush()
+                    except Exception as e:
+                        print(f"[ERROR] Batch flush failed at idx {idx}: {e}")
+                        raise
                     breath_batch = []
 
             # 남은 데이터 flush
             if breath_batch:
-                self.db.add_all(breath_batch)
-                await self.db.flush()
+                try:
+                    self.db.add_all(breath_batch)
+                    await self.db.flush()
+                except Exception as e:
+                    print(f"[ERROR] Final batch flush failed: {e}")
+                    raise
 
-            await self.db.commit()
-            await self.db.refresh(test)
+            try:
+                await self.db.commit()
+                await self.db.refresh(test)
+            except Exception as e:
+                print(f"[ERROR] Commit failed: {e}")
+                raise
 
             # DataFrame 메모리 해제
             del df_with_phases
