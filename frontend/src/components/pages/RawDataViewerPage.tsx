@@ -177,17 +177,35 @@ const CHART_COLORS = [
   '#DB2777', // pink
 ];
 
+// 데이터 키별 고정 색상 (교수님 차트 기준)
+const DATA_KEY_COLORS: Record<string, string> = {
+  fat_oxidation: '#DC2626', // 빨강 (Fat)
+  cho_oxidation: '#16A34A', // 녹색 (CHO)
+  vo2_rel: '#2563EB', // 파랑 (VO2/kg)
+  hr: '#DC2626', // 빨강 (HR)
+  vo2: '#2563EB', // 파랑 (VO2)
+  vco2: '#16A34A', // 녹색 (VCO2)
+  rer: '#CA8A04', // 노랑 (RER)
+  ve: '#9333EA', // 보라 (VE)
+  bike_power: '#EA580C', // 주황 (Power)
+};
+
+// 색상 가져오기 (고정 색상 우선, 없으면 인덱스 기반)
+const getDataColor = (key: string, fallbackIndex: number) => {
+  return DATA_KEY_COLORS[key] || CHART_COLORS[fallbackIndex % CHART_COLORS.length];
+};
+
 const CHART_PRESETS = [
   {
     key: 'fatmax',
     label: 'FATMAX',
     x: 'bike_power',
     yLeft: ['fat_oxidation', 'cho_oxidation'],
-    yRight: ['rer'],
+    yRight: ['vo2_rel'],
     xUnit: 'W',
     yLeftUnit: 'g/min',
-    yRightUnit: 'RER',
-    description: 'Fat & CHO oxidation vs Power',
+    yRightUnit: 'ml/min/kg',
+    description: 'Fat & CHO oxidation with VO2/kg vs Power',
   },
   {
     key: 'rer',
@@ -892,6 +910,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
             rer: safeVal(point.rer),
             vo2: safeVal(point.vo2),
             vco2: safeVal(point.vco2),
+            vo2_rel: safeVal(point.vo2_rel),
             hr: safeVal(point.hr),
             ve_vo2: safeVal(point.ve_vo2),
             ve_vco2: safeVal(point.ve_vco2),
@@ -911,6 +930,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
               base.rer_smooth = safeVal(nearestSmooth.rer);
               base.vo2_smooth = safeVal(nearestSmooth.vo2);
               base.vco2_smooth = safeVal(nearestSmooth.vco2);
+              base.vo2_rel_smooth = safeVal(nearestSmooth.vo2_rel);
               base.hr_smooth = safeVal(nearestSmooth.hr);
               base.ve_vo2_smooth = safeVal(nearestSmooth.ve_vo2);
               base.ve_vco2_smooth = safeVal(nearestSmooth.ve_vco2);
@@ -1540,7 +1560,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                                     <>
                                       {preset.yLeft.map((key, idx) => {
                                         const col = CHART_COLUMNS.find(c => c.key === key);
-                                        const color = CHART_COLORS[(presetIndex + idx) % CHART_COLORS.length];
+                                        const color = getDataColor(key, presetIndex + idx);
                                         return (
                                           <React.Fragment key={`${preset.key}-left-${key}-group`}>
                                             {/* Trend 모드일 때 배경에 그리는 Smooth 라인 (흐리고 점선) */}
@@ -1574,7 +1594,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                                       })}
                                       {preset.yRight.map((key, idx) => {
                                         const col = CHART_COLUMNS.find(c => c.key === key);
-                                        const color = CHART_COLORS[(presetIndex + preset.yLeft.length + idx) % CHART_COLORS.length];
+                                        const color = getDataColor(key, presetIndex + preset.yLeft.length + idx);
                                         return (
                                           <React.Fragment key={`${preset.key}-right-${key}-group`}>
                                             {/* Trend 모드일 때 배경에 그리는 Smooth 라인 */}
@@ -1610,28 +1630,30 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                                     <>
                                       {preset.yLeft.map((key, idx) => {
                                         const col = CHART_COLUMNS.find(c => c.key === key);
+                                        const color = getDataColor(key, presetIndex + idx);
                                         return (
                                           <Scatter
                                             key={`${preset.key}-left-${key}`}
                                             yAxisId="left"
                                             dataKey={key}
                                             name={col?.label || key}
-                                            fill={CHART_COLORS[(presetIndex + idx) % CHART_COLORS.length]}
-                                            line={{ stroke: CHART_COLORS[(presetIndex + idx) % CHART_COLORS.length], strokeWidth: 1 }}
+                                            fill={color}
+                                            line={{ stroke: color, strokeWidth: 1 }}
                                             lineType="joint"
                                           />
                                         );
                                       })}
                                       {preset.yRight.map((key, idx) => {
                                         const col = CHART_COLUMNS.find(c => c.key === key);
+                                        const color = getDataColor(key, presetIndex + preset.yLeft.length + idx);
                                         return (
                                           <Scatter
                                             key={`${preset.key}-right-${key}`}
                                             yAxisId="right"
                                             dataKey={key}
                                             name={col?.label || key}
-                                            fill={CHART_COLORS[(presetIndex + preset.yLeft.length + idx) % CHART_COLORS.length]}
-                                            line={{ stroke: CHART_COLORS[(presetIndex + preset.yLeft.length + idx) % CHART_COLORS.length], strokeWidth: 1, strokeDasharray: '5 5' }}
+                                            fill={color}
+                                            line={{ stroke: color, strokeWidth: 1, strokeDasharray: '5 5' }}
                                             lineType="joint"
                                             shape="cross"
                                           />
