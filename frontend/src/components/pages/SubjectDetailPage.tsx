@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Activity, Calendar, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Activity, Calendar, TrendingUp, CheckCircle2, CircleDashed } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
@@ -242,7 +242,28 @@ export function SubjectDetailPage({ user, subjectId, onLogout, onNavigate }: Sub
                           <p className="font-semibold text-gray-900">
                             {new Date(test.test_date).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })}
                           </p>
-                          <p className="text-sm text-gray-500">{test.protocol_type} · {test.protocol_name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm text-gray-500">{test.protocol_type} · {test.protocol_name}</p>
+                            {/* Analysis State Badge */}
+                            {test.processing_status === 'complete' ? (
+                              <Badge
+                                variant="outline"
+                                className="bg-green-50 text-green-700 border-green-200 text-xs gap-1"
+                                title={test.analysis_saved_at ? `Saved: ${new Date(test.analysis_saved_at).toLocaleString('ko-KR')}` : undefined}
+                              >
+                                <CheckCircle2 className="w-3 h-3" />
+                                v{test.last_analysis_version || '1.0.0'}
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="secondary"
+                                className="text-gray-500 text-xs gap-1"
+                              >
+                                <CircleDashed className="w-3 h-3" />
+                                Raw Only
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <div className="text-right">

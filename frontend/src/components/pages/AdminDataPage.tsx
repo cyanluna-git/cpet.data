@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigation } from '@/components/layout/Navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Database, ExternalLink, CheckCircle, XCircle, Activity, Filter, Edit, Save, X as XIcon } from 'lucide-react';
+import { Database, ExternalLink, CheckCircle, XCircle, Activity, Filter, Edit, Save, X as XIcon, CheckCircle2, CircleDashed } from 'lucide-react';
 import { api, type AdminStats } from '@/lib/api';
 import { toast } from 'sonner';
 import { getErrorMessage } from '@/utils/apiHelpers';
@@ -40,6 +40,10 @@ interface AdminTestRow {
   validation: TestValidationInfo;
   vo2_max?: number;
   fat_max_watt?: number;
+  // Processing status (denormalized from processed_metabolism)
+  processing_status?: 'none' | 'complete';
+  last_analysis_version?: string;
+  analysis_saved_at?: string;
 }
 
 interface AdminTestListResponse {
@@ -341,6 +345,7 @@ export function AdminDataPage({ user, onLogout, onNavigate }: AdminDataPageProps
                               <th className="px-4 py-3 text-left font-medium text-gray-700">최대파워</th>
                               <th className="px-4 py-3 text-left font-medium text-gray-700">품질</th>
                               <th className="px-4 py-3 text-left font-medium text-gray-700">유효성</th>
+                              <th className="px-4 py-3 text-left font-medium text-gray-700">분석</th>
                               <th className="px-4 py-3 text-left font-medium text-gray-700">파일명</th>
                               <th className="px-4 py-3 text-left font-medium text-gray-700">편집</th>
                             </tr>
@@ -435,6 +440,23 @@ export function AdminDataPage({ user, onLogout, onNavigate }: AdminDataPageProps
                                     <span className="inline-flex items-center gap-1 text-red-600">
                                       <XCircle className="w-4 h-4" />
                                       <span className="text-xs font-medium">무효</span>
+                                    </span>
+                                  )}
+                                </td>
+                                {/* 분석 상태 */}
+                                <td className="px-4 py-3">
+                                  {test.processing_status === 'complete' ? (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded-full"
+                                      title={test.analysis_saved_at ? `저장: ${new Date(test.analysis_saved_at).toLocaleString('ko-KR')}` : undefined}
+                                    >
+                                      <CheckCircle2 className="w-3 h-3" />
+                                      v{test.last_analysis_version || '1.0.0'}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 rounded-full">
+                                      <CircleDashed className="w-3 h-3" />
+                                      Raw
                                     </span>
                                   )}
                                 </td>

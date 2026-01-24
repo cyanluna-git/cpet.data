@@ -122,6 +122,10 @@ export interface CPETTest {
   vo2_max_kg?: number;
   hr_max?: number;
   created_at: string;
+  // Processing status (denormalized from processed_metabolism)
+  processing_status?: 'none' | 'complete';
+  last_analysis_version?: string;
+  analysis_saved_at?: string;
 }
 
 export interface TimeSeriesData {
