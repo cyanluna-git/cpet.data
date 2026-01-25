@@ -3,21 +3,23 @@ import { AuthProvider, useAuth, type User } from '@/hooks/useAuth';
 import { useNavigation } from '@/hooks/useNavigation';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { toast, Toaster } from 'sonner';
-import type { ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 
-// Pages
+// Static imports - needed immediately
 import { LoginPage } from '@/components/pages/LoginPage';
-import { ResearcherDashboard } from '@/components/pages/ResearcherDashboard';
-import { SubjectDashboard } from '@/components/pages/SubjectDashboard';
-import { SubjectListPage } from '@/components/pages/SubjectListPage';
-import { SubjectDetailPage } from '@/components/pages/SubjectDetailPage';
-import { SingleTestView } from '@/components/pages/SingleTestView';
-import { CohortAnalysisPage } from '@/components/pages/CohortAnalysisPage';
-import { MetabolismPage } from '@/components/pages/MetabolismPage';
-import { AdminDashboardPage } from '@/components/pages/AdminDashboardPage';
-import { AdminUsersPage } from '@/components/pages/AdminUsersPage';
-import { AdminDataPage } from '@/components/pages/AdminDataPage';
-import { RawDataViewerPage } from '@/components/pages/RawDataViewerPage';
+
+// Lazy loaded pages - loaded on demand (bundle-dynamic-imports)
+const ResearcherDashboard = lazy(() => import('@/components/pages/ResearcherDashboard').then(m => ({ default: m.ResearcherDashboard })));
+const SubjectDashboard = lazy(() => import('@/components/pages/SubjectDashboard').then(m => ({ default: m.SubjectDashboard })));
+const SubjectListPage = lazy(() => import('@/components/pages/SubjectListPage').then(m => ({ default: m.SubjectListPage })));
+const SubjectDetailPage = lazy(() => import('@/components/pages/SubjectDetailPage').then(m => ({ default: m.SubjectDetailPage })));
+const SingleTestView = lazy(() => import('@/components/pages/SingleTestView').then(m => ({ default: m.SingleTestView })));
+const CohortAnalysisPage = lazy(() => import('@/components/pages/CohortAnalysisPage').then(m => ({ default: m.CohortAnalysisPage })));
+const MetabolismPage = lazy(() => import('@/components/pages/MetabolismPage').then(m => ({ default: m.MetabolismPage })));
+const AdminDashboardPage = lazy(() => import('@/components/pages/AdminDashboardPage').then(m => ({ default: m.AdminDashboardPage })));
+const AdminUsersPage = lazy(() => import('@/components/pages/AdminUsersPage').then(m => ({ default: m.AdminUsersPage })));
+const AdminDataPage = lazy(() => import('@/components/pages/AdminDataPage').then(m => ({ default: m.AdminDataPage })));
+const RawDataViewerPage = lazy(() => import('@/components/pages/RawDataViewerPage').then(m => ({ default: m.RawDataViewerPage })));
 
 // Styles
 import '@/styles/index.css';
@@ -319,6 +321,7 @@ export default function App() {
       <AuthProvider>
         <BrowserRouter>
           <Toaster position="top-right" richColors />
+          <Suspense fallback={<LoadingSpinner />}>
           <Routes>
             <Route path="/login" element={<LoginPageWrapper />} />
 
@@ -396,6 +399,7 @@ export default function App() {
             {/* Catch all */}
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
+          </Suspense>
         </BrowserRouter>
       </AuthProvider>
     </ErrorBoundary>

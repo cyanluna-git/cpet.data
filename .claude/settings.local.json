@@ -26,7 +26,8 @@
       "Bash(poetry run python3:*)",
       "Bash(source .venv/bin/activate)",
       "Bash(docker exec:*)",
-      "Bash(pip3 install:*)"
+      "Bash(pip3 install:*)",
+      "Bash(pnpm build:*)"
     ]
   }
 }
