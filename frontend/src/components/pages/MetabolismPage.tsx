@@ -319,9 +319,9 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
   // Check if user can edit (researcher or admin only)
   const canEdit = user.role === 'admin' || user.role === 'researcher';
 
-  // Load subjects from API (researchers/admins) or tests directly (subjects)
+  // Load subjects list only (lazy load - 선택 시에만 데이터 로드)
   useEffect(() => {
-    async function loadSubjectsOrTests() {
+    async function loadSubjectsList() {
       // 일반 유저(subject role)는 /api/subjects에 접근 불가
       // 대신 /api/tests를 호출하여 본인 테스트 목록을 직접 가져옴
       if (user.role === 'subject') {
@@ -329,15 +329,13 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
           const testsResponse = await api.getTests({ page_size: 100 });
           if (testsResponse.items.length > 0) {
             setTests(testsResponse.items);
-            // 첫 번째 테스트 자동 선택
-            setSelectedTestId(testsResponse.items[0].test_id || testsResponse.items[0].id);
             // subject_id 설정 (테스트 데이터에서 추출)
             const subjectId = testsResponse.items[0].subject_id;
             if (subjectId) {
-              setSelectedSubjectId(subjectId);
-              // 가상 subject 객체 생성
+              // 가상 subject 객체 생성 (선택은 하지 않음 - 사용자가 선택)
               setSubjects([{ id: subjectId, name: user.name, research_id: '' } as any]);
             }
+            // 자동 선택 안함 - 사용자가 드롭다운에서 선택
           }
         } catch (err) {
           console.warn('Failed to load tests for subject user:', err);
@@ -345,24 +343,17 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
         return;
       }
 
-      // 연구자/어드민은 기존대로 subjects 목록 로드
+      // 연구자/어드민은 기존대로 subjects 목록만 로드 (자동 선택 안함)
       try {
         const response = await api.getSubjects({ page_size: 100 });
         setSubjects(response.items);
-
-        // Initialize with first subject after loading
-        if (response.items.length > 0 && !selectedSubjectId) {
-          setSelectedSubjectId(response.items[0].id);
-        }
+        // 자동 선택 안함 - 사용자가 드롭다운에서 선택
       } catch (err) {
         console.warn('Failed to load subjects from API, using sample data');
-        // Fallback to sample data
-        if (sampleSubjects.length > 0) {
-          setSelectedSubjectId(sampleSubjects[0].id);
-        }
+        // Fallback to sample data (자동 선택 안함)
       }
     }
-    loadSubjectsOrTests();
+    loadSubjectsList();
   }, [user.role, user.id, user.name]);
 
   // Available subjects: use API data if available, otherwise fallback to sample
@@ -372,13 +363,13 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
 
   // Load tests when subject changes (연구자/어드민만 - 일반 유저는 이미 로드됨)
   useEffect(() => {
+    // 일반 유저는 첫 번째 useEffect에서 이미 테스트를 로드했으므로 스킵
+    if (user.role === 'subject') {
+      return;
+    }
+
     async function loadTests() {
       if (!selectedSubjectId) return;
-
-      // 일반 유저는 이미 loadSubjectsOrTests에서 테스트를 로드함
-      if (user.role === 'subject' && tests.length > 0) {
-        return;
-      }
 
       setLoadingTests(true);
       setTests([]);
@@ -392,8 +383,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
         const testsResponse = await api.getSubjectTests(selectedSubjectId, { page_size: 100 });
         if (testsResponse.items.length > 0) {
           setTests(testsResponse.items);
-          // Auto-select the first (most recent) test
-          setSelectedTestId(testsResponse.items[0].test_id || testsResponse.items[0].id);
+          // 자동 선택 안함 - 사용자가 드롭다운에서 선택
         } else {
           setError('이 피험자의 테스트 데이터가 없습니다.');
         }
@@ -408,7 +398,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
     if (!showCohortAverage) {
       loadTests();
     }
-  }, [selectedSubjectId, showCohortAverage, user.role, tests.length]);
+  }, [selectedSubjectId, showCohortAverage, user.role]);
 
   // Load analysis and processed metabolism when test changes
   useEffect(() => {
@@ -609,6 +599,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                     className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     disabled={showCohortAverage}
                   >
+                    <option value="">-- 피험자 선택 --</option>
                     {availableSubjects.map(subject => (
                       <option key={subject.id} value={subject.id}>
                         {(subject as any).encrypted_name || subject.name || subject.research_id} ({subject.research_id})
@@ -627,6 +618,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                       className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       disabled={showCohortAverage || loadingTests}
                     >
+                      <option value="">-- 테스트 선택 --</option>
                       {tests.map(test => {
                         const testId = (test as any).test_id || test.id;
                         const testDate = new Date(test.test_date);
@@ -759,7 +751,28 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
               </div>
             </div>
           }>
-            {showCohortAverage ? (
+            {/* 선택 안내 메시지 - 피험자/테스트 미선택 시 */}
+            {!showCohortAverage && !selectedSubjectId ? (
+              <div className="mb-8 bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+                <div className="text-gray-400 mb-4">
+                  <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium text-gray-700 mb-2">피험자를 선택해주세요</h3>
+                <p className="text-sm text-gray-500">상단 드롭다운에서 분석할 피험자를 선택하면<br/>메타볼리즘 데이터가 표시됩니다.</p>
+              </div>
+            ) : !showCohortAverage && selectedSubjectId && !selectedTestId && tests.length > 0 ? (
+              <div className="mb-8 bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+                <div className="text-gray-400 mb-4">
+                  <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium text-gray-700 mb-2">테스트를 선택해주세요</h3>
+                <p className="text-sm text-gray-500">상단 드롭다운에서 분석할 테스트를 선택하면<br/>메타볼리즘 데이터가 표시됩니다.</p>
+              </div>
+            ) : showCohortAverage ? (
               <div className="mb-8">
                 {(() => {
                   const cohortData = calculateCohortAverage();
