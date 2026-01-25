@@ -319,25 +319,40 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
   // Check if user can edit (researcher or admin only)
   const canEdit = user.role === 'admin' || user.role === 'researcher';
 
-  // Load subjects from API
+  // Load subjects from API (researchers/admins) or tests directly (subjects)
   useEffect(() => {
-    async function loadSubjects() {
+    async function loadSubjectsOrTests() {
+      // 일반 유저(subject role)는 /api/subjects에 접근 불가
+      // 대신 /api/tests를 호출하여 본인 테스트 목록을 직접 가져옴
+      if (user.role === 'subject') {
+        try {
+          const testsResponse = await api.getTests({ page_size: 100 });
+          if (testsResponse.items.length > 0) {
+            setTests(testsResponse.items);
+            // 첫 번째 테스트 자동 선택
+            setSelectedTestId(testsResponse.items[0].test_id || testsResponse.items[0].id);
+            // subject_id 설정 (테스트 데이터에서 추출)
+            const subjectId = testsResponse.items[0].subject_id;
+            if (subjectId) {
+              setSelectedSubjectId(subjectId);
+              // 가상 subject 객체 생성
+              setSubjects([{ id: subjectId, name: user.name, research_id: '' } as any]);
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to load tests for subject user:', err);
+        }
+        return;
+      }
+
+      // 연구자/어드민은 기존대로 subjects 목록 로드
       try {
         const response = await api.getSubjects({ page_size: 100 });
         setSubjects(response.items);
 
         // Initialize with first subject after loading
         if (response.items.length > 0 && !selectedSubjectId) {
-          if (user.role === 'subject' && user.id) {
-            // For subject users, find their own subject
-            const ownSubject = response.items.find(s => s.id === user.id);
-            if (ownSubject) {
-              setSelectedSubjectId(ownSubject.id);
-            }
-          } else {
-            // For researchers/admins, select first subject
-            setSelectedSubjectId(response.items[0].id);
-          }
+          setSelectedSubjectId(response.items[0].id);
         }
       } catch (err) {
         console.warn('Failed to load subjects from API, using sample data');
@@ -347,18 +362,23 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
         }
       }
     }
-    loadSubjects();
-  }, [user.role, user.id]);
+    loadSubjectsOrTests();
+  }, [user.role, user.id, user.name]);
 
   // Available subjects: use API data if available, otherwise fallback to sample
   const availableSubjects = subjects.length > 0
     ? (user.role === 'subject' ? subjects.filter(s => s.id === user.id) : subjects)
     : (user.role === 'subject' ? sampleSubjects.filter(s => s.id === user.id) : sampleSubjects);
 
-  // Load tests when subject changes
+  // Load tests when subject changes (연구자/어드민만 - 일반 유저는 이미 로드됨)
   useEffect(() => {
     async function loadTests() {
       if (!selectedSubjectId) return;
+
+      // 일반 유저는 이미 loadSubjectsOrTests에서 테스트를 로드함
+      if (user.role === 'subject' && tests.length > 0) {
+        return;
+      }
 
       setLoadingTests(true);
       setTests([]);
@@ -373,7 +393,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
         if (testsResponse.items.length > 0) {
           setTests(testsResponse.items);
           // Auto-select the first (most recent) test
-          setSelectedTestId(testsResponse.items[0].id);
+          setSelectedTestId(testsResponse.items[0].test_id || testsResponse.items[0].id);
         } else {
           setError('이 피험자의 테스트 데이터가 없습니다.');
         }
@@ -388,7 +408,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
     if (!showCohortAverage) {
       loadTests();
     }
-  }, [selectedSubjectId, showCohortAverage]);
+  }, [selectedSubjectId, showCohortAverage, user.role, tests.length]);
 
   // Load analysis and processed metabolism when test changes
   useEffect(() => {
@@ -608,6 +628,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                       disabled={showCohortAverage || loadingTests}
                     >
                       {tests.map(test => {
+                        const testId = (test as any).test_id || test.id;
                         const testDate = new Date(test.test_date);
                         const dateStr = testDate.toLocaleDateString('ko-KR', {
                           year: 'numeric',
@@ -615,7 +636,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                           day: 'numeric'
                         });
                         return (
-                          <option key={test.id} value={test.id}>
+                          <option key={testId} value={testId}>
                             {dateStr} - {(test as any).source_filename || test.protocol || test.test_type || 'Test'}
                           </option>
                         );
