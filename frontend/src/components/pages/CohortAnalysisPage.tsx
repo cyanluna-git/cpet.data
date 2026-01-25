@@ -38,7 +38,7 @@ export function CohortAnalysisPage({ user, onLogout, onNavigate }: CohortAnalysi
     try {
       setLoading(true);
       setError(null);
-      const data = await api.getCohortStats(filters);
+      const data = await api.getCohortSummary(filters);
       setStats(data || {
         total_subjects: 0,
         total_tests: 0,

@@ -432,3 +432,6 @@
 - 각 작업을 완료할 때마다 이 파일의 상태를 업데이트할 것
 - Phase 1을 완료하면 코드 품질과 유지보수성이 크게 개선될 것으로 예상
 - 테스트 작성은 마지막에 진행 (우선 기능 완성 후)
+
+// 가장 최근 API 응답에서 trend 데이터 확인
+fetch('/api/tests/c91339b9-c0ce-434d-b4ad-3c77452ed928/analysis?interval=5s&include_processed=true&loess_frac=0.25&bin_size=10&aggregation_method=median&min_power_threshold=0', {headers: {Authorization: `Bearer ${localStorage.getItem('token')}`}}).then(r => r.json()).then(d => console.log('Trend[0]:', d.processed_series.trend[0]))
