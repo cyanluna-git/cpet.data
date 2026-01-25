@@ -98,6 +98,9 @@ export interface Subject {
   job_category?: string;
   height_cm?: number;
   weight_kg?: number;
+  body_fat_percent?: number;
+  skeletal_muscle_mass?: number;
+  bmi?: number;
   training_level?: string;
   notes?: string;
   test_count?: number;

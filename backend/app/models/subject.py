@@ -36,6 +36,10 @@ class Subject(Base):
     training_level: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     weight_kg: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     height_cm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Body composition (InBody)
+    body_fat_percent: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    skeletal_muscle_mass: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    bmi: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
