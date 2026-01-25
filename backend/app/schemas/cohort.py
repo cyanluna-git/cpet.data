@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 class CohortFilter(BaseModel):
     """코호트 필터 스키마"""
-    gender: Optional[str] = Field(None, pattern="^(M|F|All)$", description="성별")
+    gender: Optional[str] = Field(None, pattern="^(M|F|All|all)$", description="성별")
     age_min: Optional[int] = Field(None, ge=0, le=120, description="최소 나이")
     age_max: Optional[int] = Field(None, ge=0, le=120, description="최대 나이")
     training_level: Optional[str] = Field(
