@@ -12,7 +12,21 @@
       "Bash(docker ps:*)",
       "Bash(python3:*)",
       "Bash(npx tsc:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "mcp__acp__Bash",
+      "Skill(gemini-claude-loop)",
+      "Skill(gemini-claude-loop:*)",
+      "mcp__acp__Edit",
+      "mcp__acp__Write",
+      "Bash(npm run build:*)",
+      "Bash(gemini --sandbox:*)",
+      "Bash(gemini --resume latest)",
+      "Bash(npx playwright test:*)",
+      "Bash(git commit:*)",
+      "Bash(poetry run python3:*)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(docker exec:*)",
+      "Bash(pip3 install:*)"
     ]
   }
 }
