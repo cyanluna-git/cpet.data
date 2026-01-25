@@ -22,6 +22,9 @@ class SubjectCreate(BaseModel):
     )
     weight_kg: Optional[float] = Field(None, ge=20, le=300, description="체중 (kg)")
     height_cm: Optional[float] = Field(None, ge=100, le=250, description="신장 (cm)")
+    body_fat_percent: Optional[float] = Field(None, ge=0, le=100, description="체지방률 (%)")
+    skeletal_muscle_mass: Optional[float] = Field(None, ge=0, le=100, description="골격근량 (kg)")
+    bmi: Optional[float] = Field(None, ge=10, le=60, description="BMI")
     notes: Optional[str] = Field(None, description="메모")
 
 
@@ -36,6 +39,9 @@ class SubjectUpdate(BaseModel):
     training_level: Optional[str] = Field(None, pattern="^(Sedentary|Recreational|Trained|Elite)$")
     weight_kg: Optional[float] = Field(None, ge=20, le=300)
     height_cm: Optional[float] = Field(None, ge=100, le=250)
+    body_fat_percent: Optional[float] = Field(None, ge=0, le=100)
+    skeletal_muscle_mass: Optional[float] = Field(None, ge=0, le=100)
+    bmi: Optional[float] = Field(None, ge=10, le=60)
     notes: Optional[str] = None
 
 
@@ -51,6 +57,9 @@ class SubjectResponse(BaseModel):
     training_level: Optional[str] = None
     weight_kg: Optional[float] = None
     height_cm: Optional[float] = None
+    body_fat_percent: Optional[float] = None
+    skeletal_muscle_mass: Optional[float] = None
+    bmi: Optional[float] = None
     notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime

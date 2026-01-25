@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from app.core.database import AsyncSessionLocal
 from app.models.cpet_test import CPETTest
 from app.models.subject import Subject

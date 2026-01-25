@@ -332,10 +332,12 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
             // subject_id 설정 (테스트 데이터에서 추출)
             const subjectId = testsResponse.items[0].subject_id;
             if (subjectId) {
-              // 가상 subject 객체 생성 (선택은 하지 않음 - 사용자가 선택)
               setSubjects([{ id: subjectId, name: user.name, research_id: '' } as any]);
+              setSelectedSubjectId(subjectId);
             }
-            // 자동 선택 안함 - 사용자가 드롭다운에서 선택
+            // 일반 유저는 최신 테스트 자동 선택 (UI에서 선택 컨트롤이 숨겨져 있음)
+            const firstTest = testsResponse.items[0] as any;
+            setSelectedTestId(firstTest.test_id || firstTest.id);
           }
         } catch (err) {
           console.warn('Failed to load tests for subject user:', err);
@@ -584,7 +586,41 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
             </p>
           </div>
 
-          {/* Subject/Test Controls */}
+          {/* Subject Controls - 일반 유저용 간소화된 테스트 선택 */}
+          {user.role === 'subject' && tests.length > 0 && (
+            <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="flex flex-wrap gap-4 items-center">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium text-gray-700">내 테스트:</label>
+                  <select
+                    value={selectedTestId || ''}
+                    onChange={(e) => setSelectedTestId(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {tests.map(test => {
+                      const testId = (test as any).test_id || test.id;
+                      const testDate = new Date(test.test_date);
+                      const dateStr = testDate.toLocaleDateString('ko-KR', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      });
+                      return (
+                        <option key={testId} value={testId}>
+                          {dateStr} - {(test as any).protocol_type || test.test_type || 'CPET'}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+                <span className="text-sm text-gray-500">
+                  총 {tests.length}회 검사
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Researcher/Admin Controls */}
           {user.role !== 'subject' && (
             <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
               <div className="flex flex-wrap gap-4 items-center">
@@ -751,8 +787,8 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
               </div>
             </div>
           }>
-            {/* 선택 안내 메시지 - 피험자/테스트 미선택 시 */}
-            {!showCohortAverage && !selectedSubjectId ? (
+            {/* 선택 안내 메시지 - 피험자/테스트 미선택 시 (연구자/어드민용) */}
+            {!showCohortAverage && !selectedSubjectId && user.role !== 'subject' ? (
               <div className="mb-8 bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
                 <div className="text-gray-400 mb-4">
                   <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -761,6 +797,16 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                 </div>
                 <h3 className="text-lg font-medium text-gray-700 mb-2">피험자를 선택해주세요</h3>
                 <p className="text-sm text-gray-500">상단 드롭다운에서 분석할 피험자를 선택하면<br/>메타볼리즘 데이터가 표시됩니다.</p>
+              </div>
+            ) : !showCohortAverage && user.role === 'subject' && tests.length === 0 ? (
+              <div className="mb-8 bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+                <div className="text-gray-400 mb-4">
+                  <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium text-gray-700 mb-2">테스트 데이터가 없습니다</h3>
+                <p className="text-sm text-gray-500">아직 등록된 CPET 검사 결과가 없습니다.<br/>검사 완료 후 결과가 여기에 표시됩니다.</p>
               </div>
             ) : !showCohortAverage && selectedSubjectId && !selectedTestId && tests.length > 0 ? (
               <div className="mb-8 bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
