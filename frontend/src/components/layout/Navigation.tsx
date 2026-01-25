@@ -44,17 +44,6 @@ export function Navigation({ user, currentView, onNavigate, onLogout }: Navigati
 
           {/* Navigation Menu */}
           <div className="flex items-center gap-1">
-            {isAdmin && (
-              <Button
-                variant={currentView === 'admin-dashboard' || currentView?.startsWith('admin-') ? 'default' : 'ghost'}
-                onClick={() => onNavigate('admin-dashboard')}
-                className="gap-2"
-              >
-                <Shield className="w-4 h-4" />
-                <span>슈퍼어드민</span>
-              </Button>
-            )}
-
             {isResearcher && (
               <>
                 <Button
@@ -90,15 +79,17 @@ export function Navigation({ user, currentView, onNavigate, onLogout }: Navigati
               </>
             )}
 
-            {/* Shared buttons for all users */}
-            <Button
-              variant={currentView === 'cohort-analysis' ? 'default' : 'ghost'}
-              onClick={() => onNavigate('cohort-analysis')}
-              className="gap-2"
-            >
-              <BarChart3 className="w-4 h-4" />
-              <span>코호트 분석</span>
-            </Button>
+            {/* 코호트 분석 - 연구자/어드민만 */}
+            {isResearcher && (
+              <Button
+                variant={currentView === 'cohort-analysis' ? 'default' : 'ghost'}
+                onClick={() => onNavigate('cohort-analysis')}
+                className="gap-2"
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span>코호트 분석</span>
+              </Button>
+            )}
             
             <Button
               variant={currentView === 'metabolism' ? 'default' : 'ghost'}
@@ -118,6 +109,18 @@ export function Navigation({ user, currentView, onNavigate, onLogout }: Navigati
               >
                 <Database className="w-4 h-4" />
                 <span>Raw Data</span>
+              </Button>
+            )}
+
+            {/* Super Admin - Admin/Researcher only */}
+            {isResearcher && (
+              <Button
+                variant={currentView === 'admin-dashboard' || currentView?.startsWith('admin-') ? 'default' : 'ghost'}
+                onClick={() => onNavigate('admin-dashboard')}
+                className="gap-2"
+              >
+                <Shield className="w-4 h-4" />
+                <span>슈퍼어드민</span>
               </Button>
             )}
 

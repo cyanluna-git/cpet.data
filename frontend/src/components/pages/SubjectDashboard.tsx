@@ -25,17 +25,14 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
 
   async function loadData() {
     try {
-      // Get all subjects and find the one associated with this user
-      const subjectsResponse = await api.getSubjects();
-      const subjectsData = extractItems<any>(subjectsResponse);
-      const userSubject = subjectsData[0] as any; // Simplified - in real app, match by user_id
-      
-      if (userSubject) {
-        setSubject(userSubject);
-        const testsResponse = await api.getTests();
-        const testsData = extractItems<any>(testsResponse);
-        const userTests = testsData.filter((t: any) => t.subject_id === userSubject.id);
-        setTests(userTests);
+      // 일반 유저는 본인 테스트만 조회됨 (백엔드에서 subject role 자동 필터링)
+      const testsResponse = await api.getTests();
+      const testsData = extractItems<any>(testsResponse);
+      setTests(testsData);
+
+      // subject 정보는 첫 번째 테스트에서 추출 (있는 경우)
+      if (testsData.length > 0 && testsData[0].subject_id) {
+        setSubject({ id: testsData[0].subject_id });
       }
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -198,42 +195,83 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
               </CardContent>
             </Card>
 
-            {/* Test History */}
+            {/* Test History - 테이블 형식 */}
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle>내 검사 기록</CardTitle>
+                  <CardTitle>내 테스트 목록</CardTitle>
                   <Badge variant="outline">{tests.length}회 검사</Badge>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {tests.filter(test => test && test.id).map((test) => (
-                    <div
-                      key={test.id}
-                      className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
-                      onClick={() => onNavigate('test-view', { testId: test.id })}
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-[#2563EB] rounded-full flex items-center justify-center">
-                          <Activity className="w-6 h-6 text-white" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-gray-900">
-                            {new Date(test.test_date).toLocaleDateString('ko-KR')}
-                          </p>
-                          <p className="text-sm text-gray-500">{test.protocol_type} 프로토콜</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm text-gray-600">VO2 MAX</p>
-                        <p className="text-lg font-bold text-[#3B82F6]">
-                          {test.summary?.vo2_max_rel?.toFixed(1)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-gray-50">
+                        <th className="px-4 py-3 text-left font-medium text-gray-600">날짜</th>
+                        <th className="px-4 py-3 text-left font-medium text-gray-600">프로토콜</th>
+                        <th className="px-4 py-3 text-right font-medium text-gray-600">VO2MAX</th>
+                        <th className="px-4 py-3 text-right font-medium text-gray-600">HR MAX</th>
+                        <th className="px-4 py-3 text-center font-medium text-gray-600">상태</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tests.filter(test => test && (test.test_id || test.id)).map((test) => (
+                        <tr
+                          key={test.test_id || test.id}
+                          className="border-b hover:bg-blue-50 cursor-pointer transition-colors"
+                          tabIndex={0}
+                          role="button"
+                          onClick={() => onNavigate('metabolism', { testId: test.test_id || test.id })}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              onNavigate('metabolism', { testId: test.test_id || test.id });
+                            }
+                          }}
+                        >
+                          <td className="px-4 py-3 text-gray-900 font-medium">
+                            {new Date(test.test_date).toLocaleDateString('ko-KR', {
+                              year: '2-digit',
+                              month: '2-digit',
+                              day: '2-digit'
+                            })}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge variant="outline" className="font-normal">
+                              {test.protocol_type || 'RAMP'}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-[#3B82F6] font-semibold">
+                            {test.summary?.vo2_max_rel?.toFixed(1) || '-'}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-[#EF4444] font-semibold">
+                            {test.summary?.hr_max || '-'}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {test.is_valid !== false ? (
+                              <span className="inline-flex items-center gap-1 text-green-600">
+                                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                                완료
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-gray-400">
+                                <span className="w-2 h-2 bg-gray-300 rounded-full"></span>
+                                무효
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
+                {tests.length === 0 && (
+                  <div className="p-8 text-center text-gray-500">
+                    <Activity className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                    <p>등록된 테스트가 없습니다.</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </>
