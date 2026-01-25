@@ -1,34 +1,34 @@
 """Tests API Router - CPET 테스트 관련 엔드포인트"""
 
-from typing import Optional, List
+from typing import List, Optional
 from uuid import UUID
 
 from fastapi import (
     APIRouter,
+    File,
+    Form,
     HTTPException,
     Query,
     Response,
     UploadFile,
-    File,
-    Form,
     status,
 )
 
-from app.api.deps import CurrentUser, ResearcherUser, DBSession
+from app.api.deps import CurrentUser, DBSession, ResearcherUser
 from app.schemas import (
-    CPETTestResponse,
     CPETTestListResponse,
+    CPETTestResponse,
     CPETTestUpdate,
     TestMetricsResponse,
     TestUploadResponse,
 )
 from app.schemas.test import (
-    TimeSeriesRequest,
-    TimeSeriesResponse,
-    TestAnalysisResponse,
     RawBreathDataResponse,
     RawBreathDataRow,
+    TestAnalysisResponse,
     TestUploadAutoResponse,
+    TimeSeriesRequest,
+    TimeSeriesResponse,
 )
 from app.services import TestService
 from app.services.cosmed_parser import COSMEDParser
@@ -126,8 +126,8 @@ async def upload_test_auto(
     - **calc_method**: 대사 계산 방법 (Frayn, Jeukendrup)
     - **smoothing_window**: 평활화 윈도우 크기
     """
-    import tempfile
     import os
+    import tempfile
     from pathlib import Path
 
     # 파일 타입 검증
@@ -196,6 +196,10 @@ async def upload_test_auto(
             detail=str(e),
         )
     except Exception as e:
+        import traceback
+
+        print(f"[ERROR] upload_test_auto failed: {e}")
+        print(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process file: {str(e)}",
@@ -217,8 +221,9 @@ async def list_tests(
     """
     service = TestService(db)
 
-    # 피험자는 본인 데이터만
-    if current_user.role == "subject":
+    # 일반 유저(subject role)는 본인 데이터만 조회 가능
+    # role이 'user' 또는 'subject'인 경우 subject_id로 필터링
+    if current_user.role in ("user", "subject"):
         subject_id = current_user.subject_id
 
     tests, total = await service.get_list(
@@ -255,8 +260,8 @@ async def get_test(
             detail="Test not found",
         )
 
-    # 피험자는 본인 테스트만
-    if current_user.role == "subject":
+    # 일반 유저(user/subject role)는 본인 테스트만 조회 가능
+    if current_user.role in ("user", "subject"):
         if test.subject_id != current_user.subject_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -341,8 +346,9 @@ async def get_raw_breath_data(
     # 피험자 이름 조회
     subject_name = None
     if test.subject_id:
-        from app.models import Subject
         from sqlalchemy import select
+
+        from app.models import Subject
 
         result = await db.execute(select(Subject).where(Subject.id == test.subject_id))
         subject = result.scalar_one_or_none()
@@ -397,7 +403,7 @@ async def get_time_series(
         )
 
     # 권한 확인
-    if current_user.role == "subject":
+    if current_user.role in ("user", "subject"):
         if test.subject_id != current_user.subject_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -439,7 +445,7 @@ async def get_test_metrics(
         )
 
     # 권한 확인
-    if current_user.role == "subject":
+    if current_user.role in ("user", "subject"):
         if test.subject_id != current_user.subject_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -519,7 +525,7 @@ async def get_test_analysis(
         )
 
     # 권한 확인
-    if current_user.role == "subject":
+    if current_user.role in ("user", "subject"):
         if test.subject_id != current_user.subject_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -567,7 +573,7 @@ async def list_subject_tests(
     service = TestService(db)
 
     # 권한 확인
-    if current_user.role == "subject":
+    if current_user.role in ("user", "subject"):
         if current_user.subject_id != subject_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
