@@ -100,8 +100,8 @@ async def get_subject(
     """
     service = SubjectService(db)
     
-    # 피험자 본인 확인 또는 연구자 권한
-    if current_user.role == "subject":
+    # 피험자 본인 확인 또는 연구자 권한 (user/subject role 체크)
+    if current_user.role in ("user", "subject"):
         if current_user.subject_id != subject_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

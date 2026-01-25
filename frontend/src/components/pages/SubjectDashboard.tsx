@@ -98,12 +98,12 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
                       <div>
                         <p className="text-sm text-gray-600">VO2 MAX</p>
                         <p className="text-2xl font-bold text-[#3B82F6]">
-                          {latestTest.summary?.vo2_max_rel?.toFixed(1)}
+                          {latestTest.vo2_max_rel?.toFixed(1) || '-'}
                         </p>
                         <p className="text-xs text-gray-500">mL/kg/min</p>
                       </div>
                     </div>
-                    {vo2maxPercentile && (
+                    {vo2maxPercentile && latestTest.vo2_max_rel && (
                       <div className="mt-4 pt-4 border-t">
                         <p className="text-sm text-gray-600 mb-2">코호트 비교</p>
                         <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
@@ -121,17 +121,19 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
                       <div>
                         <p className="text-sm text-gray-600">최대 심박수</p>
                         <p className="text-2xl font-bold text-[#EF4444]">
-                          {latestTest.summary?.hr_max}
+                          {latestTest.hr_max || '-'}
                         </p>
                         <p className="text-xs text-gray-500">bpm</p>
                       </div>
                     </div>
-                    <div className="mt-4 pt-4 border-t">
-                      <p className="text-sm text-gray-600">예측치 대비</p>
-                      <p className="text-lg font-semibold text-gray-900">
-                        {latestTest.summary?.hr_max_percent_pred?.toFixed(0)}%
-                      </p>
-                    </div>
+                    {latestTest.hr_max && (
+                      <div className="mt-4 pt-4 border-t">
+                        <p className="text-sm text-gray-600">예측치 대비</p>
+                        <p className="text-lg font-semibold text-gray-900">
+                          {latestTest.hr_max_percent_pred?.toFixed(0) || '-'}%
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="bg-white rounded-lg p-6 shadow-sm">
@@ -142,7 +144,7 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
                       <div>
                         <p className="text-sm text-gray-600">FATMAX 심박수</p>
                         <p className="text-2xl font-bold text-[#10B981]">
-                          {latestTest.summary?.fat_max_hr}
+                          {latestTest.fat_max_hr || '-'}
                         </p>
                         <p className="text-xs text-gray-500">bpm</p>
                       </div>
@@ -150,7 +152,7 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
                     <div className="mt-4 pt-4 border-t">
                       <p className="text-sm text-gray-600">지방 연소 최대 심박수</p>
                       <p className="text-xs text-gray-500 mt-1">
-                        운동 강도: {latestTest.summary?.fat_max_watt}W
+                        운동 강도: {latestTest.fat_max_watt || '-'}W
                       </p>
                     </div>
                   </div>
@@ -158,42 +160,53 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
               </CardContent>
             </Card>
 
-            {/* What This Means */}
-            <Card className="mb-8">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-[#2563EB]" />
-                  이 결과가 의미하는 것
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-                  <h4 className="font-semibold text-gray-900 mb-2">💪 당신의 유산소 능력</h4>
-                  <p className="text-sm text-gray-700">
-                    VO2 MAX {latestTest.summary?.vo2_max_rel?.toFixed(1)} mL/kg/min는 
-                    {' '}{latestTest.metadata?.age || 50}세 {latestTest.metadata?.gender === 'M' ? '남성' : '여성'} 평균보다 
-                    <span className="font-semibold text-[#2563EB]"> 우수한 수준</span>입니다.
-                  </p>
-                </div>
+            {/* What This Means - 데이터가 있을 때만 표시 */}
+            {(latestTest.vo2_max_rel || latestTest.fat_max_hr || latestTest.hr_max) && (
+              <Card className="mb-8">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-[#2563EB]" />
+                    이 결과가 의미하는 것
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {latestTest.vo2_max_rel && (
+                    <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
+                      <h4 className="font-semibold text-gray-900 mb-2">💪 당신의 유산소 능력</h4>
+                      <p className="text-sm text-gray-700">
+                        VO2 MAX <span className="font-semibold text-[#2563EB]">{latestTest.vo2_max_rel.toFixed(1)}</span> mL/kg/min는
+                        {' '}동일 연령대 평균보다
+                        <span className="font-semibold text-[#2563EB]"> {latestTest.vo2_max_rel >= 45 ? '우수한' : latestTest.vo2_max_rel >= 35 ? '양호한' : '보통'} 수준</span>입니다.
+                      </p>
+                    </div>
+                  )}
 
-                <div className="p-4 bg-green-50 rounded-lg border border-green-100">
-                  <h4 className="font-semibold text-gray-900 mb-2">🔥 지방 연소 최적 구간</h4>
-                  <p className="text-sm text-gray-700">
-                    당신의 지방 연소는 심박수 <span className="font-semibold text-[#10B981]">{latestTest.summary?.fat_max_hr} bpm</span>에서 
-                    가장 효율적입니다. 체중 감량 운동 시 이 심박수를 유지하면 최대 효과를 얻을 수 있습니다.
-                  </p>
-                </div>
+                  {latestTest.fat_max_hr && (
+                    <div className="p-4 bg-green-50 rounded-lg border border-green-100">
+                      <h4 className="font-semibold text-gray-900 mb-2">🔥 지방 연소 최적 구간</h4>
+                      <p className="text-sm text-gray-700">
+                        당신의 지방 연소는 심박수 <span className="font-semibold text-[#10B981]">{latestTest.fat_max_hr} bpm</span>에서
+                        가장 효율적입니다. 체중 감량 운동 시 이 심박수를 유지하면 최대 효과를 얻을 수 있습니다.
+                      </p>
+                    </div>
+                  )}
 
-                <div className="p-4 bg-orange-50 rounded-lg border border-orange-100">
-                  <h4 className="font-semibold text-gray-900 mb-2">🎯 추천 운동 강도</h4>
-                  <p className="text-sm text-gray-700">
-                    유산소 운동: 심박수 {Math.floor((latestTest.summary?.fat_max_hr || 145) * 0.85)}-{latestTest.summary?.fat_max_hr} bpm (가벼운 달리기, 사이클링)
-                    <br />
-                    고강도 훈련: 심박수 {Math.floor((latestTest.summary?.hr_max || 185) * 0.85)}-{latestTest.summary?.hr_max} bpm (인터벌 트레이닝)
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+                  {(latestTest.fat_max_hr || latestTest.hr_max) && (
+                    <div className="p-4 bg-orange-50 rounded-lg border border-orange-100">
+                      <h4 className="font-semibold text-gray-900 mb-2">🎯 추천 운동 강도</h4>
+                      <p className="text-sm text-gray-700">
+                        {latestTest.fat_max_hr && (
+                          <>유산소 운동: 심박수 {Math.floor(latestTest.fat_max_hr * 0.85)}-{latestTest.fat_max_hr} bpm (가벼운 달리기, 사이클링)<br /></>
+                        )}
+                        {latestTest.hr_max && (
+                          <>고강도 훈련: 심박수 {Math.floor(latestTest.hr_max * 0.85)}-{latestTest.hr_max} bpm (인터벌 트레이닝)</>
+                        )}
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Test History - 테이블 형식 */}
             <Card>
@@ -243,10 +256,10 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
                             </Badge>
                           </td>
                           <td className="px-4 py-3 text-right font-mono text-[#3B82F6] font-semibold">
-                            {test.summary?.vo2_max_rel?.toFixed(1) || '-'}
+                            {test.vo2_max_rel?.toFixed(1) || '-'}
                           </td>
                           <td className="px-4 py-3 text-right font-mono text-[#EF4444] font-semibold">
-                            {test.summary?.hr_max || '-'}
+                            {test.hr_max || '-'}
                           </td>
                           <td className="px-4 py-3 text-center">
                             {test.is_valid !== false ? (

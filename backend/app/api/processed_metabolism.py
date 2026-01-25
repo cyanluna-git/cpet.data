@@ -147,8 +147,8 @@ async def _get_test_with_access_check(db: DBSession, test_id: UUID, user) -> CPE
             detail="Test not found",
         )
 
-    # Subject users can only access their own tests
-    if user.role == "subject":
+    # 일반 유저(user/subject role)는 본인 테스트만 조회 가능
+    if user.role in ("user", "subject"):
         if test.subject_id != user.subject_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
