@@ -59,3 +59,13 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# DB backup files
+*.sql
+backup_*.sql
+restore_*.sql
+supabase_restore.sql
+*.csv
+breath_data.csv
+cpet_tests.csv
+processed_metabolism.csv

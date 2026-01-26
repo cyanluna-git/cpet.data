@@ -10,6 +10,10 @@ sqlalchemy==2.0.25
 greenlet==3.0.3
 alembic==1.13.1
 
+# PostgreSQL (Supabase)
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+
 # Data processing
 pandas==2.1.4
 numpy==1.26.3
