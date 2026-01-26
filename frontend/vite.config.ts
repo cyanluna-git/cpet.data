@@ -15,6 +15,11 @@ export default defineConfig(({ mode }) => {
   // Vercel 환경변수 또는 .env 파일에서 API URL 가져오기
   const apiUrl = process.env.VITE_API_URL || env.VITE_API_URL || `http://localhost:${backendPort}`
 
+  // 빌드 시 환경변수 확인 (디버깅용)
+  console.log('[vite.config] process.env.VITE_API_URL:', process.env.VITE_API_URL)
+  console.log('[vite.config] env.VITE_API_URL:', env.VITE_API_URL)
+  console.log('[vite.config] Final apiUrl:', apiUrl)
+
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
