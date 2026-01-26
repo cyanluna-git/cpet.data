@@ -12,13 +12,8 @@ export default defineConfig(({ mode }) => {
   const frontendPort = parseInt(env.FRONTEND_PORT || '3100')
   const backendPort = parseInt(env.BACKEND_PORT || '8100')
 
-  // Vercel 환경변수 또는 .env 파일에서 API URL 가져오기
-  const apiUrl = process.env.VITE_API_URL || env.VITE_API_URL || `http://localhost:${backendPort}`
-
-  // 빌드 시 환경변수 확인 (디버깅용)
-  console.log('[vite.config] process.env.VITE_API_URL:', process.env.VITE_API_URL)
-  console.log('[vite.config] env.VITE_API_URL:', env.VITE_API_URL)
-  console.log('[vite.config] Final apiUrl:', apiUrl)
+  // Vercel 빌드 시: process.env.VITE_API_URL이 자동으로 import.meta.env.VITE_API_URL로 주입됨
+  // 로컬 개발 시: .env 파일의 VITE_API_URL 또는 proxy 사용
 
   return {
     plugins: [react(), tailwindcss()],
@@ -27,6 +22,10 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, './src'),
       },
     },
+    // Vercel에서 VITE_* 환경변수를 자동으로 import.meta.env에 주입하도록 envPrefix 설정
+    envPrefix: 'VITE_',
+    // 로컬 개발용 환경변수 디렉토리 (루트의 .env 파일 사용)
+    envDir: rootDir,
     server: {
       port: frontendPort,
       proxy: {
@@ -35,9 +34,6 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
         },
       },
-    },
-    define: {
-      'import.meta.env.VITE_API_URL': JSON.stringify(apiUrl),
     },
   }
 })
