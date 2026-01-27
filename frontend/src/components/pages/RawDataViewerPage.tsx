@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { getErrorMessage, getAuthToken } from '@/utils/apiHelpers';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Slider } from '@/components/ui/slider';
-import { api, type MetabolismConfigApi } from '@/lib/api';
+import { api, API_BASE, type MetabolismConfigApi } from '@/lib/api';
 import {
   ComposedChart,
   Line,
@@ -691,7 +691,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     try {
       setLoadingSubjects(true);
       const token = getAuthToken();
-      const response = await fetch('/api/subjects?page_size=100', {
+      const response = await fetch(`${API_BASE}/subjects?page_size=100`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to load subjects');
@@ -719,7 +719,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     try {
       setLoadingTests(true);
       const token = getAuthToken();
-      const response = await fetch('/api/tests?page_size=100', {
+      const response = await fetch(`${API_BASE}/tests?page_size=100`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to load tests');
@@ -807,7 +807,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       setLoading(true);
       const token = getAuthToken();
       console.log('[RawDataViewer] Fetching raw data...');
-      const response = await fetch(`/api/tests/${selectedTestId}/raw-data`, {
+      const response = await fetch(`${API_BASE}/tests/${selectedTestId}/raw-data`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) {
@@ -855,7 +855,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         params.set('trim_end_sec', String(debouncedTrimRange.end));
       }
       const response = await fetch(
-        `/api/tests/${selectedTestId}/analysis?${params.toString()}`,
+        `${API_BASE}/tests/${selectedTestId}/analysis?${params.toString()}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }

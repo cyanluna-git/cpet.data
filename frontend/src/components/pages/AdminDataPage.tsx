@@ -18,7 +18,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { TestUploadModal } from "@/components/TestUploadModal";
-import { api, type AdminStats } from "@/lib/api";
+import { api, API_BASE, type AdminStats } from "@/lib/api";
 import { toast } from "sonner";
 import { getErrorMessage } from "@/utils/apiHelpers";
 
@@ -131,7 +131,7 @@ export function AdminDataPage({
         throw new Error("No access token found. Please login again.");
       }
 
-      const response = await fetch(`/api/admin/tests?${params.toString()}`, {
+      const response = await fetch(`${API_BASE}/admin/tests?${params.toString()}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
@@ -175,7 +175,7 @@ export function AdminDataPage({
         throw new Error("No access token found");
       }
 
-      const response = await fetch(`/api/admin/tests/${testId}/demographics`, {
+      const response = await fetch(`${API_BASE}/admin/tests/${testId}/demographics`, {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -217,7 +217,7 @@ export function AdminDataPage({
         throw new Error("No access token found");
       }
 
-      const response = await fetch(`/api/tests/${testId}`, {
+      const response = await fetch(`${API_BASE}/tests/${testId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,

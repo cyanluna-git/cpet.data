@@ -7,7 +7,7 @@ import { sampleTestData, sampleSubjects } from "@/utils/sampleData";
 // __VITE_API_URL__은 vite.config.ts의 define에서 빌드 시 주입됨
 declare const __VITE_API_URL__: string;
 const RAW_API_BASE: string = (typeof __VITE_API_URL__ !== 'undefined' && __VITE_API_URL__) || "/api";
-const API_BASE =
+export const API_BASE =
   RAW_API_BASE === "/api" || RAW_API_BASE.endsWith("/api")
     ? RAW_API_BASE
     : `${RAW_API_BASE.replace(/\/+$/, "")}/api`;
