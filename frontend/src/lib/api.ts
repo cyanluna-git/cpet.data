@@ -4,7 +4,9 @@ import { sampleTestData, sampleSubjects } from "@/utils/sampleData";
 // 환경변수에서 API URL 가져오기 (기본값: /api)
 // - 상대경로('/api')면 Vite proxy를 사용
 // - 절대 URL('http://host:port')이면 FastAPI가 /api prefix를 쓰므로 '/api'를 자동으로 붙임
-const RAW_API_BASE: string = import.meta.env.VITE_API_URL || "/api";
+// __VITE_API_URL__은 vite.config.ts의 define에서 빌드 시 주입됨
+declare const __VITE_API_URL__: string;
+const RAW_API_BASE: string = (typeof __VITE_API_URL__ !== 'undefined' && __VITE_API_URL__) || "/api";
 const API_BASE =
   RAW_API_BASE === "/api" || RAW_API_BASE.endsWith("/api")
     ? RAW_API_BASE

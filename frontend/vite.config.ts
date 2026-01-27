@@ -32,10 +32,10 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
-    // loadEnv()로 읽은 값을 클라이언트 코드에 주입
-    // Vite의 자동 env 로딩이 작동하지 않아 define으로 명시적 주입
+    // Vite는 import.meta.env.*에 특별한 내부 처리를 하므로 define과 충돌
+    // 커스텀 변수명을 사용하여 충돌 방지
     define: {
-      'import.meta.env.VITE_API_URL': JSON.stringify(apiUrl),
+      '__VITE_API_URL__': JSON.stringify(apiUrl),
     },
   }
 })
