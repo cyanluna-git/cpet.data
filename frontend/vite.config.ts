@@ -12,14 +12,6 @@ export default defineConfig(({ mode }) => {
   const frontendPort = parseInt(env.FRONTEND_PORT || '3100')
   const backendPort = parseInt(env.BACKEND_PORT || '8100')
 
-  // API URL 결정:
-  // 1. Vercel 빌드 시: process.env.VITE_API_URL 사용
-  // 2. 로컬 .env 파일: env.VITE_API_URL 사용
-  // 3. 기본값: 빈 문자열 (프록시 사용)
-  const apiUrl = process.env.VITE_API_URL || env.VITE_API_URL || ''
-
-  console.log('[vite.config] Building with API URL:', apiUrl || '(empty - will use /api)')
-
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
@@ -27,7 +19,9 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, './src'),
       },
     },
-    envDir: rootDir,
+    // 로컬 개발: 루트의 .env 파일 사용
+    // Vercel 빌드: prebuild 스크립트가 .env.production.local 생성
+    envDir: '.',
     server: {
       port: frontendPort,
       proxy: {
@@ -36,10 +30,6 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
         },
       },
-    },
-    // 빌드 시 환경변수를 코드에 주입 (Vite의 import.meta.env와 충돌 방지를 위해 별도 변수 사용)
-    define: {
-      '__API_BASE_URL__': JSON.stringify(apiUrl),
     },
   }
 })
