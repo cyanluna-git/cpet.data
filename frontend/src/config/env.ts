@@ -1,9 +1,12 @@
 /** Frontend environment configuration and constants. */
 
+// __VITE_API_URL__은 vite.config.ts의 define에서 빌드 시 주입됨
+declare const __VITE_API_URL__: string;
+
 // API Configuration
 export const API_CONFIG = {
-  // Base URL for API calls (determined at build time via import.meta.env)
-  BASE_URL: import.meta.env.VITE_API_URL || 'http://localhost:8100',
+  // Base URL for API calls (determined at build time via define)
+  BASE_URL: (typeof __VITE_API_URL__ !== 'undefined' && __VITE_API_URL__) || 'http://localhost:8100',
   
   // API endpoints
   ENDPOINTS: {
