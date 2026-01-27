@@ -930,7 +930,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                   </div>
 
                   {/* Secondary metrics row */}
-                  <div className="grid grid-cols-3 gap-4 mt-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-4">
                     <div className="text-center p-3 bg-green-50 rounded-lg">
                       <p className="text-sm text-gray-600">총 지방 연소</p>
                       <p className="text-xl font-bold text-green-600">

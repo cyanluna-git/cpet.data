@@ -1016,16 +1016,16 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     <div className="min-h-screen bg-gray-50">
       <Navigation user={user} currentView="raw-data" onNavigate={onNavigate} onLogout={onLogout} />
 
-      <div className="max-w-full mx-auto px-6 pt-6">
+      <div className="max-w-full mx-auto px-3 sm:px-4 md:px-6 pt-4 md:pt-6">
         {/* 필터 영역 - 피험자 & 테스트 날짜 선택 */}
-        <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4 shadow-sm">
-          <div className="flex gap-4 items-center flex-wrap">
+        <div className="bg-white border border-gray-200 rounded-lg p-3 sm:p-4 mb-4 shadow-sm">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-center sm:flex-wrap">
             {/* 피험자 선택 */}
             <div className="flex items-center gap-2">
               <User className="w-4 h-4 text-gray-500" />
               <label className="text-sm font-medium text-gray-700">피험자</label>
               <select
-                className="px-3 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2563EB] text-sm min-w-[200px]"
+                className="px-3 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2563EB] text-sm w-full sm:w-auto sm:min-w-[180px]"
                 value={selectedSubjectId}
                 onChange={(e) => setSelectedSubjectId(e.target.value)}
                 disabled={loadingSubjects}
@@ -1050,7 +1050,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
               <Calendar className="w-4 h-4 text-gray-500" />
               <label className="text-sm font-medium text-gray-700">테스트</label>
               <select
-                className="px-3 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2563EB] text-sm min-w-[300px] disabled:bg-gray-100"
+                className="px-3 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#2563EB] text-sm w-full sm:w-auto sm:min-w-[200px] md:min-w-[280px] disabled:bg-gray-100"
                 value={selectedTestId}
                 onChange={(e) => setSelectedTestId(e.target.value)}
                 disabled={!selectedSubjectId || loadingTests}
@@ -1078,7 +1078,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
             </div>
 
             {/* 3-Way 데이터 모드 토글 */}
-            <div className="flex items-center gap-2 border-l pl-4">
+            <div className="flex items-center gap-2 sm:border-l sm:pl-4 pt-2 sm:pt-0 border-t sm:border-t-0">
               <label className="text-sm font-medium text-gray-700">데이터 표시:</label>
               <div className="inline-flex rounded-md shadow-sm" role="group">
                 <button

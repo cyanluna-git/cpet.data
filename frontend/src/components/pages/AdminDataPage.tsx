@@ -275,12 +275,12 @@ export function AdminDataPage({
         onLogout={onLogout}
       />
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
             <div className="flex items-center gap-2 mb-2">
               <Database className="w-6 h-6 text-[#2563EB]" />
-              <h1 className="text-3xl font-bold text-gray-900">DB 관리</h1>
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">DB 관리</h1>
             </div>
             <p className="text-gray-600">데이터 현황 확인 및 운영 바로가기</p>
           </div>
@@ -307,7 +307,7 @@ export function AdminDataPage({
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-sm text-gray-600 mb-1">전체 사용자</p>
-                  <p className="text-3xl font-bold text-gray-900">
+                  <p className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">
                     {stats?.users_total ?? 0}
                   </p>
                 </CardContent>
@@ -315,7 +315,7 @@ export function AdminDataPage({
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-sm text-gray-600 mb-1">피험자</p>
-                  <p className="text-3xl font-bold text-gray-900">
+                  <p className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">
                     {stats?.subjects_total ?? 0}
                   </p>
                 </CardContent>
@@ -323,7 +323,7 @@ export function AdminDataPage({
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-sm text-gray-600 mb-1">테스트</p>
-                  <p className="text-3xl font-bold text-gray-900">
+                  <p className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">
                     {stats?.tests_total ?? 0}
                   </p>
                 </CardContent>
