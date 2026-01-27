@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
   // API URL 결정:
   // 1. Vercel 빌드 시: process.env.VITE_API_URL 사용
   // 2. 로컬 .env 파일: env.VITE_API_URL 사용
-  // 3. 기본값: 로컬 백엔드 (프록시 사용)
+  // 3. 기본값: 빈 문자열 (프록시 사용)
   const apiUrl = process.env.VITE_API_URL || env.VITE_API_URL || ''
 
   console.log('[vite.config] Building with API URL:', apiUrl || '(empty - will use /api)')
@@ -37,9 +37,9 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
-    // 빌드 시 환경변수를 코드에 주입
+    // 빌드 시 환경변수를 코드에 주입 (Vite의 import.meta.env와 충돌 방지를 위해 별도 변수 사용)
     define: {
-      'import.meta.env.VITE_API_URL': JSON.stringify(apiUrl),
+      '__API_BASE_URL__': JSON.stringify(apiUrl),
     },
   }
 })
