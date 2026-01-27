@@ -201,10 +201,10 @@ export function SubjectListPage({ user, onLogout, onNavigate }: SubjectListPageP
     <div className="min-h-screen bg-gray-50">
       <Navigation user={user} currentView="subject-list" onNavigate={onNavigate} onLogout={onLogout} />
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">피험자 관리</h1>
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">피험자 관리</h1>
             <p className="text-gray-600">등록된 피험자를 관리하고 검사 기록을 확인하세요.</p>
           </div>
           <Button className="bg-[#2563EB] gap-2" onClick={() => toast.info('피험자 등록 기능은 곧 추가됩니다')}>
@@ -231,13 +231,13 @@ export function SubjectListPage({ user, onLogout, onNavigate }: SubjectListPageP
           <Card>
             <CardContent className="pt-6">
               <p className="text-sm text-gray-600 mb-1">전체 피험자</p>
-              <p className="text-3xl font-bold text-gray-900">{subjects.length}</p>
+              <p className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">{subjects.length}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6">
               <p className="text-sm text-gray-600 mb-1">남성</p>
-              <p className="text-3xl font-bold text-[#2563EB]">
+              <p className="text-xl sm:text-2xl md:text-3xl font-bold text-[#2563EB]">
                 {subjects.filter(s => s.gender === 'M').length}
               </p>
             </CardContent>
@@ -245,7 +245,7 @@ export function SubjectListPage({ user, onLogout, onNavigate }: SubjectListPageP
           <Card>
             <CardContent className="pt-6">
               <p className="text-sm text-gray-600 mb-1">여성</p>
-              <p className="text-3xl font-bold text-[#F97316]">
+              <p className="text-xl sm:text-2xl md:text-3xl font-bold text-[#F97316]">
                 {subjects.filter(s => s.gender === 'F').length}
               </p>
             </CardContent>
@@ -253,7 +253,7 @@ export function SubjectListPage({ user, onLogout, onNavigate }: SubjectListPageP
           <Card>
             <CardContent className="pt-6">
               <p className="text-sm text-gray-600 mb-1">평균 연령</p>
-              <p className="text-3xl font-bold text-gray-900">
+              <p className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">
                 {subjects.length > 0
                   ? Math.round(
                       subjects.reduce((acc, s) => {
@@ -475,7 +475,7 @@ export function SubjectListPage({ user, onLogout, onNavigate }: SubjectListPageP
             </div>
 
             {/* Body Composition Row */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* Body Fat Percent */}
               <div className="space-y-2">
                 <Label>체지방률 (%)</Label>

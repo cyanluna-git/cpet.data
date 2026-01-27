@@ -61,7 +61,7 @@ export function SubjectDetailPage({ user, subjectId, onLogout, onNavigate }: Sub
     <div className="min-h-screen bg-gray-50">
       <Navigation user={user} currentView="subject-detail" onNavigate={onNavigate} onLogout={onLogout} />
       
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
         <Button variant="ghost" onClick={() => onNavigate('subject-list')} className="mb-4 -ml-2">
           <ArrowLeft className="w-4 h-4 mr-2" />
           피험자 목록으로
@@ -78,7 +78,7 @@ export function SubjectDetailPage({ user, subjectId, onLogout, onNavigate }: Sub
               <div className="flex-1">
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    <h1 className="text-3xl font-bold text-gray-900 mb-2">{subject.research_id}</h1>
+                    <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">{subject.research_id}</h1>
                     <div className="flex flex-wrap gap-2">
                       <Badge variant="outline">{subject.gender === 'M' ? '남성' : '여성'}</Badge>
                       <Badge variant="outline">{new Date().getFullYear() - subject.birth_year}세</Badge>
@@ -267,7 +267,7 @@ export function SubjectDetailPage({ user, subjectId, onLogout, onNavigate }: Sub
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="grid grid-cols-3 gap-4">
+                        <div className="grid grid-cols-3 gap-2 sm:gap-4">
                           <div>
                             <p className="text-xs text-gray-500">VO2 MAX</p>
                             <p className="font-bold text-[#3B82F6]">{test.summary?.vo2_max_rel?.toFixed(1)}</p>

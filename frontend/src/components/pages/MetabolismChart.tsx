@@ -11,6 +11,7 @@ import {
   ComposedChart,
 } from 'recharts';
 import type { ProcessedSeries, MetabolicMarkers } from '@/lib/api';
+import { useIsMobile } from '@/components/ui/use-mobile';
 
 export type DataMode = 'raw' | 'smoothed' | 'trend';
 
@@ -52,6 +53,7 @@ export function MetabolismChart({
   dataMode = 'smoothed',
   showRawOverlay = false
 }: MetabolismChartProps) {
+  const isMobile = useIsMobile();
 
   // Get FatMax zone from markers or use default
   const fatMaxZoneMin = markers?.fat_max?.zone_min ?? fatMaxPower - 20;
@@ -150,11 +152,15 @@ export function MetabolismChart({
         <span className="text-sm text-gray-400">X: Power</span>
       </div>
 
-      <ResponsiveContainer width="100%" height={400}>
-        <ComposedChart
-          data={chartData}
-          margin={{ top: 20, right: 60, left: 20, bottom: 40 }}
-        >
+      <div className="h-[280px] sm:h-[350px] md:h-[400px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart
+            data={chartData}
+            margin={isMobile
+              ? { top: 15, right: 30, left: 10, bottom: 30 }
+              : { top: 20, right: 60, left: 20, bottom: 40 }
+            }
+          >
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
 
           {/* X축 - Power (W) */}
@@ -334,8 +340,9 @@ export function MetabolismChart({
               />
             </ReferenceLine>
           )}
-        </ComposedChart>
-      </ResponsiveContainer>
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
 
       {/* Legend */}
       <div className="mt-2 text-xs text-gray-500">
@@ -344,9 +351,9 @@ export function MetabolismChart({
 
       {/* Bottom metrics */}
       <div className="mt-4 pt-4 border-t">
-        <div className="flex justify-center items-center gap-8 flex-wrap">
+        <div className="flex justify-center items-center gap-4 sm:gap-8 flex-wrap">
           <div className="text-center">
-            <p className="text-xl font-bold text-red-600">
+            <p className="text-lg sm:text-xl font-bold text-red-600">
               FatMax: {markers?.fat_max?.power ?? fatMaxPower} W
             </p>
             {mfo && (
@@ -362,8 +369,8 @@ export function MetabolismChart({
           </div>
 
           {crossoverPower && (
-            <div className="text-center border-l pl-8">
-              <p className="text-xl font-bold text-purple-600">
+            <div className="text-center border-l pl-4 sm:pl-8">
+              <p className="text-lg sm:text-xl font-bold text-purple-600">
                 Crossover: {crossoverPower} W
               </p>
               {markers?.crossover?.fat_value && (
@@ -377,7 +384,7 @@ export function MetabolismChart({
       </div>
 
       {/* Color Legend */}
-      <div className="mt-4 flex justify-center gap-6 text-sm">
+      <div className="mt-4 flex justify-center gap-3 sm:gap-6 text-xs sm:text-sm flex-wrap">
         <div className="flex items-center gap-2">
           <div className="w-6 h-1 rounded" style={{ backgroundColor: DATA_COLORS.fat }}></div>
           <span className="text-gray-600">Fat (g/min)</span>

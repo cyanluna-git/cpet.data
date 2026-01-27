@@ -103,10 +103,10 @@ export function ResearcherDashboard({ user, onLogout, onNavigate }: ResearcherDa
     <div className="min-h-screen bg-gray-50">
       <Navigation user={user} currentView="researcher-dashboard" onNavigate={onNavigate} onLogout={onLogout} />
       
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
         {/* Welcome Section */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
             안녕하세요, {user.name}님 👋
           </h1>
           <p className="text-gray-600">
@@ -146,7 +146,7 @@ export function ResearcherDashboard({ user, onLogout, onNavigate }: ResearcherDa
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-gray-900">{stats.totalSubjects}</div>
+              <div className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">{stats.totalSubjects}</div>
               <p className="text-xs text-gray-500 mt-1">등록된 피험자</p>
             </CardContent>
           </Card>
@@ -159,7 +159,7 @@ export function ResearcherDashboard({ user, onLogout, onNavigate }: ResearcherDa
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-gray-900">{stats.totalTests}</div>
+              <div className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">{stats.totalTests}</div>
               <p className="text-xs text-gray-500 mt-1">완료된 검사</p>
             </CardContent>
           </Card>
@@ -172,7 +172,7 @@ export function ResearcherDashboard({ user, onLogout, onNavigate }: ResearcherDa
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-gray-900">{stats.recentTests}</div>
+              <div className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">{stats.recentTests}</div>
               <p className="text-xs text-gray-500 mt-1">최근 30일</p>
             </CardContent>
           </Card>

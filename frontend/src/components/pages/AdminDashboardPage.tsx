@@ -38,12 +38,12 @@ export function AdminDashboardPage({ user, onLogout, onNavigate }: AdminDashboar
     <div className="min-h-screen bg-gray-50">
       <Navigation user={user} currentView="admin-dashboard" onNavigate={onNavigate} onLogout={onLogout} />
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
             <div className="flex items-center gap-2 mb-2">
               <Shield className="w-6 h-6 text-[#2563EB]" />
-              <h1 className="text-3xl font-bold text-gray-900">슈퍼어드민</h1>
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">슈퍼어드민</h1>
             </div>
             <p className="text-gray-600">회원/권한 관리 및 운영 도구</p>
           </div>
@@ -69,20 +69,20 @@ export function AdminDashboardPage({ user, onLogout, onNavigate }: AdminDashboar
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-sm text-gray-600 mb-1">전체 사용자</p>
-                  <p className="text-3xl font-bold text-gray-900">{stats?.users_total ?? 0}</p>
+                  <p className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">{stats?.users_total ?? 0}</p>
                   <p className="text-xs text-gray-500 mt-2">활성 {stats?.users_active ?? 0} / 비활성 {stats?.users_inactive ?? 0}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-sm text-gray-600 mb-1">피험자 수</p>
-                  <p className="text-3xl font-bold text-gray-900">{stats?.subjects_total ?? 0}</p>
+                  <p className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">{stats?.subjects_total ?? 0}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-sm text-gray-600 mb-1">테스트 수</p>
-                  <p className="text-3xl font-bold text-gray-900">{stats?.tests_total ?? 0}</p>
+                  <p className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">{stats?.tests_total ?? 0}</p>
                 </CardContent>
               </Card>
             </div>

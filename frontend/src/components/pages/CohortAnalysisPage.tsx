@@ -107,10 +107,10 @@ export function CohortAnalysisPage({ user, onLogout, onNavigate }: CohortAnalysi
     <div className="min-h-screen bg-gray-50">
       <Navigation user={user} currentView="cohort-analysis" onNavigate={onNavigate} onLogout={onLogout} />
       
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">코호트 분석</h1>
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">코호트 분석</h1>
             <p className="text-gray-600">그룹별 대사 프로파일 비교 및 통계 분석</p>
           </div>
           <Button className="bg-[#2563EB] gap-2" onClick={() => toast.info('엑셀 다운로드 기능은 곧 추가됩니다')}>
@@ -206,10 +206,10 @@ export function CohortAnalysisPage({ user, onLogout, onNavigate }: CohortAnalysi
             <CardContent>
               {stats?.vo2_max_stats ? (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                     <div>
                       <p className="text-sm text-gray-600 mb-1">평균</p>
-                      <p className="text-2xl font-bold text-[#3B82F6]">
+                      <p className="text-xl sm:text-2xl font-bold text-[#3B82F6]">
                         {stats.vo2_max_stats.mean.toFixed(1)}
                       </p>
                       <p className="text-xs text-gray-500">mL/kg/min</p>
@@ -258,10 +258,10 @@ export function CohortAnalysisPage({ user, onLogout, onNavigate }: CohortAnalysi
             <CardContent>
               {stats?.fat_max_hr_stats ? (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                     <div>
                       <p className="text-sm text-gray-600 mb-1">평균</p>
-                      <p className="text-2xl font-bold text-[#10B981]">
+                      <p className="text-xl sm:text-2xl font-bold text-[#10B981]">
                         {stats.fat_max_hr_stats.mean.toFixed(0)}
                       </p>
                       <p className="text-xs text-gray-500">bpm</p>
