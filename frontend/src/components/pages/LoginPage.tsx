@@ -3,14 +3,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Activity, User, UserCog } from 'lucide-react';
+import { Activity } from 'lucide-react';
 
 interface LoginPageProps {
   onLogin: (email: string, password: string) => Promise<void>;
-  onDemoLogin: (role: 'researcher' | 'subject') => void;
 }
 
-export function LoginPage({ onLogin, onDemoLogin }: LoginPageProps) {
+export function LoginPage({ onLogin }: LoginPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -98,45 +97,6 @@ export function LoginPage({ onLogin, onDemoLogin }: LoginPageProps) {
               )}
             </Button>
           </form>
-
-          <div className="mt-6 pt-6 border-t border-gray-200 space-y-4">
-            <div className="text-center mb-3">
-              <p className="text-sm font-semibold text-gray-700 mb-1">
-                로그인 없이 데모로 체험하기
-              </p>
-              <p className="text-xs text-gray-500">
-                실제 데이터로 모든 기능을 바로 테스트할 수 있습니다
-              </p>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-3">
-              <Button
-                type="button"
-                onClick={() => onDemoLogin('researcher')}
-                variant="outline"
-                className="h-11 border-[#2563EB] text-[#2563EB] hover:bg-[#2563EB] hover:text-white transition-colors"
-              >
-                <UserCog className="w-4 h-4 mr-2" />
-                연구자 데모
-              </Button>
-              
-              <Button
-                type="button"
-                onClick={() => onDemoLogin('subject')}
-                variant="outline"
-                className="h-11 border-[#2563EB] text-[#2563EB] hover:bg-[#2563EB] hover:text-white transition-colors"
-              >
-                <User className="w-4 h-4 mr-2" />
-                피험자 데모
-              </Button>
-            </div>
-          </div>
-
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <p className="text-xs text-center text-gray-500">
-              실제 로그인 계정이 필요하신 경우 관리자에게 문의하세요
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>
