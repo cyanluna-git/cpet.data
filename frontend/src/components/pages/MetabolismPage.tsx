@@ -6,7 +6,8 @@ import type { DataMode } from './MetabolismChart';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { Save, RotateCcw, Undo2, AlertTriangle, Check, Loader2 } from 'lucide-react';
+import { Save, RotateCcw, Undo2, AlertTriangle, Check, Loader2, Upload } from 'lucide-react';
+import { TestUploadModal } from '@/components/TestUploadModal';
 import {
   type MetabolismConfig,
   DEFAULT_METABOLISM_CONFIG,
@@ -315,9 +316,39 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
     showRawOverlay: false,
     showAdvancedControls: true,
   });
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   // Check if user can edit (researcher or admin only)
   const canEdit = user.role === 'admin' || user.role === 'researcher';
+
+  // Function to load tests for subject user
+  const loadSubjectTests = useCallback(async () => {
+    try {
+      const testsResponse = await api.getTests({ page_size: 100 });
+      if (testsResponse.items.length > 0) {
+        setTests(testsResponse.items);
+        // subject_id 설정 (테스트 데이터에서 추출)
+        const subjectId = testsResponse.items[0].subject_id;
+        if (subjectId) {
+          setSubjects([{ id: subjectId, name: user.name, research_id: '' } as any]);
+          setSelectedSubjectId(subjectId);
+        }
+        // 최신 테스트 자동 선택
+        const firstTest = testsResponse.items[0] as any;
+        setSelectedTestId(firstTest.test_id || firstTest.id);
+      }
+    } catch (err) {
+      console.warn('Failed to load tests for subject user:', err);
+    }
+  }, [user.name]);
+
+  // Handle successful upload
+  const handleUploadSuccess = useCallback(async () => {
+    setShowUploadModal(false);
+    toast.success('테스트 데이터가 업로드되었습니다');
+    // Refresh tests list
+    await loadSubjectTests();
+  }, [loadSubjectTests]);
 
   // Load subjects list only (lazy load - 선택 시에만 데이터 로드)
   useEffect(() => {
@@ -325,23 +356,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
       // 일반 유저(subject role)는 /api/subjects에 접근 불가
       // 대신 /api/tests를 호출하여 본인 테스트 목록을 직접 가져옴
       if (user.role === 'subject') {
-        try {
-          const testsResponse = await api.getTests({ page_size: 100 });
-          if (testsResponse.items.length > 0) {
-            setTests(testsResponse.items);
-            // subject_id 설정 (테스트 데이터에서 추출)
-            const subjectId = testsResponse.items[0].subject_id;
-            if (subjectId) {
-              setSubjects([{ id: subjectId, name: user.name, research_id: '' } as any]);
-              setSelectedSubjectId(subjectId);
-            }
-            // 일반 유저는 최신 테스트 자동 선택 (UI에서 선택 컨트롤이 숨겨져 있음)
-            const firstTest = testsResponse.items[0] as any;
-            setSelectedTestId(firstTest.test_id || firstTest.id);
-          }
-        } catch (err) {
-          console.warn('Failed to load tests for subject user:', err);
-        }
+        await loadSubjectTests();
         return;
       }
 
@@ -356,7 +371,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
       }
     }
     loadSubjectsList();
-  }, [user.role, user.id, user.name]);
+  }, [user.role, user.id, loadSubjectTests]);
 
   // Available subjects: use API data if available, otherwise fallback to sample
   const availableSubjects = subjects.length > 0
@@ -587,35 +602,52 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
           </div>
 
           {/* Subject Controls - 일반 유저용 간소화된 테스트 선택 */}
-          {user.role === 'subject' && tests.length > 0 && (
+          {user.role === 'subject' && (
             <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-              <div className="flex flex-wrap gap-4 items-center">
-                <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium text-gray-700">내 테스트:</label>
-                  <select
-                    value={selectedTestId || ''}
-                    onChange={(e) => setSelectedTestId(e.target.value)}
-                    className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {tests.map(test => {
-                      const testId = (test as any).test_id || test.id;
-                      const testDate = new Date(test.test_date);
-                      const dateStr = testDate.toLocaleDateString('ko-KR', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                      });
-                      return (
-                        <option key={testId} value={testId}>
-                          {dateStr} - {(test as any).protocol_type || test.test_type || 'CPET'}
-                        </option>
-                      );
-                    })}
-                  </select>
+              <div className="flex flex-wrap gap-4 items-center justify-between">
+                <div className="flex flex-wrap gap-4 items-center">
+                  {tests.length > 0 ? (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm font-medium text-gray-700">내 테스트:</label>
+                        <select
+                          value={selectedTestId || ''}
+                          onChange={(e) => setSelectedTestId(e.target.value)}
+                          className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          {tests.map(test => {
+                            const testId = (test as any).test_id || test.id;
+                            const testDate = new Date(test.test_date);
+                            const dateStr = testDate.toLocaleDateString('ko-KR', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
+                            });
+                            return (
+                              <option key={testId} value={testId}>
+                                {dateStr} - {(test as any).protocol_type || test.test_type || 'CPET'}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                      <span className="text-sm text-gray-500">
+                        총 {tests.length}회 검사
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-sm text-gray-500">
+                      등록된 테스트가 없습니다. 새 테스트를 업로드해 주세요.
+                    </span>
+                  )}
                 </div>
-                <span className="text-sm text-gray-500">
-                  총 {tests.length}회 검사
-                </span>
+                <Button
+                  onClick={() => setShowUploadModal(true)}
+                  className="gap-2 bg-[#2563EB] hover:bg-[#1d4ed8]"
+                >
+                  <Upload className="w-4 h-4" />
+                  테스트 업로드
+                </Button>
               </div>
             </div>
           )}
@@ -852,11 +884,11 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                     ? `${Math.floor(analysis.exercise_duration_sec / 60)}:${String(Math.floor(analysis.exercise_duration_sec % 60)).padStart(2, '0')}`
                     : '0:00';
 
-                  // Find subject name
+                  // Find subject name (don't show UUID if no subject found)
                   const subject = availableSubjects.find(s => s.id === selectedSubjectId);
                   const subjectName = subject
-                    ? `${(subject as any).encrypted_name || subject.name || subject.research_id} (${subject.research_id})`
-                    : selectedSubjectId ?? '';
+                    ? `${(subject as any).encrypted_name || subject.name || subject.research_id}${subject.research_id ? ` (${subject.research_id})` : ''}`
+                    : '';
 
                   return (
                     <MetabolismChart
@@ -988,7 +1020,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                       fatMaxPower={fatMaxPoint.power}
                       duration={fatMaxPoint.duration}
                       tss={fatMaxPoint.tss}
-                      subjectName={`${(selectedSubject as any).encrypted_name || selectedSubject.name || selectedSubject.research_id} (${selectedSubject.research_id})`}
+                      subjectName={`${(selectedSubject as any).encrypted_name || selectedSubject.name || selectedSubject.research_id}${selectedSubject.research_id ? ` (${selectedSubject.research_id})` : ''}`}
                     />
                   );
                 })()}
@@ -1139,6 +1171,13 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
           )}
         </div>
       </div>
+
+      {/* Upload Modal */}
+      <TestUploadModal
+        open={showUploadModal}
+        onClose={() => setShowUploadModal(false)}
+        onSuccess={handleUploadSuccess}
+      />
     </div>
   );
 }
