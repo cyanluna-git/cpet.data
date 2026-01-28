@@ -108,7 +108,7 @@ async def upload_test(
 )
 async def upload_test_auto(
     db: DBSession,
-    current_user: ResearcherUser,
+    current_user: CurrentUser,
     file: UploadFile = File(..., description="COSMED Excel 파일 (.xlsx)"),
     calc_method: str = Form("Frayn", description="대사 계산 방법"),
     smoothing_window: int = Form(10, description="평활화 윈도우"),
@@ -119,8 +119,12 @@ async def upload_test_auto(
     피험자를 자동으로 매칭하거나 새로 생성합니다:
     1. Excel 파일에서 피험자 정보 추출 (이름, research_id 등)
     2. 기존 피험자와 매칭 시도 (research_id → 이름 기반 ID → encrypted_name)
-    3. 매칭 실패 시 새 피험자 생성
+    3. 매칭 실패 시 새 피험자 생성 (연구자/관리자만)
     4. 테스트 파싱 및 저장
+
+    **권한**:
+    - 연구자/관리자: 모든 피험자에 대해 업로드 가능, 새 피험자 생성 가능
+    - 일반 사용자(subject): 본인 프로필에만 업로드 가능
 
     - **file**: COSMED Excel 파일 (.xlsx, .xls)
     - **calc_method**: 대사 계산 방법 (Frayn, Jeukendrup)
@@ -161,9 +165,32 @@ async def upload_test_auto(
             os.unlink(tmp_path)
 
         # 2. 피험자 자동 매칭/생성
-        subject, subject_created = await service.find_or_create_subject(
-            parsed_data.subject
-        )
+        # 일반 사용자(subject)는 새 피험자 생성 불가
+        if current_user.role in ("user", "subject"):
+            # 본인 프로필에만 업로드 가능
+            if current_user.subject_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No subject profile linked to your account",
+                )
+            # 자신의 subject_id로 강제 지정
+            from sqlalchemy import select
+            from app.models import Subject
+            result = await db.execute(
+                select(Subject).where(Subject.id == current_user.subject_id)
+            )
+            subject = result.scalar_one_or_none()
+            if not subject:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Subject profile not found",
+                )
+            subject_created = False
+        else:
+            # 연구자/관리자: 자동 매칭/생성
+            subject, subject_created = await service.find_or_create_subject(
+                parsed_data.subject
+            )
 
         # 피험자 이름 결정
         subject_name = subject.encrypted_name or subject.research_id
