@@ -183,8 +183,8 @@ def create_test_data(scenario: str) -> pd.DataFrame:
         raise ValueError(f"Unknown scenario: {scenario}")
 
 
-def test_scenario(scenario: str, expected_valid: bool, expected_protocol: ProtocolType):
-    """시나리오 테스트"""
+def _run_scenario(scenario: str, expected_valid: bool, expected_protocol: ProtocolType):
+    """시나리오 테스트 (내부 헬퍼 함수)"""
     print(f"\n{'='*70}")
     print(f"Testing Scenario: {scenario}")
     print(f"{'='*70}")
@@ -237,7 +237,7 @@ def main():
     
     for scenario, expected_valid, expected_protocol in scenarios:
         try:
-            result = test_scenario(scenario, expected_valid, expected_protocol)
+            result = _run_scenario(scenario, expected_valid, expected_protocol)
             results.append((scenario, "PASS", result))
             passed += 1
         except AssertionError as e:
