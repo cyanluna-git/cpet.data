@@ -59,7 +59,7 @@ function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
 // Wrapper components to adapt legacy props to React Router
 function LoginPageWrapper() {
   const { handleNavigate } = useNavigation();
-  const { login } = useAuth();
+  const { login, demoLogin } = useAuth();
 
   async function handleLoginSubmit(email: string, password: string) {
     try {
@@ -72,7 +72,17 @@ function LoginPageWrapper() {
     }
   }
 
-  return <LoginPage onLogin={handleLoginSubmit} />;
+  function handleDemoLogin(role: 'researcher' | 'subject') {
+    demoLogin(role);
+    toast.success(`${role === 'researcher' ? '연구자' : '피험자'} 데모 로그인`);
+    if (role === 'researcher') {
+      handleNavigate('researcher-dashboard');
+    } else {
+      handleNavigate('subject-dashboard');
+    }
+  }
+
+  return <LoginPage onLogin={handleLoginSubmit} onDemoLogin={handleDemoLogin} />;
 }
 
 function ResearcherDashboardWrapper() {

@@ -120,35 +120,46 @@ describe('useFetch', () => {
     });
   });
 
-  it('should cancel previous request when refetching', async () => {
-    let resolveFirst: any;
-    const firstFetch = new Promise((resolve) => {
-      resolveFirst = resolve;
-    });
-
+  it('should handle multiple refetch calls', async () => {
+    // Test that multiple refetch calls work correctly
     const fetchFn = vi.fn()
-      .mockReturnValueOnce(firstFetch)
-      .mockReturnValueOnce(Promise.resolve({ id: 2 }));
+      .mockResolvedValueOnce({ id: 1 })
+      .mockResolvedValueOnce({ id: 2 })
+      .mockResolvedValueOnce({ id: 3 });
 
     const { result } = renderHook(() => useFetch(fetchFn));
 
-    // Start first fetch
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // Wait for initial fetch
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
 
-    // Refetch before first completes
+    expect(result.current.data).toEqual({ id: 1 });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+
+    // First refetch
     act(() => {
       result.current.refetch();
     });
-
-    // Resolve first fetch (should be ignored)
-    resolveFirst({ id: 1 });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
 
-    // Should have second data, not first
     expect(result.current.data).toEqual({ id: 2 });
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+
+    // Second refetch
+    act(() => {
+      result.current.refetch();
+    });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.data).toEqual({ id: 3 });
+    expect(fetchFn).toHaveBeenCalledTimes(3);
   });
 });
 

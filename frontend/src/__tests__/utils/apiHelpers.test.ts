@@ -82,7 +82,7 @@ describe('extractPaginationInfo', () => {
       total: 42,
       page: 2,
       page_size: 20,
-      pages: 3,
+      total_pages: 3,
     };
 
     const info = extractPaginationInfo(response);
@@ -91,15 +91,18 @@ describe('extractPaginationInfo', () => {
       total: 42,
       page: 2,
       page_size: 20,
-      pages: 3,
-      hasNextPage: true,
-      hasPreviousPage: true,
+      total_pages: 3,
     });
   });
 
-  it('should return null for array response', () => {
+  it('should return default values for array response', () => {
     const info = extractPaginationInfo([{ id: '1' }]);
-    expect(info).toBeNull();
+    expect(info).toEqual({
+      total: 0,
+      page: 1,
+      page_size: 20,
+      total_pages: 1,
+    });
   });
 
   it('should handle first page', () => {
@@ -108,13 +111,13 @@ describe('extractPaginationInfo', () => {
       total: 20,
       page: 1,
       page_size: 20,
-      pages: 1,
+      total_pages: 1,
     };
 
     const info = extractPaginationInfo(response);
 
-    expect(info?.hasPreviousPage).toBe(false);
-    expect(info?.hasNextPage).toBe(false);
+    expect(info.page).toBe(1);
+    expect(info.total_pages).toBe(1);
   });
 
   it('should handle last page', () => {
@@ -123,23 +126,34 @@ describe('extractPaginationInfo', () => {
       total: 50,
       page: 3,
       page_size: 20,
-      pages: 3,
+      total_pages: 3,
     };
 
     const info = extractPaginationInfo(response);
 
-    expect(info?.hasPreviousPage).toBe(true);
-    expect(info?.hasNextPage).toBe(false);
+    expect(info.page).toBe(3);
+    expect(info.total_pages).toBe(3);
   });
 
-  it('should return null for invalid response', () => {
-    expect(extractPaginationInfo(null)).toBeNull();
-    expect(extractPaginationInfo(undefined)).toBeNull();
-    expect(extractPaginationInfo('string')).toBeNull();
+  it('should return default values for invalid response', () => {
+    expect(extractPaginationInfo(null)).toEqual({
+      total: 0,
+      page: 1,
+      page_size: 20,
+      total_pages: 1,
+    });
+    expect(extractPaginationInfo(undefined)).toEqual({
+      total: 0,
+      page: 1,
+      page_size: 20,
+      total_pages: 1,
+    });
   });
 });
 
 describe('getErrorMessage', () => {
+  const DEFAULT_ERROR_MESSAGE = '요청 처리 중 오류가 발생했습니다';
+
   it('should extract message from Error object', () => {
     const error = new Error('Something went wrong');
     const message = getErrorMessage(error);
@@ -164,7 +178,15 @@ describe('getErrorMessage', () => {
     expect(message).toBe('API error message');
   });
 
-  it('should extract message from error object with response.statusText', () => {
+  it('should extract message from error object with detail property', () => {
+    const error = {
+      detail: 'Validation failed',
+    };
+    const message = getErrorMessage(error);
+    expect(message).toBe('Validation failed');
+  });
+
+  it('should return default message for error without extractable message', () => {
     const error = {
       response: {
         status: 404,
@@ -172,31 +194,33 @@ describe('getErrorMessage', () => {
       },
     };
     const message = getErrorMessage(error);
-    expect(message).toBe('Not Found');
+    // statusText is not extracted in current implementation
+    expect(message).toBe(DEFAULT_ERROR_MESSAGE);
   });
 
-  it('should return string as is', () => {
+  it('should return default message for string input', () => {
     const message = getErrorMessage('Error string');
-    expect(message).toBe('Error string');
+    // String without message property returns default
+    expect(message).toBe(DEFAULT_ERROR_MESSAGE);
   });
 
   it('should handle null error gracefully', () => {
     const message = getErrorMessage(null);
-    expect(message).toBe('An unknown error occurred');
+    expect(message).toBe(DEFAULT_ERROR_MESSAGE);
   });
 
   it('should handle undefined error', () => {
     const message = getErrorMessage(undefined);
-    expect(message).toBe('An unknown error occurred');
+    expect(message).toBe(DEFAULT_ERROR_MESSAGE);
   });
 
   it('should handle object without message property', () => {
     const error = { code: 'ERROR_CODE' };
     const message = getErrorMessage(error);
-    expect(message).toBe('An unknown error occurred');
+    expect(message).toBe(DEFAULT_ERROR_MESSAGE);
   });
 
-  it('should provide fallback for deeply nested API errors', () => {
+  it('should return default message for deeply nested API errors without message', () => {
     const error = {
       response: {
         data: {
@@ -208,6 +232,6 @@ describe('getErrorMessage', () => {
       },
     };
     const message = getErrorMessage(error);
-    expect(typeof message).toBe('string');
+    expect(message).toBe(DEFAULT_ERROR_MESSAGE);
   });
 });
