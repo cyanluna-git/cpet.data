@@ -1,12 +1,13 @@
 """Tests for CPET test service and data handling."""
 
+import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.models import CPETTest, Subject, User
 from app.services.test import TestService
-from app.schemas.test import CPETTestCreate, CPETTestUpdate
+from app.schemas.test import CPETTestUpdate
 
 
 @pytest.mark.asyncio
@@ -18,52 +19,52 @@ class TestCPETTestList:
     ):
         """Test listing CPET tests for a subject."""
         # Create some test records
+        test_id = uuid.uuid4()
         test_data = CPETTest(
-            test_id="TEST001",
-            subject_id=test_subject.subject_id,
-            test_date=datetime.utcnow(),
-            max_vo2=45.5,
-            max_hr=180,
-            rpe_max=19,
+            test_id=test_id,
+            subject_id=test_subject.id,
+            test_date=datetime.now(timezone.utc),
+            vo2_max=45.5,
+            hr_max=180,
             notes="Good effort",
         )
         async_db.add(test_data)
         await async_db.commit()
 
         service = TestService(async_db)
-        tests = await service.get_subject_tests(test_subject.subject_id)
+        tests = await service.get_by_subject(test_subject.id)
 
         assert len(tests) >= 1
-        assert any(t.test_id == "TEST001" for t in tests)
+        assert any(t.test_id == test_id for t in tests)
 
     async def test_list_tests_empty(
         self, async_db: AsyncSession, test_subject_2: Subject
     ):
         """Test listing tests for subject with no tests."""
         service = TestService(async_db)
-        tests = await service.get_subject_tests(test_subject_2.subject_id)
+        tests = await service.get_by_subject(test_subject_2.id)
 
         assert len(tests) == 0
 
     async def test_list_all_tests(self, async_db: AsyncSession, test_subject: Subject):
         """Test listing all tests in database."""
         # Create test
+        test_id = uuid.uuid4()
         test_data = CPETTest(
-            test_id="TEST002",
-            subject_id=test_subject.subject_id,
-            test_date=datetime.utcnow(),
-            max_vo2=48.0,
-            max_hr=185,
-            rpe_max=20,
+            test_id=test_id,
+            subject_id=test_subject.id,
+            test_date=datetime.now(timezone.utc),
+            vo2_max=48.0,
+            hr_max=185,
         )
         async_db.add(test_data)
         await async_db.commit()
 
         service = TestService(async_db)
-        tests = await service.get_all_tests()
+        tests, total = await service.get_list()
 
-        assert len(tests) >= 1
-        assert any(t.test_id == "TEST002" for t in tests)
+        assert total >= 1
+        assert any(t.test_id == test_id for t in tests)
 
 
 @pytest.mark.asyncio
@@ -74,27 +75,26 @@ class TestCPETTestMetrics:
         self, async_db: AsyncSession, test_subject: Subject
     ):
         """Test retrieving test metrics."""
+        test_id = uuid.uuid4()
         test_data = CPETTest(
-            test_id="TEST003",
-            subject_id=test_subject.subject_id,
-            test_date=datetime.utcnow(),
-            max_vo2=50.5,
-            max_hr=190,
-            rpe_max=20,
-            vent_threshold=65,
-            o2_pulse=14.2,
+            test_id=test_id,
+            subject_id=test_subject.id,
+            test_date=datetime.now(timezone.utc),
+            vo2_max=50.5,
+            hr_max=190,
+            vt1_hr=150,
             notes="Peak performance",
         )
         async_db.add(test_data)
         await async_db.commit()
 
         service = TestService(async_db)
-        test = await service.get_test("TEST003")
+        test = await service.get_by_id(test_id)
 
         assert test is not None
-        assert test.max_vo2 == 50.5
-        assert test.max_hr == 190
-        assert test.vent_threshold == 65
+        assert test.vo2_max == 50.5
+        assert test.hr_max == 190
+        assert test.vt1_hr == 150
 
     async def test_calculate_vo2_max(self):
         """Test VO2max calculation."""
@@ -102,7 +102,7 @@ class TestCPETTestMetrics:
         # Example: 250W, 75kg = 250 * (10.8 / 75) + 7 = 36 + 7 = 43 ml/kg/min
         max_watts = 250
         weight_kg = 75
-        
+
         vo2_max = max_watts * (10.8 / weight_kg) + 7
         assert abs(vo2_max - 43.0) < 0.1
 
@@ -111,7 +111,7 @@ class TestCPETTestMetrics:
         # AT = % of VO2max where ventilation increases
         vo2_max = 50
         at_percent = 85  # Typically 80-85% of VO2max
-        
+
         at_vo2 = vo2_max * (at_percent / 100)
         assert abs(at_vo2 - 42.5) < 0.1
 
@@ -124,77 +124,80 @@ class TestCPETTestCRUD:
         self, async_db: AsyncSession, test_subject: Subject
     ):
         """Test creating a new CPET test."""
+        test_id = uuid.uuid4()
         test_data = CPETTest(
-            test_id="TEST004",
-            subject_id=test_subject.subject_id,
-            test_date=datetime.utcnow(),
-            max_vo2=45.0,
-            max_hr=175,
-            rpe_max=19,
+            test_id=test_id,
+            subject_id=test_subject.id,
+            test_date=datetime.now(timezone.utc),
+            vo2_max=45.0,
+            hr_max=175,
         )
         async_db.add(test_data)
         await async_db.commit()
 
         service = TestService(async_db)
-        test = await service.get_test("TEST004")
+        test = await service.get_by_id(test_id)
 
         assert test is not None
-        assert test.test_id == "TEST004"
-        assert test.max_vo2 == 45.0
+        assert test.test_id == test_id
+        assert test.vo2_max == 45.0
 
     async def test_update_test_success(
         self, async_db: AsyncSession, test_subject: Subject
     ):
         """Test updating a CPET test."""
+        test_id = uuid.uuid4()
         test_data = CPETTest(
-            test_id="TEST005",
-            subject_id=test_subject.subject_id,
-            test_date=datetime.utcnow(),
-            max_vo2=45.0,
-            max_hr=175,
-            rpe_max=19,
+            test_id=test_id,
+            subject_id=test_subject.id,
+            test_date=datetime.now(timezone.utc),
+            vo2_max=45.0,
+            hr_max=175,
+            notes="Original notes",
         )
         async_db.add(test_data)
         await async_db.commit()
 
         service = TestService(async_db)
-        updated = await service.update_test(
-            "TEST005",
+        updated = await service.update(
+            test_id,
             CPETTestUpdate(
-                max_vo2=46.5,
-                max_hr=178,
                 notes="Updated after review",
+                vt1_hr=150,
             ),
         )
 
-        assert updated.max_vo2 == 46.5
-        assert updated.max_hr == 178
         assert updated.notes == "Updated after review"
+        assert updated.vt1_hr == 150
+        # Original values should remain unchanged
+        assert updated.vo2_max == 45.0
 
     async def test_delete_test_success(
         self, async_db: AsyncSession, test_subject: Subject
     ):
         """Test deleting a CPET test."""
+        test_id = uuid.uuid4()
         test_data = CPETTest(
-            test_id="TEST006",
-            subject_id=test_subject.subject_id,
-            test_date=datetime.utcnow(),
-            max_vo2=45.0,
-            max_hr=175,
+            test_id=test_id,
+            subject_id=test_subject.id,
+            test_date=datetime.now(timezone.utc),
+            vo2_max=45.0,
+            hr_max=175,
         )
         async_db.add(test_data)
         await async_db.commit()
 
         service = TestService(async_db)
-        await service.delete_test("TEST006")
+        result = await service.delete(test_id)
+        assert result is True
 
-        deleted = await service.get_test("TEST006")
+        deleted = await service.get_by_id(test_id)
         assert deleted is None
 
     async def test_get_nonexistent_test(self, async_db: AsyncSession):
         """Test retrieving nonexistent test."""
         service = TestService(async_db)
-        test = await service.get_test("NONEXISTENT")
+        test = await service.get_by_id(uuid.uuid4())
 
         assert test is None
 
@@ -241,7 +244,7 @@ class TestCPETDataValidation:
 
     async def test_test_date_validation(self):
         """Test test date is not in future."""
-        from datetime import datetime, timedelta, timezone
+        from datetime import timedelta
 
         valid_date = datetime.now(timezone.utc) - timedelta(days=1)
         future_date = datetime.now(timezone.utc) + timedelta(days=1)
