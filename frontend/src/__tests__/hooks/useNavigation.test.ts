@@ -54,21 +54,21 @@ describe('useNavigation', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/subjects');
   });
 
-  it('should navigate to subject detail with id parameter', () => {
+  it('should navigate to subject detail with subjectId parameter', () => {
     const { result } = renderHook(() => useNavigation());
 
     act(() => {
-      result.current.handleNavigate('subject-detail', { id: 'test-id' });
+      result.current.handleNavigate('subject-detail', { subjectId: 'test-id' });
     });
 
     expect(mockNavigate).toHaveBeenCalledWith('/subjects/test-id');
   });
 
-  it('should navigate to single test view with id parameter', () => {
+  it('should navigate to test view with testId parameter', () => {
     const { result } = renderHook(() => useNavigation());
 
     act(() => {
-      result.current.handleNavigate('single-test-view', { id: 'test-123' });
+      result.current.handleNavigate('test-view', { testId: 'test-123' });
     });
 
     expect(mockNavigate).toHaveBeenCalledWith('/tests/test-123');
@@ -94,14 +94,14 @@ describe('useNavigation', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/metabolism');
   });
 
-  it('should navigate to login', () => {
+  it('should navigate to admin dashboard', () => {
     const { result } = renderHook(() => useNavigation());
 
     act(() => {
-      result.current.handleNavigate('login');
+      result.current.handleNavigate('admin-dashboard');
     });
 
-    expect(mockNavigate).toHaveBeenCalledWith('/login');
+    expect(mockNavigate).toHaveBeenCalledWith('/admin');
   });
 
   it('should handle unknown view gracefully', () => {

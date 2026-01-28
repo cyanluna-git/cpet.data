@@ -1,12 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Navigation } from '@/components/layout/Navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Activity, TrendingUp, Heart, Flame, Calendar } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Activity, TrendingUp, Heart, Flame, Calendar, Target, Edit2, Check, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { extractItems, getErrorMessage } from '@/utils/apiHelpers';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { Input } from '@/components/ui/input';
 
 interface SubjectDashboardProps {
   user: any;
@@ -14,14 +17,53 @@ interface SubjectDashboardProps {
   onNavigate: (view: string, params?: any) => void;
 }
 
+// 목표 데이터 타입
+interface Goal {
+  vo2MaxTarget: number | null;
+  fatMaxHrTarget: number | null;
+  monthlyTestGoal: number;
+}
+
+// 로컬 스토리지 키
+const GOALS_STORAGE_KEY = 'cpet_user_goals';
+
 export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboardProps) {
   const [subject, setSubject] = useState<any>(null);
   const [tests, setTests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // 목표 설정 상태
+  const [goals, setGoals] = useState<Goal>(() => {
+    const saved = localStorage.getItem(GOALS_STORAGE_KEY);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return { vo2MaxTarget: null, fatMaxHrTarget: null, monthlyTestGoal: 1 };
+      }
+    }
+    return { vo2MaxTarget: null, fatMaxHrTarget: null, monthlyTestGoal: 1 };
+  });
+  const [editingGoals, setEditingGoals] = useState(false);
+  const [tempGoals, setTempGoals] = useState<Goal>(goals);
+
   useEffect(() => {
     loadData();
   }, []);
+
+  // 목표 저장
+  const saveGoals = () => {
+    localStorage.setItem(GOALS_STORAGE_KEY, JSON.stringify(tempGoals));
+    setGoals(tempGoals);
+    setEditingGoals(false);
+    toast.success('목표가 저장되었습니다');
+  };
+
+  // 목표 취소
+  const cancelGoalEdit = () => {
+    setTempGoals(goals);
+    setEditingGoals(false);
+  };
 
   async function loadData() {
     try {
@@ -41,6 +83,40 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
       setLoading(false);
     }
   }
+
+  // 트렌드 데이터 계산
+  const trendData = useMemo(() => {
+    if (tests.length < 2) return null;
+
+    return tests
+      .slice()
+      .sort((a, b) => new Date(a.test_date).getTime() - new Date(b.test_date).getTime())
+      .map((test) => ({
+        date: new Date(test.test_date).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' }),
+        vo2Max: test.vo2_max_rel || null,
+        fatMaxHr: test.fat_max_hr || null,
+      }))
+      .filter(d => d.vo2Max !== null || d.fatMaxHr !== null);
+  }, [tests]);
+
+  // 목표 진행률 계산
+  const goalProgress = useMemo(() => {
+    const latestTest = tests[0];
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const thisMonthTests = tests.filter(t => new Date(t.test_date) >= monthStart).length;
+
+    return {
+      vo2Max: latestTest?.vo2_max_rel && goals.vo2MaxTarget
+        ? Math.min(100, Math.round((latestTest.vo2_max_rel / goals.vo2MaxTarget) * 100))
+        : null,
+      fatMaxHr: latestTest?.fat_max_hr && goals.fatMaxHrTarget
+        ? Math.min(100, Math.round((latestTest.fat_max_hr / goals.fatMaxHrTarget) * 100))
+        : null,
+      monthlyTests: Math.min(100, Math.round((thisMonthTests / goals.monthlyTestGoal) * 100)),
+      thisMonthTests,
+    };
+  }, [tests, goals]);
 
   if (loading) {
     return (
@@ -157,6 +233,228 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
                     </div>
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Trend Chart - 테스트가 2개 이상일 때만 */}
+            {trendData && trendData.length >= 2 && (
+              <Card className="mb-8">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-[#2563EB]" />
+                    나의 변화 추이
+                  </CardTitle>
+                  <CardDescription>
+                    지난 테스트들의 결과 변화를 확인하세요
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-48 md:h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={trendData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                        <XAxis
+                          dataKey="date"
+                          tick={{ fontSize: 12 }}
+                          tickLine={false}
+                          axisLine={{ stroke: '#e5e7eb' }}
+                        />
+                        <YAxis
+                          yAxisId="left"
+                          tick={{ fontSize: 12 }}
+                          tickLine={false}
+                          axisLine={false}
+                          domain={['dataMin - 5', 'dataMax + 5']}
+                        />
+                        <YAxis
+                          yAxisId="right"
+                          orientation="right"
+                          tick={{ fontSize: 12 }}
+                          tickLine={false}
+                          axisLine={false}
+                          domain={['dataMin - 10', 'dataMax + 10']}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'white',
+                            border: '1px solid #e5e7eb',
+                            borderRadius: '8px',
+                            fontSize: '12px',
+                          }}
+                          formatter={(value: number, name: string) => [
+                            value?.toFixed(1),
+                            name === 'vo2Max' ? 'VO2 MAX (ml/kg/min)' : 'FATMAX HR (bpm)'
+                          ]}
+                        />
+                        <Line
+                          yAxisId="left"
+                          type="monotone"
+                          dataKey="vo2Max"
+                          stroke="#3B82F6"
+                          strokeWidth={2}
+                          dot={{ fill: '#3B82F6', strokeWidth: 2 }}
+                          name="vo2Max"
+                          connectNulls
+                        />
+                        <Line
+                          yAxisId="right"
+                          type="monotone"
+                          dataKey="fatMaxHr"
+                          stroke="#10B981"
+                          strokeWidth={2}
+                          dot={{ fill: '#10B981', strokeWidth: 2 }}
+                          name="fatMaxHr"
+                          connectNulls
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex justify-center gap-6 mt-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-[#3B82F6]"></div>
+                      <span className="text-gray-600">VO2 MAX</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-[#10B981]"></div>
+                      <span className="text-gray-600">FATMAX HR</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Goals Card */}
+            <Card className="mb-8 border-l-4 border-l-[#10B981]">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Target className="w-5 h-5 text-[#10B981]" />
+                    나의 목표
+                  </CardTitle>
+                  {!editingGoals ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setTempGoals(goals);
+                        setEditingGoals(true);
+                      }}
+                    >
+                      <Edit2 className="w-4 h-4 mr-1" />
+                      편집
+                    </Button>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Button variant="ghost" size="sm" onClick={cancelGoalEdit}>
+                        <X className="w-4 h-4" />
+                      </Button>
+                      <Button variant="default" size="sm" onClick={saveGoals}>
+                        <Check className="w-4 h-4 mr-1" />
+                        저장
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {editingGoals ? (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        VO2 MAX 목표 (ml/kg/min)
+                      </label>
+                      <Input
+                        type="number"
+                        placeholder="예: 50"
+                        value={tempGoals.vo2MaxTarget || ''}
+                        onChange={(e) => setTempGoals({
+                          ...tempGoals,
+                          vo2MaxTarget: e.target.value ? Number(e.target.value) : null
+                        })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        FATMAX 심박수 목표 (bpm)
+                      </label>
+                      <Input
+                        type="number"
+                        placeholder="예: 140"
+                        value={tempGoals.fatMaxHrTarget || ''}
+                        onChange={(e) => setTempGoals({
+                          ...tempGoals,
+                          fatMaxHrTarget: e.target.value ? Number(e.target.value) : null
+                        })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        월간 테스트 목표 (회)
+                      </label>
+                      <Input
+                        type="number"
+                        min={1}
+                        placeholder="예: 2"
+                        value={tempGoals.monthlyTestGoal}
+                        onChange={(e) => setTempGoals({
+                          ...tempGoals,
+                          monthlyTestGoal: Math.max(1, Number(e.target.value) || 1)
+                        })}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* VO2 MAX 목표 */}
+                    {goals.vo2MaxTarget ? (
+                      <div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-gray-600">VO2 MAX</span>
+                          <span className="font-medium">
+                            {latestTest?.vo2_max_rel?.toFixed(1) || '-'} / {goals.vo2MaxTarget} ml/kg/min
+                          </span>
+                        </div>
+                        <Progress value={goalProgress.vo2Max || 0} className="h-2" />
+                        {goalProgress.vo2Max !== null && goalProgress.vo2Max >= 100 && (
+                          <p className="text-xs text-green-600 mt-1">🎉 목표 달성!</p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500">
+                        VO2 MAX 목표를 설정해보세요
+                      </div>
+                    )}
+
+                    {/* FATMAX HR 목표 */}
+                    {goals.fatMaxHrTarget ? (
+                      <div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-gray-600">FATMAX 심박수</span>
+                          <span className="font-medium">
+                            {latestTest?.fat_max_hr || '-'} / {goals.fatMaxHrTarget} bpm
+                          </span>
+                        </div>
+                        <Progress value={goalProgress.fatMaxHr || 0} className="h-2" />
+                        {goalProgress.fatMaxHr !== null && goalProgress.fatMaxHr >= 100 && (
+                          <p className="text-xs text-green-600 mt-1">🎉 목표 달성!</p>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {/* 월간 테스트 목표 */}
+                    <div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-gray-600">이번 달 테스트</span>
+                        <span className="font-medium">
+                          {goalProgress.thisMonthTests} / {goals.monthlyTestGoal} 회
+                        </span>
+                      </div>
+                      <Progress value={goalProgress.monthlyTests} className="h-2" />
+                      {goalProgress.monthlyTests >= 100 && (
+                        <p className="text-xs text-green-600 mt-1">🎉 이번 달 목표 달성!</p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

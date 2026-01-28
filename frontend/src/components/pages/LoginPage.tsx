@@ -7,9 +7,13 @@ import { Activity } from 'lucide-react';
 
 interface LoginPageProps {
   onLogin: (email: string, password: string) => Promise<void>;
+  onDemoLogin?: (role: 'researcher' | 'subject') => void;
 }
 
-export function LoginPage({ onLogin }: LoginPageProps) {
+// 개발 모드 체크 (Vite)
+const isDev = import.meta.env.DEV;
+
+export function LoginPage({ onLogin, onDemoLogin }: LoginPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -97,6 +101,29 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               )}
             </Button>
           </form>
+
+          {/* Demo Login Buttons - 개발 모드에서만 표시 */}
+          {isDev && onDemoLogin && (
+            <div className="mt-6 pt-6 border-t">
+              <p className="text-sm text-gray-500 text-center mb-3">개발 모드 - 데모 로그인</p>
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => onDemoLogin('researcher')}
+                >
+                  연구자 데모
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => onDemoLogin('subject')}
+                >
+                  피험자 데모
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
