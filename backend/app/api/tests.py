@@ -204,10 +204,10 @@ async def upload_test_auto(
             smoothing_window=smoothing_window,
         )
 
-        # 4. 자동 전처리 수행 (RAMP/HYBRID 프로토콜만)
+        # 4. 자동 전처리 수행 (모든 프로토콜)
         # Subject 유저도 trend/smoothed 데이터를 바로 볼 수 있도록 자동 저장
-        if (test.protocol_type in ("RAMP", "HYBRID") and
-            test.parsing_status == "success"):
+        # Protocol type에 관계없이 파워 데이터만 있으면 전처리 가능
+        if test.parsing_status == "success":
             try:
                 from sqlalchemy import select
                 from app.models import BreathData

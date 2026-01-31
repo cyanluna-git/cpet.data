@@ -24,6 +24,31 @@ from uuid import UUID
 # Add parent directory to path to import app modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Load .env file automatically
+try:
+    from dotenv import load_dotenv
+    # Try multiple locations for .env file
+    possible_env_paths = [
+        Path(__file__).parent.parent.parent / ".env",  # Project root (cpet.db/.env)
+        Path(__file__).parent.parent / ".env",         # Backend root (backend/.env)
+    ]
+
+    env_loaded = False
+    for env_path in possible_env_paths:
+        if env_path.exists():
+            load_dotenv(env_path)
+            print(f"✅ Loaded environment from {env_path}")
+            env_loaded = True
+            break
+
+    if not env_loaded:
+        print(f"⚠️  .env file not found in:")
+        for p in possible_env_paths:
+            print(f"   - {p}")
+except ImportError:
+    print("⚠️  python-dotenv not installed, skipping .env file loading")
+    print("   Install with: pip install python-dotenv")
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
@@ -62,9 +87,8 @@ async def migrate_tests(
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with async_session() as db:
-        # Build query
+        # Build query - Process all successfully parsed tests regardless of protocol type
         query = select(CPETTest).where(
-            CPETTest.protocol_type.in_(["RAMP", "HYBRID"]),
             CPETTest.parsing_status == "success"
         )
 
