@@ -204,6 +204,49 @@ async def upload_test_auto(
             smoothing_window=smoothing_window,
         )
 
+        # 4. 자동 전처리 수행 (RAMP/HYBRID 프로토콜만)
+        # Subject 유저도 trend/smoothed 데이터를 바로 볼 수 있도록 자동 저장
+        if (test.protocol_type in ("RAMP", "HYBRID") and
+            test.parsing_status == "success"):
+            try:
+                from sqlalchemy import select
+                from app.models import BreathData
+                from app.services.processed_metabolism import ProcessedMetabolismService
+                from app.services.metabolism_analysis import AnalysisConfig
+                import logging
+
+                logger = logging.getLogger(__name__)
+
+                # 호흡 데이터 조회
+                breath_data_result = await db.execute(
+                    select(BreathData)
+                    .where(BreathData.test_id == test.test_id)
+                    .order_by(BreathData.t_sec)
+                )
+                breath_data = list(breath_data_result.scalars().all())
+
+                # 최소 데이터 확인 (10개 이상)
+                if breath_data and len(breath_data) >= 10:
+                    pm_service = ProcessedMetabolismService(db)
+                    # 기본 설정으로 전처리 수행 및 저장
+                    await pm_service.save(
+                        test_id=test.test_id,
+                        breath_data=breath_data,
+                        config=AnalysisConfig(),  # 기본 설정 사용
+                        is_manual_override=False  # 자동 생성 표시
+                    )
+                    logger.info(f"✅ Auto-processed metabolism for test {test.test_id}")
+                else:
+                    warnings.append("Insufficient breath data for automatic processing")
+                    logger.warning(f"⚠️ Skipped auto-processing for test {test.test_id}: only {len(breath_data)} data points")
+
+            except Exception as e:
+                # 전처리 실패해도 업로드는 성공 처리
+                import logging
+                logger = logging.getLogger(__name__)
+                warnings.append(f"Automatic processing failed: {str(e)}")
+                logger.error(f"❌ Auto-processing failed for test {test.test_id}: {e}")
+
         return TestUploadAutoResponse(
             test_id=test.test_id,
             subject_id=test.subject_id,
