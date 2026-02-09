@@ -617,13 +617,23 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
 
       toast.success('분석 설정이 저장되었습니다.');
       console.log('[Persistence] Saved config:', newServerConfig);
+
+      // 저장 후 전처리 데이터 리로드 (결과 반영)
+      if (dataMode === 'raw') {
+        // Raw 모드에서 전처리 수행 시 Smooth 모드로 전환
+        setDataMode('smoothed');
+        // dataMode state 변경 후 useEffect에서 loadProcessedData가 호출됨
+      } else {
+        // 이미 Smooth/Trend 모드면 현재 모드로 리로드
+        loadProcessedData(dataMode === 'trend' ? 'trend' : 'smoothed');
+      }
     } catch (error: any) {
       console.error('[Persistence] Failed to save:', error);
       toast.error('설정 저장에 실패했습니다: ' + (error.response?.data?.detail || error.message));
     } finally {
       setIsSaving(false);
     }
-  }, [selectedTestId, analysisSettings, trimRange, isSaving]);
+  }, [selectedTestId, analysisSettings, trimRange, isSaving, dataMode]);
 
   // Reset to server defaults
   const handleResetSettings = useCallback(async () => {
@@ -1124,6 +1134,24 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                   Trend
                 </button>
               </div>
+
+              {/* 전처리 수행 버튼 */}
+              <button
+                type="button"
+                onClick={handleSaveSettings}
+                disabled={!selectedTestId || isSaving}
+                className={`ml-2 px-3 py-1.5 text-sm font-medium rounded-md shadow-sm
+                  ${isSaving
+                    ? 'bg-gray-400 text-white cursor-wait'
+                    : isDirty
+                      ? 'bg-green-600 text-white hover:bg-green-700'
+                      : 'bg-gray-300 text-gray-600 hover:bg-gray-400'
+                  }
+                  focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 transition-colors`}
+                title={isDirty ? "현재 설정으로 전처리 수행 및 저장" : "이미 저장됨"}
+              >
+                {isSaving ? '저장 중...' : isDirty ? '전처리 수행' : '저장됨'}
+              </button>
             </div>
 
             {/* 전처리 파라미터 컨트롤 */}

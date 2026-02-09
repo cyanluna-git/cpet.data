@@ -27,7 +27,14 @@
       "Bash(source .venv/bin/activate)",
       "Bash(docker exec:*)",
       "Bash(pip3 install:*)",
-      "Bash(pnpm build:*)"
+      "Bash(pnpm build:*)",
+      "Bash(PGPASSWORD='xKpsLwB5sV5Q15TV' /opt/homebrew/opt/libpq/bin/psql:*)",
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "Bash(echo:*)",
+      "Bash(npm run test:e2e:*)",
+      "Bash(gcloud beta run services describe:*)",
+      "Bash(source:*)"
     ]
   }
 }
