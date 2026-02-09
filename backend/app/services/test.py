@@ -1206,7 +1206,11 @@ class TestService:
         fatmax_info = self._find_fatmax_info(breath_data, test)
 
         # VO2MAX 정보
-        vo2max_info = self._find_vo2max_info(breath_data, test)
+        vo2max_info = self._find_vo2max_info(
+            breath_data, test,
+            vo2max_start_sec=vo2max_start_sec,
+            vo2max_end_sec=vo2max_end_sec,
+        )
 
         # 시계열 다운샘플링 (차트용)
         interval_sec = int(interval.rstrip("s"))
@@ -1421,11 +1425,30 @@ class TestService:
         }
 
     def _find_vo2max_info(
-        self, breath_data: List[BreathData], test: CPETTest
+        self,
+        breath_data: List[BreathData],
+        test: CPETTest,
+        vo2max_start_sec: Optional[float] = None,
+        vo2max_end_sec: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """VO2MAX 상세 정보"""
+        """VO2MAX 상세 정보 (세그먼트 윈도우 지원)"""
+        segment_applied = False
+        data = breath_data
+
+        # Filter by VO2max segment window if provided
+        if vo2max_start_sec is not None and vo2max_end_sec is not None:
+            filtered = [
+                bd for bd in breath_data
+                if bd.t_sec is not None
+                and bd.t_sec >= vo2max_start_sec
+                and bd.t_sec <= vo2max_end_sec
+            ]
+            if filtered:
+                data = filtered
+                segment_applied = True
+
         vo2max_bd = max(
-            (bd for bd in breath_data if bd.vo2 is not None),
+            (bd for bd in data if bd.vo2 is not None),
             key=lambda x: x.vo2,
             default=None,
         )
@@ -1437,10 +1460,11 @@ class TestService:
             "vo2_max": vo2max_bd.vo2 or test.vo2_max,
             "vo2_max_rel": vo2max_bd.vo2_rel or test.vo2_max_rel,
             "vco2_max": vo2max_bd.vco2 or test.vco2_max,
-            "hr_max": max((bd.hr for bd in breath_data if bd.hr), default=None)
+            "hr_max": max((bd.hr for bd in data if bd.hr), default=None)
             or test.hr_max,
             "rer_at_max": vo2max_bd.rer,
             "vo2_max_time_sec": vo2max_bd.t_sec,
+            "vo2max_segment_applied": segment_applied,
         }
 
     def _downsample_for_chart(

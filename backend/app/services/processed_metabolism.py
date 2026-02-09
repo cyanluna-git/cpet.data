@@ -154,6 +154,36 @@ class ProcessedMetabolismService:
         record.exercise_data_points = stats.get("exercise_data_points")
         record.binned_data_points = stats.get("binned_data_points")
 
+        # Calculate VO2max from segment if vo2max window is specified
+        vo2max_start = getattr(config, "vo2max_start_sec", None)
+        vo2max_end = getattr(config, "vo2max_end_sec", None)
+        if vo2max_start is not None and vo2max_end is not None:
+            filtered = [
+                bd for bd in breath_data
+                if getattr(bd, "t_sec", None) is not None
+                and bd.t_sec >= vo2max_start
+                and bd.t_sec <= vo2max_end
+            ]
+            if filtered:
+                vo2max_bd = max(
+                    (bd for bd in filtered if getattr(bd, "vo2", None) is not None),
+                    key=lambda x: x.vo2,
+                    default=None,
+                )
+                if vo2max_bd:
+                    record.vo2max_value = vo2max_bd.vo2
+                    record.vo2max_rel = getattr(vo2max_bd, "vo2_rel", None)
+                    record.vo2max_hr_max = max(
+                        (bd.hr for bd in filtered if bd.hr is not None), default=None
+                    )
+                    record.vo2max_time_sec = vo2max_bd.t_sec
+        else:
+            # Clear VO2max segment results when no window is specified
+            record.vo2max_value = None
+            record.vo2max_rel = None
+            record.vo2max_hr_max = None
+            record.vo2max_time_sec = None
+
         # Update processing metadata
         record.processing_warnings = analysis_result.get("warnings")
         record.processing_status = "completed"

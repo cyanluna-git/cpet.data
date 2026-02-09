@@ -1598,6 +1598,26 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                     </button>
                   )}
                 </div>
+                {/* VO2max Segment Results */}
+                {vo2maxRange && analysisData?.vo2max?.vo2max_segment_applied && (
+                  <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                    <h4 className="text-sm font-medium text-orange-800 mb-2">VO2max 세그먼트 결과</h4>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div>
+                        <span className="text-gray-500">VO2max</span>
+                        <p className="font-semibold">{analysisData.vo2max.vo2_max?.toFixed(0)} mL/min</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">VO2max (rel)</span>
+                        <p className="font-semibold">{analysisData.vo2max.vo2_max_rel?.toFixed(1)} mL/kg/min</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">HR max</span>
+                        <p className="font-semibold">{analysisData.vo2max.hr_max} bpm</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

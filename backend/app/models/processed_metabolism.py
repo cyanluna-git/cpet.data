@@ -69,6 +69,12 @@ class ProcessedMetabolism(Base):
     vo2max_start_sec: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     vo2max_end_sec: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
+    # v1.2.0: VO2max segment analysis results
+    vo2max_value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)       # mL/min
+    vo2max_rel: Mapped[Optional[float]] = mapped_column(Float, nullable=True)         # mL/kg/min
+    vo2max_hr_max: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)      # bpm
+    vo2max_time_sec: Mapped[Optional[float]] = mapped_column(Float, nullable=True)    # seconds
+
     # Manual override flag (사용자가 직접 저장한 경우 True)
     is_manual_override: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -156,6 +162,12 @@ class ProcessedMetabolism(Base):
                     "fat_value": self.crossover_fat_value,
                     "cho_value": self.crossover_cho_value,
                 },
+            },
+            "vo2max_metrics": {
+                "vo2_max": self.vo2max_value,
+                "vo2_max_rel": self.vo2max_rel,
+                "hr_max": self.vo2max_hr_max,
+                "time_sec": self.vo2max_time_sec,
             },
             "stats": {
                 "total_data_points": self.total_data_points,
