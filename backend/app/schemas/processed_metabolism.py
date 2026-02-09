@@ -45,6 +45,42 @@ class MetabolismConfig(BaseModel):
         default=0.90, ge=0.5, le=1.0, description="FatMax zone threshold (% of MFO)"
     )
 
+    # v1.1.0: Outlier detection
+    outlier_detection_enabled: bool = Field(
+        default=True, description="Enable IQR-based outlier detection"
+    )
+    outlier_iqr_multiplier: float = Field(
+        default=1.5, ge=1.0, le=3.0, description="IQR multiplier for outlier bounds"
+    )
+
+    # v1.1.0: Sparse bin merging
+    min_bin_count: int = Field(
+        default=3, ge=1, le=10, description="Minimum data points per bin"
+    )
+
+    # v1.1.0: Adaptive LOESS
+    adaptive_loess: bool = Field(
+        default=True, description="Auto-adjust LOESS fraction based on data size"
+    )
+
+    # v1.1.0: Protocol-aware trimming
+    protocol_type: Optional[str] = Field(
+        default=None, description="Protocol type: ramp, step, graded, or null"
+    )
+
+    # v1.1.0: Adaptive polynomial degree
+    adaptive_polynomial: bool = Field(
+        default=True, description="Use cross-validation for polynomial degree selection"
+    )
+
+    # v1.1.0: FatMax bootstrap CI
+    fatmax_confidence_interval: bool = Field(
+        default=False, description="Calculate bootstrap confidence interval for FatMax"
+    )
+    fatmax_bootstrap_iterations: int = Field(
+        default=500, ge=100, le=5000, description="Number of bootstrap iterations"
+    )
+
     @model_validator(mode="after")
     def validate_trim_range(self) -> "MetabolismConfig":
         """Ensure trim_end > trim_start and minimum 180 seconds duration"""

@@ -72,14 +72,28 @@ class FatMaxMarker:
     mfo: float  # Maximum Fat Oxidation (g/min)
     zone_min: int  # FatMax zone 하한 (W)
     zone_max: int  # FatMax zone 상한 (W)
+    mfo_ci_lower: Optional[float] = None  # Bootstrap 95% CI lower bound (g/min)
+    mfo_ci_upper: Optional[float] = None  # Bootstrap 95% CI upper bound (g/min)
+    power_ci_lower: Optional[int] = None  # Bootstrap 95% CI lower bound (W)
+    power_ci_upper: Optional[int] = None  # Bootstrap 95% CI upper bound (W)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "power": self.power,
             "mfo": round(self.mfo, 4),
             "zone_min": self.zone_min,
             "zone_max": self.zone_max,
         }
+        # Only include CI fields when computed (backward compatible)
+        if self.mfo_ci_lower is not None:
+            result["mfo_ci_lower"] = round(self.mfo_ci_lower, 4)
+        if self.mfo_ci_upper is not None:
+            result["mfo_ci_upper"] = round(self.mfo_ci_upper, 4)
+        if self.power_ci_lower is not None:
+            result["power_ci_lower"] = self.power_ci_lower
+        if self.power_ci_upper is not None:
+            result["power_ci_upper"] = self.power_ci_upper
+        return result
 
 
 @dataclass
@@ -89,9 +103,10 @@ class CrossoverMarker:
     power: Optional[int]  # Crossover 지점 파워 (W), 없으면 None
     fat_value: Optional[float]  # 교차 지점 FatOx 값
     cho_value: Optional[float]  # 교차 지점 CHOOx 값
+    confidence: Optional[float] = None  # 부호 변화 크기 (|d1 - d2|)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "power": self.power,
             "fat_value": (
                 round(self.fat_value, 4) if self.fat_value is not None else None
@@ -100,6 +115,9 @@ class CrossoverMarker:
                 round(self.cho_value, 4) if self.cho_value is not None else None
             ),
         }
+        if self.confidence is not None:
+            result["confidence"] = round(self.confidence, 4)
+        return result
 
 
 @dataclass
@@ -108,12 +126,16 @@ class MetabolicMarkers:
 
     fat_max: FatMaxMarker
     crossover: CrossoverMarker
+    all_crossovers: Optional[List[CrossoverMarker]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "fat_max": self.fat_max.to_dict(),
             "crossover": self.crossover.to_dict(),
         }
+        if self.all_crossovers is not None:
+            result["all_crossovers"] = [c.to_dict() for c in self.all_crossovers]
+        return result
 
 
 @dataclass
@@ -200,6 +222,20 @@ class AnalysisConfig:
     start_power_threshold: int = 20  # Watts - first power above this starts window
     start_time_buffer: float = 30.0  # Seconds buffer after first power >= threshold
     recovery_power_ratio: float = 0.8  # End when power drops below this * max_power
+    # v1.1.0: Outlier detection
+    outlier_detection_enabled: bool = True
+    outlier_iqr_multiplier: float = 1.5
+    # v1.1.0: Sparse bin merging
+    min_bin_count: int = 3
+    # v1.1.0: Adaptive LOESS fraction
+    adaptive_loess: bool = True
+    # v1.1.0: Protocol-aware trimming
+    protocol_type: Optional[str] = None  # "ramp", "step", "graded", None
+    # v1.1.0: Cross-validation polynomial degree
+    adaptive_polynomial: bool = True
+    # v1.1.0: FatMax bootstrap confidence interval
+    fatmax_confidence_interval: bool = False  # Default off (computational cost)
+    fatmax_bootstrap_iterations: int = 500
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -222,6 +258,14 @@ class AnalysisConfig:
             "start_power_threshold": self.start_power_threshold,
             "start_time_buffer": self.start_time_buffer,
             "recovery_power_ratio": self.recovery_power_ratio,
+            "outlier_detection_enabled": self.outlier_detection_enabled,
+            "outlier_iqr_multiplier": self.outlier_iqr_multiplier,
+            "min_bin_count": self.min_bin_count,
+            "adaptive_loess": self.adaptive_loess,
+            "protocol_type": self.protocol_type,
+            "adaptive_polynomial": self.adaptive_polynomial,
+            "fatmax_confidence_interval": self.fatmax_confidence_interval,
+            "fatmax_bootstrap_iterations": self.fatmax_bootstrap_iterations,
         }
 
 
@@ -304,8 +348,11 @@ class MetabolismAnalyzer:
             self.warnings.append("Insufficient raw data points after extraction")
             return None
 
+        # 1.5. IQR 기반 이상치 제거 (raw는 원본 유지, cleaned만 binning에 전달)
+        raw_points_clean = self._detect_and_remove_outliers(raw_points)
+
         # 2. Power Binning
-        binned_points = self._power_binning(raw_points)
+        binned_points = self._power_binning(raw_points_clean)
 
         if len(binned_points) < 3:
             self.warnings.append("Insufficient binned data points")
@@ -321,7 +368,7 @@ class MetabolismAnalyzer:
         fatmax_marker = self._calculate_fatmax(smoothed_points)
 
         # 6. Crossover Point 계산
-        crossover_marker = self._calculate_crossover(smoothed_points)
+        crossover_marker, all_crossovers = self._calculate_crossover(smoothed_points)
 
         return MetabolismAnalysisResult(
             processed_series=ProcessedSeries(
@@ -331,7 +378,9 @@ class MetabolismAnalyzer:
                 trend=trend_points,
             ),
             metabolic_markers=MetabolicMarkers(
-                fat_max=fatmax_marker, crossover=crossover_marker
+                fat_max=fatmax_marker,
+                crossover=crossover_marker,
+                all_crossovers=all_crossovers,
             ),
             warnings=self.warnings,
             trim_range=trim_range,
@@ -377,6 +426,18 @@ class MetabolismAnalyzer:
         manual_end = self.config.trim_end_sec
         auto_detected = manual_start is None and manual_end is None
 
+        # Protocol-aware parameter overrides
+        effective_recovery_ratio = self.config.recovery_power_ratio
+        effective_start_threshold = self.config.start_power_threshold
+        if self.config.protocol_type:
+            ptype = self.config.protocol_type.lower()
+            if ptype == "ramp":
+                effective_recovery_ratio = 0.70
+                effective_start_threshold = 30
+            elif ptype in ("step", "graded"):
+                effective_recovery_ratio = 0.85
+                effective_start_threshold = 20
+
         # ========== AUTO-DETECT END POINT ==========
         if manual_end is not None:
             end_sec = manual_end
@@ -390,7 +451,7 @@ class MetabolismAnalyzer:
             max_power_sec = times[max_power_idx]
 
             # Scan forward from max power to find recovery start
-            recovery_threshold = max_power * self.config.recovery_power_ratio
+            recovery_threshold = max_power * effective_recovery_ratio
             end_idx = max_power_idx
 
             for i in range(max_power_idx + 1, len(powers)):
@@ -410,7 +471,7 @@ class MetabolismAnalyzer:
             start_sec = manual_start
         else:
             # Find first power >= threshold
-            start_threshold = self.config.start_power_threshold
+            start_threshold = effective_start_threshold
             start_idx = 0
 
             for i, power in enumerate(powers):
@@ -517,6 +578,67 @@ class MetabolismAnalyzer:
 
         return filtered
 
+    def _detect_and_remove_outliers(
+        self, raw_points: List[ProcessedDataPoint]
+    ) -> List[ProcessedDataPoint]:
+        """
+        IQR 기반 이상치 탐지 및 제거
+
+        fat_oxidation, cho_oxidation에 대해 IQR 계산 후
+        Q1 - k*IQR ~ Q3 + k*IQR 범위를 벗어나는 포인트 제거.
+        10개 미만이면 스킵 (데이터 부족 시 제거하면 안 됨).
+
+        Args:
+            raw_points: 원본 raw 데이터 포인트 리스트
+
+        Returns:
+            이상치가 제거된 데이터 포인트 리스트
+        """
+        if not self.config.outlier_detection_enabled:
+            return raw_points
+
+        if len(raw_points) < 10:
+            return raw_points
+
+        k = self.config.outlier_iqr_multiplier
+        fat_vals = np.array([
+            p.fat_oxidation for p in raw_points if p.fat_oxidation is not None
+        ])
+        cho_vals = np.array([
+            p.cho_oxidation for p in raw_points if p.cho_oxidation is not None
+        ])
+
+        def iqr_bounds(vals):
+            if len(vals) < 4:
+                return -np.inf, np.inf
+            q1, q3 = np.percentile(vals, [25, 75])
+            iqr = q3 - q1
+            return q1 - k * iqr, q3 + k * iqr
+
+        fat_lo, fat_hi = iqr_bounds(fat_vals)
+        cho_lo, cho_hi = iqr_bounds(cho_vals)
+
+        cleaned = []
+        removed = 0
+        for p in raw_points:
+            fat_ok = p.fat_oxidation is None or (fat_lo <= p.fat_oxidation <= fat_hi)
+            cho_ok = p.cho_oxidation is None or (cho_lo <= p.cho_oxidation <= cho_hi)
+            if fat_ok and cho_ok:
+                cleaned.append(p)
+            else:
+                removed += 1
+
+        if removed > 0:
+            self.warnings.append(
+                f"Removed {removed} outlier(s) via IQR method (k={k})"
+            )
+            logger.info(
+                f"🔧 [OUTLIER] Removed {removed}/{len(raw_points)} points "
+                f"(fat: [{fat_lo:.3f}, {fat_hi:.3f}], cho: [{cho_lo:.3f}, {cho_hi:.3f}])"
+            )
+
+        return cleaned
+
     def _extract_raw_points(self, breath_data: List[Any]) -> List[ProcessedDataPoint]:
         """호흡 데이터에서 raw 포인트 추출"""
 
@@ -596,6 +718,23 @@ class MetabolismAnalyzer:
         # Power bin 할당
         bin_size = self.config.bin_size
         df["power_bin"] = (df["power"] / bin_size).round() * bin_size
+
+        # Sparse bin 병합: min_bin_count 미만인 bin을 가장 가까운 bin에 병합
+        if self.config.min_bin_count > 1:
+            bin_counts = df.groupby("power_bin").size()
+            sparse_bins = bin_counts[bin_counts < self.config.min_bin_count].index.tolist()
+            all_bins = sorted(bin_counts.index.tolist())
+            for sparse_bin in sparse_bins:
+                candidates = [b for b in all_bins if b != sparse_bin and b not in sparse_bins]
+                if not candidates:
+                    candidates = [b for b in all_bins if b != sparse_bin]
+                if candidates:
+                    nearest = min(candidates, key=lambda b: abs(b - sparse_bin))
+                    df.loc[df["power_bin"] == sparse_bin, "power_bin"] = nearest
+            if sparse_bins:
+                self.warnings.append(
+                    f"Merged {len(sparse_bins)} sparse bins (< {self.config.min_bin_count} points)"
+                )
 
         # 집계할 필드 목록
         numeric_fields = [
@@ -746,9 +885,15 @@ class MetabolismAnalyzer:
 
         # LOESS smoothing
         try:
-            # frac 값 조정 (데이터 포인트가 적을 경우)
-            frac = min(self.config.loess_frac, (len(powers) - 1) / len(powers))
-            frac = max(frac, 0.15)  # 최소 0.15
+            # frac 값 조정
+            if self.config.adaptive_loess:
+                n = len(powers)
+                # n=8→0.5, n=15→0.27, n=20→0.20, n=27+→0.15
+                frac = max(0.15, min(0.5, 4.0 / n))
+            else:
+                frac = self.config.loess_frac
+            frac = min(frac, (len(powers) - 1) / len(powers))
+            frac = max(frac, 0.15)
 
             fat_smoothed = lowess(fat_ox, powers, frac=frac, return_sorted=True)
             cho_smoothed = lowess(cho_ox, powers, frac=frac, return_sorted=True)
@@ -825,6 +970,44 @@ class MetabolismAnalyzer:
             self.warnings.append(f"LOESS smoothing failed: {str(e)}, using binned data")
             return binned_points
 
+    def _select_poly_degree_cv(self, x: np.ndarray, y: np.ndarray, max_degree: int = 4) -> int:
+        """
+        LOOCV로 최적 polynomial degree 선택
+
+        Args:
+            x: independent variable array
+            y: dependent variable array
+            max_degree: 테스트할 최대 degree
+
+        Returns:
+            RMSE가 최소인 degree
+        """
+        n = len(x)
+        if n < 6:
+            return min(3, n - 1)
+
+        best_degree = 1
+        best_rmse = np.inf
+
+        for degree in range(1, min(max_degree, n - 1) + 1):
+            errors = []
+            for i in range(n):
+                x_train = np.delete(x, i)
+                y_train = np.delete(y, i)
+                try:
+                    coeffs = np.polyfit(x_train, y_train, degree)
+                    poly = np.poly1d(coeffs)
+                    pred = poly(x[i])
+                    errors.append((y[i] - pred) ** 2)
+                except (np.linalg.LinAlgError, ValueError):
+                    errors.append(np.inf)
+            rmse = np.sqrt(np.mean(errors))
+            if rmse < best_rmse:
+                best_rmse = rmse
+                best_degree = degree
+
+        return best_degree
+
     def _polynomial_fit(
         self, binned_points: List[ProcessedDataPoint]
     ) -> List[ProcessedDataPoint]:
@@ -891,8 +1074,21 @@ class MetabolismAnalyzer:
             )
 
             # Polynomial degrees per metric type
-            DEGREE_FAT_CHO = 3  # Inverted U-shape for Fat, J-curve for CHO
-            DEGREE_RER = 3  # Slight dip at start, exponential rise at end
+            if self.config.adaptive_polynomial:
+                DEGREE_FAT = self._select_poly_degree_cv(powers, fat_ox, max_degree=4)
+                DEGREE_CHO = self._select_poly_degree_cv(powers, cho_ox, max_degree=4)
+                # RER: only use CV if enough valid data
+                rer_valid = ~np.isnan(rer_vals)
+                if np.sum(rer_valid) >= 6:
+                    DEGREE_RER = self._select_poly_degree_cv(
+                        powers[rer_valid], rer_vals[rer_valid], max_degree=4
+                    )
+                else:
+                    DEGREE_RER = 3
+            else:
+                DEGREE_FAT = 3
+                DEGREE_CHO = 3
+                DEGREE_RER = 3
             DEGREE_VO2_VCO2 = 2  # Linear efficiency (slight curve) - also for VO2/kg
             DEGREE_HR = 2  # Linear response
             DEGREE_VT = 2  # U-shape for nadir detection
@@ -912,8 +1108,8 @@ class MetabolismAnalyzer:
                 return None
 
             # Fit polynomials
-            fat_poly = np.poly1d(np.polyfit(powers, fat_ox, DEGREE_FAT_CHO))
-            cho_poly = np.poly1d(np.polyfit(powers, cho_ox, DEGREE_FAT_CHO))
+            fat_poly = np.poly1d(np.polyfit(powers, fat_ox, DEGREE_FAT))
+            cho_poly = np.poly1d(np.polyfit(powers, cho_ox, DEGREE_CHO))
             rer_poly = fit_poly(rer_vals, powers, DEGREE_RER)
             vo2_poly = fit_poly(vo2_vals, powers, DEGREE_VO2_VCO2)
             vo2_rel_poly = fit_poly(vo2_rel_vals, powers, DEGREE_VO2_VCO2)
@@ -1024,27 +1220,60 @@ class MetabolismAnalyzer:
             zone_min = max_fat_power
             zone_max = max_fat_power
 
-        return FatMaxMarker(
+        marker = FatMaxMarker(
             power=int(round(max_fat_power)),
             mfo=max_fat,
             zone_min=int(round(zone_min)),
             zone_max=int(round(zone_max)),
         )
 
+        # Bootstrap confidence interval
+        if self.config.fatmax_confidence_interval and len(smoothed_points) >= 5:
+            try:
+                rng = np.random.default_rng(42)
+                n = len(smoothed_points)
+                mfo_samples = []
+                power_samples = []
+                for _ in range(self.config.fatmax_bootstrap_iterations):
+                    indices = rng.choice(n, size=n, replace=True)
+                    sample = [smoothed_points[i] for i in indices]
+                    sample_max_fat = 0.0
+                    sample_max_power = 0.0
+                    for p in sample:
+                        if p.fat_oxidation is not None and p.fat_oxidation > sample_max_fat:
+                            sample_max_fat = p.fat_oxidation
+                            sample_max_power = p.power
+                    mfo_samples.append(sample_max_fat)
+                    power_samples.append(sample_max_power)
+                mfo_arr = np.array(mfo_samples)
+                power_arr = np.array(power_samples)
+                marker.mfo_ci_lower = float(np.percentile(mfo_arr, 2.5))
+                marker.mfo_ci_upper = float(np.percentile(mfo_arr, 97.5))
+                marker.power_ci_lower = int(round(np.percentile(power_arr, 2.5)))
+                marker.power_ci_upper = int(round(np.percentile(power_arr, 97.5)))
+            except Exception as e:
+                self.warnings.append(f"FatMax bootstrap CI failed: {str(e)}")
+
+        return marker
+
     def _calculate_crossover(
         self, smoothed_points: List[ProcessedDataPoint]
-    ) -> CrossoverMarker:
+    ) -> Tuple[CrossoverMarker, Optional[List[CrossoverMarker]]]:
         """
-        Crossover Point (FatOx = CHOOx 지점) 계산
+        Crossover Point (FatOx = CHOOx 지점) 계산 - 다중 교차점 탐지
+
+        모든 부호 변화 지점을 탐지하고 confidence(|d1 - d2|) 내림차순으로 정렬.
+        가장 confidence가 높은 교차점을 primary로 반환.
 
         Args:
             smoothed_points: Smoothed 데이터 포인트 리스트
 
         Returns:
-            CrossoverMarker
+            Tuple of (primary CrossoverMarker, all_crossovers list or None)
         """
+        empty = CrossoverMarker(power=None, fat_value=None, cho_value=None)
         if len(smoothed_points) < 3:
-            return CrossoverMarker(power=None, fat_value=None, cho_value=None)
+            return empty, None
 
         # 데이터 추출
         powers = np.array([p.power for p in smoothed_points])
@@ -1064,7 +1293,7 @@ class MetabolismAnalyzer:
         # FatOx - CHOOx 차이
         diff = fat_ox - cho_ox
 
-        # 부호 변화 지점 찾기 (양 → 음: Fat > CHO 에서 Fat < CHO로)
+        # 모든 부호 변화 지점 찾기 (양 → 음: Fat > CHO 에서 Fat < CHO로)
         sign_changes = []
         for i in range(len(diff) - 1):
             if diff[i] > 0 and diff[i + 1] <= 0:
@@ -1073,38 +1302,43 @@ class MetabolismAnalyzer:
                 sign_changes.append(i)
 
         if not sign_changes:
-            # 교차점 없음
-            return CrossoverMarker(power=None, fat_value=None, cho_value=None)
+            return empty, None
 
         try:
-            # 첫 번째 교차점 사용 (일반적으로 운동 강도가 증가하면서 첫 교차)
-            idx = sign_changes[0]
+            all_markers = []
+            for idx in sign_changes:
+                p1, p2 = powers[idx], powers[idx + 1]
+                d1, d2 = diff[idx], diff[idx + 1]
 
-            # 선형 보간으로 정확한 교차점 계산
-            # diff[idx] > 0, diff[idx+1] <= 0
-            p1, p2 = powers[idx], powers[idx + 1]
-            d1, d2 = diff[idx], diff[idx + 1]
+                if d1 == d2:
+                    crossover_power = p1
+                    t = 0.0
+                else:
+                    t = -d1 / (d2 - d1)
+                    crossover_power = p1 + t * (p2 - p1)
 
-            if d1 == d2:
-                crossover_power = p1
-            else:
-                # 선형 보간: d1 + (d2 - d1) * t = 0 => t = -d1 / (d2 - d1)
-                t = -d1 / (d2 - d1)
-                crossover_power = p1 + t * (p2 - p1)
+                crossover_fat = fat_ox[idx] + t * (fat_ox[idx + 1] - fat_ox[idx])
+                crossover_cho = cho_ox[idx] + t * (cho_ox[idx + 1] - cho_ox[idx])
+                conf = abs(d1 - d2)
 
-            # 교차점에서의 Fat/CHO 값 계산 (선형 보간)
-            crossover_fat = fat_ox[idx] + t * (fat_ox[idx + 1] - fat_ox[idx])
-            crossover_cho = cho_ox[idx] + t * (cho_ox[idx + 1] - cho_ox[idx])
+                all_markers.append(
+                    CrossoverMarker(
+                        power=int(round(crossover_power)),
+                        fat_value=float(crossover_fat),
+                        cho_value=float(crossover_cho),
+                        confidence=float(conf),
+                    )
+                )
 
-            return CrossoverMarker(
-                power=int(round(crossover_power)),
-                fat_value=float(crossover_fat),
-                cho_value=float(crossover_cho),
-            )
+            # Sort by confidence descending
+            all_markers.sort(key=lambda m: m.confidence or 0, reverse=True)
+            primary = all_markers[0]
+
+            return primary, all_markers if len(all_markers) > 1 else None
 
         except Exception as e:
             self.warnings.append(f"Crossover calculation failed: {str(e)}")
-            return CrossoverMarker(power=None, fat_value=None, cho_value=None)
+            return empty, None
 
 
 def analyze_metabolism(

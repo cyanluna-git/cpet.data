@@ -183,6 +183,15 @@ def _schema_to_analysis_config(config: MetabolismConfig) -> AnalysisConfig:
         trim_end_sec=config.trim_end_sec,
         # Enable auto-trim only if no manual trim is specified
         auto_trim_enabled=(config.trim_start_sec is None and config.trim_end_sec is None),
+        # v1.1.0 fields
+        outlier_detection_enabled=config.outlier_detection_enabled,
+        outlier_iqr_multiplier=config.outlier_iqr_multiplier,
+        min_bin_count=config.min_bin_count,
+        adaptive_loess=config.adaptive_loess,
+        protocol_type=config.protocol_type,
+        adaptive_polynomial=config.adaptive_polynomial,
+        fatmax_confidence_interval=config.fatmax_confidence_interval,
+        fatmax_bootstrap_iterations=config.fatmax_bootstrap_iterations,
     )
 
 
@@ -207,6 +216,14 @@ def _build_response(
             trim_start_sec=config_dict.get("trim_start_sec"),
             trim_end_sec=config_dict.get("trim_end_sec"),
             fatmax_zone_threshold=config_dict.get("fatmax_zone_threshold", 0.90),
+            outlier_detection_enabled=config_dict.get("outlier_detection_enabled", True),
+            outlier_iqr_multiplier=config_dict.get("outlier_iqr_multiplier", 1.5),
+            min_bin_count=config_dict.get("min_bin_count", 3),
+            adaptive_loess=config_dict.get("adaptive_loess", True),
+            protocol_type=config_dict.get("protocol_type"),
+            adaptive_polynomial=config_dict.get("adaptive_polynomial", True),
+            fatmax_confidence_interval=config_dict.get("fatmax_confidence_interval", False),
+            fatmax_bootstrap_iterations=config_dict.get("fatmax_bootstrap_iterations", 500),
         ),
         is_manual_override=result_dict.get("is_manual_override", False),
         processed_series=result_dict.get("processed_series"),

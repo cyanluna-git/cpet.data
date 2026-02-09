@@ -12,7 +12,7 @@ from app.services.metabolism_analysis import AnalysisConfig, MetabolismAnalyzer
 
 # Algorithm version for reproducibility and future compatibility
 # Increment this when the calculation logic changes
-CURRENT_ALGORITHM_VERSION = "1.0.0"
+CURRENT_ALGORITHM_VERSION = "1.1.0"
 
 
 def _sort_series_by_time(series: Optional[List[Dict[str, Any]]]) -> Optional[List[Dict[str, Any]]]:
