@@ -236,6 +236,13 @@ class AnalysisConfig:
     # v1.1.0: FatMax bootstrap confidence interval
     fatmax_confidence_interval: bool = False  # Default off (computational cost)
     fatmax_bootstrap_iterations: int = 500
+    # v1.2.0: Physiological hard-cap
+    physiological_cap_enabled: bool = True
+    fat_oxidation_cap: float = 2.0  # g/min (엘리트 선수 상한)
+    cho_oxidation_cap: float = 8.0  # g/min
+    # v1.2.0: Sliding window median filter
+    sliding_median_enabled: bool = True
+    sliding_median_window: int = 5  # breath 수 (홀수)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -266,6 +273,11 @@ class AnalysisConfig:
             "adaptive_polynomial": self.adaptive_polynomial,
             "fatmax_confidence_interval": self.fatmax_confidence_interval,
             "fatmax_bootstrap_iterations": self.fatmax_bootstrap_iterations,
+            "physiological_cap_enabled": self.physiological_cap_enabled,
+            "fat_oxidation_cap": self.fat_oxidation_cap,
+            "cho_oxidation_cap": self.cho_oxidation_cap,
+            "sliding_median_enabled": self.sliding_median_enabled,
+            "sliding_median_window": self.sliding_median_window,
         }
 
 
@@ -351,8 +363,16 @@ class MetabolismAnalyzer:
             self.warnings.append("Insufficient raw data points after extraction")
             return None
 
+        # 1.3. 생리학적 hard-cap 적용 (IQR 전에 극단값 무효화)
+        if self.config.physiological_cap_enabled:
+            raw_points = self._apply_physiological_cap(raw_points)
+
         # 1.5. IQR 기반 이상치 제거 (raw는 원본 유지, cleaned만 binning에 전달)
         raw_points_clean = self._detect_and_remove_outliers(raw_points)
+
+        # 1.7. Sliding window median 필터 (IQR 후, binning 전)
+        if self.config.sliding_median_enabled:
+            raw_points_clean = self._apply_sliding_median(raw_points_clean)
 
         # 2. Power Binning
         binned_points = self._power_binning(raw_points_clean)
@@ -680,6 +700,55 @@ class MetabolismAnalyzer:
             )
 
         return cleaned
+
+    def _apply_physiological_cap(
+        self, raw_points: List[ProcessedDataPoint]
+    ) -> List[ProcessedDataPoint]:
+        """생리학적 상한 초과 값을 None으로 처리"""
+        fat_cap = self.config.fat_oxidation_cap
+        cho_cap = self.config.cho_oxidation_cap
+        capped = 0
+        for p in raw_points:
+            if p.fat_oxidation is not None and p.fat_oxidation > fat_cap:
+                p.fat_oxidation = None
+                capped += 1
+            if p.cho_oxidation is not None and p.cho_oxidation > cho_cap:
+                p.cho_oxidation = None
+                capped += 1
+        if capped > 0:
+            self.warnings.append(
+                f"Capped {capped} values exceeding physiological limits "
+                f"(fat>{fat_cap}, cho>{cho_cap})"
+            )
+            logger.info(
+                f"🔧 [CAP] Nullified {capped} values exceeding physiological caps "
+                f"(fat>{fat_cap} g/min, cho>{cho_cap} g/min)"
+            )
+        return raw_points
+
+    def _apply_sliding_median(
+        self, points: List[ProcessedDataPoint]
+    ) -> List[ProcessedDataPoint]:
+        """Power 순 정렬 후 sliding window median 적용"""
+        if len(points) < self.config.sliding_median_window:
+            return points
+
+        points_sorted = sorted(points, key=lambda p: p.power)
+        w = self.config.sliding_median_window
+        half = w // 2
+
+        for field in ["fat_oxidation", "cho_oxidation"]:
+            vals = [getattr(p, field) for p in points_sorted]
+            smoothed = []
+            for i in range(len(vals)):
+                start = max(0, i - half)
+                end = min(len(vals), i + half + 1)
+                window = [v for v in vals[start:end] if v is not None]
+                smoothed.append(np.median(window) if window else None)
+            for i, p in enumerate(points_sorted):
+                setattr(p, field, smoothed[i])
+
+        return points_sorted
 
     def _extract_raw_points(self, breath_data: List[Any]) -> List[ProcessedDataPoint]:
         """호흡 데이터에서 raw 포인트 추출"""

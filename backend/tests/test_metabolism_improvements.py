@@ -1,4 +1,4 @@
-"""Tests for MetabolismAnalyzer v1.1.0 improvements
+"""Tests for MetabolismAnalyzer v1.1.0 / v1.2.0 improvements
 
 Tests cover:
 1. IQR outlier detection
@@ -8,6 +8,8 @@ Tests cover:
 5. Cross-validation polynomial degree
 6. FatMax bootstrap confidence interval
 7. Multi-crossover detection
+8. Physiological hard-cap (v1.2.0)
+9. Sliding window median filter (v1.2.0)
 """
 
 import math
@@ -603,6 +605,314 @@ class TestEndToEnd:
         # Should have removed some outliers
         outlier_warnings = [w for w in result.warnings if "outlier" in w.lower()]
         assert len(outlier_warnings) > 0
+
+
+class TestPhysiologicalCap:
+    """8. Physiological hard-cap (v1.2.0)"""
+
+    def test_fat_oxidation_capped(self):
+        """fat_oxidation > cap should be set to None"""
+        data = _make_breath_data(n=30)
+        # Inject extreme values
+        data[5].fat_oxidation = 5.0  # Way above 2.0 cap
+        data[10].fat_oxidation = 12.0
+        data[15].fat_oxidation = 3.5
+
+        config = AnalysisConfig(
+            physiological_cap_enabled=True,
+            fat_oxidation_cap=2.0,
+            cho_oxidation_cap=8.0,
+            auto_trim_enabled=False,
+            sliding_median_enabled=False,
+            outlier_detection_enabled=False,
+            exclude_initial_hyperventilation=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+        raw_points = analyzer._extract_raw_points(data)
+
+        # Verify values are present before cap
+        assert raw_points[5].fat_oxidation == 5.0
+        assert raw_points[10].fat_oxidation == 12.0
+
+        capped = analyzer._apply_physiological_cap(raw_points)
+
+        # Capped values should be None
+        assert capped[5].fat_oxidation is None
+        assert capped[10].fat_oxidation is None
+        assert capped[15].fat_oxidation is None
+
+        # Normal values should be preserved
+        assert capped[0].fat_oxidation is not None
+
+    def test_cho_oxidation_capped(self):
+        """cho_oxidation > cap should be set to None"""
+        data = _make_breath_data(n=30)
+        data[3].cho_oxidation = 10.0  # Above 8.0 cap
+
+        config = AnalysisConfig(
+            physiological_cap_enabled=True,
+            cho_oxidation_cap=8.0,
+            auto_trim_enabled=False,
+            sliding_median_enabled=False,
+            outlier_detection_enabled=False,
+            exclude_initial_hyperventilation=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+        raw_points = analyzer._extract_raw_points(data)
+        capped = analyzer._apply_physiological_cap(raw_points)
+
+        assert capped[3].cho_oxidation is None
+
+    def test_cap_warning_generated(self):
+        """Warning should be generated when values are capped"""
+        data = _make_breath_data(n=30)
+        data[5].fat_oxidation = 5.0
+        data[10].fat_oxidation = 12.0
+
+        config = AnalysisConfig(
+            physiological_cap_enabled=True,
+            fat_oxidation_cap=2.0,
+            auto_trim_enabled=False,
+            sliding_median_enabled=False,
+            outlier_detection_enabled=False,
+            exclude_initial_hyperventilation=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+        analyzer.warnings = []
+        raw_points = analyzer._extract_raw_points(data)
+        analyzer._apply_physiological_cap(raw_points)
+
+        cap_warnings = [w for w in analyzer.warnings if "capped" in w.lower()]
+        assert len(cap_warnings) == 1
+        assert "2" in cap_warnings[0]  # 2 values capped
+
+    def test_cap_disabled(self):
+        """When disabled, extreme values should be preserved"""
+        data = _make_breath_data(n=30)
+        data[5].fat_oxidation = 5.0
+
+        config = AnalysisConfig(
+            physiological_cap_enabled=False,
+            auto_trim_enabled=False,
+            sliding_median_enabled=False,
+            outlier_detection_enabled=False,
+            exclude_initial_hyperventilation=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+        result = analyzer.analyze(data)
+        assert result is not None
+        # No cap warning
+        cap_warnings = [w for w in result.warnings if "capped" in w.lower()]
+        assert len(cap_warnings) == 0
+
+    def test_cap_in_full_pipeline(self):
+        """Physiological cap should work within full analyze() pipeline"""
+        data = _make_breath_data(n=30)
+        data[5].fat_oxidation = 12.0
+        data[10].fat_oxidation = 8.0
+
+        config = AnalysisConfig(
+            physiological_cap_enabled=True,
+            fat_oxidation_cap=2.0,
+            auto_trim_enabled=False,
+            sliding_median_enabled=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+        result = analyzer.analyze(data)
+        assert result is not None
+        cap_warnings = [w for w in result.warnings if "capped" in w.lower()]
+        assert len(cap_warnings) > 0
+
+
+class TestSlidingMedian:
+    """9. Sliding window median filter (v1.2.0)"""
+
+    def test_spike_smoothed(self):
+        """A spike should be replaced by window median"""
+        config = AnalysisConfig(
+            sliding_median_enabled=True,
+            sliding_median_window=5,
+            auto_trim_enabled=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+
+        # Create points with a spike
+        points = []
+        for i in range(10):
+            points.append(
+                ProcessedDataPoint(
+                    power=float(i * 10),
+                    fat_oxidation=0.5,
+                    cho_oxidation=0.3,
+                )
+            )
+        # Inject spike at index 5 (power=50)
+        points[5].fat_oxidation = 5.0
+
+        result = analyzer._apply_sliding_median(points)
+
+        # The spike should be smoothed to ~0.5 (median of surrounding 0.5 values)
+        spike_point = [p for p in result if abs(p.power - 50.0) < 1.0][0]
+        assert spike_point.fat_oxidation < 1.0  # Should be close to 0.5
+
+    def test_sorted_by_power(self):
+        """Output should be sorted by power"""
+        config = AnalysisConfig(
+            sliding_median_enabled=True,
+            sliding_median_window=3,
+            auto_trim_enabled=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+
+        # Create unsorted points
+        points = [
+            ProcessedDataPoint(power=50.0, fat_oxidation=0.5, cho_oxidation=0.3),
+            ProcessedDataPoint(power=10.0, fat_oxidation=0.4, cho_oxidation=0.2),
+            ProcessedDataPoint(power=30.0, fat_oxidation=0.6, cho_oxidation=0.4),
+            ProcessedDataPoint(power=20.0, fat_oxidation=0.3, cho_oxidation=0.5),
+            ProcessedDataPoint(power=40.0, fat_oxidation=0.5, cho_oxidation=0.3),
+        ]
+
+        result = analyzer._apply_sliding_median(points)
+        powers = [p.power for p in result]
+        assert powers == sorted(powers)
+
+    def test_handles_none_values(self):
+        """Should handle None values without errors"""
+        config = AnalysisConfig(
+            sliding_median_enabled=True,
+            sliding_median_window=3,
+            auto_trim_enabled=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+
+        points = [
+            ProcessedDataPoint(power=10.0, fat_oxidation=0.5, cho_oxidation=0.3),
+            ProcessedDataPoint(power=20.0, fat_oxidation=None, cho_oxidation=0.2),
+            ProcessedDataPoint(power=30.0, fat_oxidation=0.6, cho_oxidation=None),
+            ProcessedDataPoint(power=40.0, fat_oxidation=0.4, cho_oxidation=0.4),
+            ProcessedDataPoint(power=50.0, fat_oxidation=0.5, cho_oxidation=0.3),
+        ]
+
+        result = analyzer._apply_sliding_median(points)
+        assert len(result) == 5
+        # Should not crash
+
+    def test_skipped_when_too_few_points(self):
+        """Should return input unchanged when points < window size"""
+        config = AnalysisConfig(
+            sliding_median_enabled=True,
+            sliding_median_window=5,
+            auto_trim_enabled=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+
+        points = [
+            ProcessedDataPoint(power=10.0, fat_oxidation=0.5, cho_oxidation=0.3),
+            ProcessedDataPoint(power=20.0, fat_oxidation=5.0, cho_oxidation=0.2),
+            ProcessedDataPoint(power=30.0, fat_oxidation=0.6, cho_oxidation=0.4),
+        ]
+
+        result = analyzer._apply_sliding_median(points)
+        # Should return unchanged (3 < 5)
+        assert result[1].fat_oxidation == 5.0
+
+    def test_sliding_median_disabled(self):
+        """When disabled, spike should be preserved in pipeline"""
+        data = _make_breath_data(n=20)
+        data[10].fat_oxidation = 5.0
+
+        config = AnalysisConfig(
+            sliding_median_enabled=False,
+            physiological_cap_enabled=False,
+            outlier_detection_enabled=False,
+            auto_trim_enabled=False,
+            exclude_initial_hyperventilation=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+        result = analyzer.analyze(data)
+        assert result is not None
+        # Raw should still contain the spike
+        raw_fats = [p.fat_oxidation for p in result.processed_series.raw if p.fat_oxidation is not None]
+        assert max(raw_fats) >= 5.0
+
+
+class TestV120Integration:
+    """Integration tests for v1.2.0: cap + sliding median together"""
+
+    def test_cap_then_median_pipeline(self):
+        """Both features should work together in analyze()"""
+        data = _make_breath_data(n=40, seed=123)
+        # Inject extreme values
+        data[5].fat_oxidation = 12.0
+        data[15].fat_oxidation = 8.0
+        data[25].cho_oxidation = 15.0
+
+        config = AnalysisConfig(
+            physiological_cap_enabled=True,
+            fat_oxidation_cap=2.0,
+            cho_oxidation_cap=8.0,
+            sliding_median_enabled=True,
+            sliding_median_window=5,
+            outlier_detection_enabled=True,
+            auto_trim_enabled=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+        result = analyzer.analyze(data)
+        assert result is not None
+        assert result.metabolic_markers.fat_max.mfo > 0
+        # Should have cap warnings
+        cap_warnings = [w for w in result.warnings if "capped" in w.lower()]
+        assert len(cap_warnings) > 0
+
+    def test_v120_config_to_dict(self):
+        """AnalysisConfig.to_dict() should include v1.2.0 fields"""
+        config = AnalysisConfig()
+        d = config.to_dict()
+        assert "physiological_cap_enabled" in d
+        assert "fat_oxidation_cap" in d
+        assert "cho_oxidation_cap" in d
+        assert "sliding_median_enabled" in d
+        assert "sliding_median_window" in d
+
+    def test_v120_defaults(self):
+        """Default v1.2.0 settings should be enabled"""
+        config = AnalysisConfig()
+        assert config.physiological_cap_enabled is True
+        assert config.fat_oxidation_cap == 2.0
+        assert config.cho_oxidation_cap == 8.0
+        assert config.sliding_median_enabled is True
+        assert config.sliding_median_window == 5
+
+    def test_full_pipeline_all_features(self):
+        """Full pipeline with all v1.1.0 + v1.2.0 features"""
+        data = _make_breath_data(n=40, seed=456)
+        # Inject some extreme values
+        data[8].fat_oxidation = 6.0
+        data[20].fat_oxidation = 4.0
+
+        config = AnalysisConfig(
+            # v1.1.0
+            outlier_detection_enabled=True,
+            outlier_iqr_multiplier=1.5,
+            min_bin_count=3,
+            adaptive_loess=True,
+            adaptive_polynomial=True,
+            # v1.2.0
+            physiological_cap_enabled=True,
+            fat_oxidation_cap=2.0,
+            sliding_median_enabled=True,
+            sliding_median_window=5,
+            auto_trim_enabled=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+        result = analyzer.analyze(data)
+        assert result is not None
+        assert len(result.processed_series.raw) > 0
+        assert len(result.processed_series.binned) > 0
+        assert len(result.processed_series.smoothed) > 0
+        assert len(result.processed_series.trend) > 0
+        assert result.metabolic_markers.fat_max.mfo > 0
 
 
 if __name__ == "__main__":
