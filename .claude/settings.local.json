@@ -34,7 +34,8 @@
       "Bash(echo:*)",
       "Bash(npm run test:e2e:*)",
       "Bash(gcloud beta run services describe:*)",
-      "Bash(source:*)"
+      "Bash(source:*)",
+      "Bash(lsof:*)"
     ]
   }
 }

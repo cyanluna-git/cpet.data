@@ -7,8 +7,9 @@ Usage: python scripts/mirror_via_api.py
 import asyncio
 import httpx
 import asyncpg
-from datetime import datetime
+from datetime import datetime, date, time
 import json
+import math
 
 # Supabase 설정
 SUPABASE_URL = "https://bdlqqjbzztiyyrljloiq.supabase.co"
@@ -17,10 +18,10 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 # Local DB 설정
 LOCAL_DB_URL = "postgresql://cpet_user:cpet_password@localhost:5100/cpet_db"
 
-# 미러링할 테이블 목록 (순서 중요 - FK 의존성 고려)
+# 미러링할 테이블 목록 (순서 중요 - FK 의존성 고려: 부모 → 자식)
 TABLES = [
-    "users",
     "subjects",
+    "users",
     "cpet_tests",
     "breath_data",
     "processed_metabolism",
@@ -75,7 +76,20 @@ async def insert_data(conn: asyncpg.Connection, table: str, data: list):
     placeholders = ", ".join([f"${i+1}" for i in range(len(columns))])
     column_names = ", ".join([f'"{c}"' for c in columns])
 
-    query = f'INSERT INTO {table} ({column_names}) VALUES ({placeholders})'
+    query = f'INSERT INTO {table} ({column_names}) VALUES ({placeholders}) ON CONFLICT DO NOTHING'
+
+    # DB에서 컬럼 타입 조회 (datetime 자동 변환용)
+    col_types = {}
+    for col in columns:
+        try:
+            type_row = await conn.fetchrow(
+                "SELECT data_type FROM information_schema.columns WHERE table_name=$1 AND column_name=$2",
+                table, col
+            )
+            if type_row:
+                col_types[col] = type_row["data_type"]
+        except Exception:
+            pass
 
     # 데이터 삽입
     inserted = 0
@@ -83,9 +97,38 @@ async def insert_data(conn: asyncpg.Connection, table: str, data: list):
         values = []
         for col in columns:
             val = row.get(col)
+            col_type = col_types.get(col, "")
+
+            # NaN 문자열 → None (숫자 컬럼)
+            if val == "NaN" or val == "Infinity" or val == "-Infinity":
+                val = None
             # JSON 필드 처리
-            if isinstance(val, (dict, list)):
+            elif isinstance(val, (dict, list)):
                 val = json.dumps(val)
+            # datetime 문자열 → datetime 객체 변환
+            elif isinstance(val, str) and col_type in (
+                "timestamp without time zone", "timestamp with time zone"
+            ):
+                try:
+                    val = datetime.fromisoformat(val.replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    pass
+            # date 문자열 → date 객체 변환
+            elif isinstance(val, str) and col_type == "date":
+                try:
+                    val = date.fromisoformat(val[:10])
+                except (ValueError, TypeError):
+                    pass
+            # time 문자열 → time 객체 변환
+            elif isinstance(val, str) and col_type == "time without time zone":
+                try:
+                    parts = val.split(":")
+                    val = time(int(parts[0]), int(parts[1]), int(parts[2]) if len(parts) > 2 else 0)
+                except (ValueError, TypeError, IndexError):
+                    pass
+            # float NaN → None
+            elif isinstance(val, float) and math.isnan(val):
+                val = None
             values.append(val)
 
         try:
@@ -112,6 +155,9 @@ async def main():
         conn = await asyncpg.connect(LOCAL_DB_URL)
 
         try:
+            # FK 제약조건 일시 비활성화
+            await conn.execute("SET session_replication_role = 'replica';")
+
             for table in TABLES:
                 print(f"\n[{table}] 처리 중...")
 
@@ -121,6 +167,9 @@ async def main():
 
                 # 로컬에 삽입
                 await insert_data(conn, table, data)
+
+            # FK 제약조건 재활성화
+            await conn.execute("SET session_replication_role = 'origin';")
 
         finally:
             await conn.close()

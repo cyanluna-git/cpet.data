@@ -332,6 +332,9 @@ class MetabolismAnalyzer:
                     f"🔧 [TRIM] Applied window: {trim_range.start_sec:.1f}s - {trim_range.end_sec:.1f}s (auto={trim_range.auto_detected})"
                 )
 
+        # Fill missing fat/cho oxidation from VO2/VCO2 using Frayn equations
+        breath_data = self._fill_missing_oxidation(breath_data)
+
         # Phase trimming: 구간별 제외 옵션 적용
         filtered_data = self._apply_phase_trimming(breath_data)
 
@@ -506,6 +509,45 @@ class MetabolismAnalyzer:
         )
 
         return trimmed_data, trim_range
+
+    def _fill_missing_oxidation(self, breath_data: List[Any]) -> List[Any]:
+        """VO2/VCO2에서 Frayn 공식으로 fat/cho oxidation 보정.
+
+        MIX 포맷 등 fat_oxidation/cho_oxidation이 NULL인 데이터에서
+        vo2, vco2가 있으면 계산하여 채워줍니다.
+        """
+        filled_count = 0
+        for bd in breath_data:
+            fat = getattr(bd, "fat_oxidation", None)
+            cho = getattr(bd, "cho_oxidation", None)
+            if fat is not None and cho is not None:
+                continue
+
+            vo2 = getattr(bd, "vo2", None)
+            vco2 = getattr(bd, "vco2", None)
+            if vo2 is None or vco2 is None:
+                continue
+
+            # Convert mL/min → L/min
+            vo2_l = vo2 / 1000.0
+            vco2_l = vco2 / 1000.0
+
+            # Frayn (1983) equations
+            if fat is None:
+                bd.fat_oxidation = max(0.0, 1.67 * vo2_l - 1.67 * vco2_l)
+            if cho is None:
+                bd.cho_oxidation = max(0.0, 4.55 * vco2_l - 3.21 * vo2_l)
+            filled_count += 1
+
+        if filled_count > 0:
+            self.warnings.append(
+                f"Calculated fat/CHO oxidation from VO2/VCO2 for {filled_count} points (Frayn)"
+            )
+            logger.info(
+                f"🔧 [FILL] Calculated oxidation for {filled_count}/{len(breath_data)} points"
+            )
+
+        return breath_data
 
     def _apply_phase_trimming(self, breath_data: List[Any]) -> List[Any]:
         """Phase trimming 적용: Rest, Warm-up, Recovery 구간 제외"""
