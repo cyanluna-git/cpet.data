@@ -1174,6 +1174,8 @@ export const api = {
           trim_start_sec: null,
           trim_end_sec: null,
           fatmax_zone_threshold: 0.9,
+          vo2max_start_sec: null,
+          vo2max_end_sec: null,
         },
         is_manual_override: false,
         processed_series: {
@@ -1310,6 +1312,9 @@ export interface MetabolismConfigApi {
   trim_start_sec: number | null;
   trim_end_sec: number | null;
   fatmax_zone_threshold: number;
+  // v1.2.0: Dual segment windows (HYBRID protocol support)
+  vo2max_start_sec: number | null;
+  vo2max_end_sec: number | null;
 }
 
 export interface ProcessedMetabolismApiResponse {

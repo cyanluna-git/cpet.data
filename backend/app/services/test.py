@@ -1139,6 +1139,8 @@ class TestService:
         min_power_threshold: Optional[int] = None,
         trim_start_sec: Optional[float] = None,
         trim_end_sec: Optional[float] = None,
+        vo2max_start_sec: Optional[float] = None,
+        vo2max_end_sec: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         테스트 분석 결과 조회 (대사 프로파일 차트용)
@@ -1153,6 +1155,8 @@ class TestService:
             min_power_threshold: 최소 파워 임계값 (W, 이하 데이터 제외)
             trim_start_sec: Manual trim start time (seconds, optional)
             trim_end_sec: Manual trim end time (seconds, optional)
+            vo2max_start_sec: VO2max segment start time (seconds, optional)
+            vo2max_end_sec: VO2max segment end time (seconds, optional)
 
         Returns:
             - phase_boundaries: 구간 경계
@@ -1256,6 +1260,9 @@ class TestService:
                 auto_trim_enabled=True,
                 trim_start_sec=trim_start_sec,
                 trim_end_sec=trim_end_sec,
+                # v1.2.0: VO2max segment window (HYBRID protocol)
+                vo2max_start_sec=vo2max_start_sec,
+                vo2max_end_sec=vo2max_end_sec,
             )
 
             analyzer = MetabolismAnalyzer(config=config)

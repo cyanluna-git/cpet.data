@@ -555,6 +555,12 @@ async def get_test_analysis(
     trim_end_sec: Optional[float] = Query(
         None, description="Manual trim end time (seconds)"
     ),
+    vo2max_start_sec: Optional[float] = Query(
+        None, description="VO2max segment start time (seconds)"
+    ),
+    vo2max_end_sec: Optional[float] = Query(
+        None, description="VO2max segment end time (seconds)"
+    ),
 ):
     """
     테스트 분석 결과 조회 (대사 프로파일 차트용)
@@ -617,6 +623,8 @@ async def get_test_analysis(
         min_power_threshold=min_power_threshold if min_power_threshold > 0 else None,
         trim_start_sec=trim_start_sec,
         trim_end_sec=trim_end_sec,
+        vo2max_start_sec=vo2max_start_sec,
+        vo2max_end_sec=vo2max_end_sec,
     )
 
     # NaN/Inf 값을 None으로 변환

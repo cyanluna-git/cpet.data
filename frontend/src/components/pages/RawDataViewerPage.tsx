@@ -569,7 +569,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   const debouncedBin = useDebounce(analysisSettings.bin, 500);
   const debouncedMinPower = useDebounce(analysisSettings.minPower, 500);
 
-  // Trim range state (for analysis window)
+  // Trim range state (for FATMAX analysis window)
   interface TrimRange {
     start: number;
     end: number;
@@ -577,6 +577,10 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   const [trimRange, setTrimRange] = useState<TrimRange | null>(null);
   const [totalDuration, setTotalDuration] = useState<number>(600); // Default 10 min
   const debouncedTrimRange = useDebounce(trimRange, 500);
+
+  // v1.2.0: VO2max segment range (for HYBRID protocol)
+  const [vo2maxRange, setVo2maxRange] = useState<TrimRange | null>(null);
+  const debouncedVo2maxRange = useDebounce(vo2maxRange, 500);
 
   // ========== Persistence State ==========
   // Server config: what's saved in DB (or default from server)
@@ -587,6 +591,8 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     minPower: number;
     trimStart: number | null;
     trimEnd: number | null;
+    vo2maxStart: number | null;
+    vo2maxEnd: number | null;
   }
   const [serverConfig, setServerConfig] = useState<ServerConfig | null>(null);
   const [isServerPersisted, setIsServerPersisted] = useState(false);
@@ -632,8 +638,22 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       (localTrimEnd !== null && serverConfig.trimEnd === null) ||
       (localTrimEnd !== null && serverConfig.trimEnd !== null && !floatEq(localTrimEnd, serverConfig.trimEnd, 1));
 
-    return loessDiff || binDiff || methodDiff || minPowerDiff || trimStartDiff || trimEndDiff;
-  }, [serverConfig, analysisSettings, trimRange, persistenceLoaded, isServerPersisted]);
+    // v1.2.0: VO2max segment comparison
+    const localVo2maxStart = vo2maxRange?.start ?? null;
+    const localVo2maxEnd = vo2maxRange?.end ?? null;
+
+    const vo2maxStartDiff =
+      (localVo2maxStart === null && serverConfig.vo2maxStart !== null) ||
+      (localVo2maxStart !== null && serverConfig.vo2maxStart === null) ||
+      (localVo2maxStart !== null && serverConfig.vo2maxStart !== null && !floatEq(localVo2maxStart, serverConfig.vo2maxStart, 1));
+
+    const vo2maxEndDiff =
+      (localVo2maxEnd === null && serverConfig.vo2maxEnd !== null) ||
+      (localVo2maxEnd !== null && serverConfig.vo2maxEnd === null) ||
+      (localVo2maxEnd !== null && serverConfig.vo2maxEnd !== null && !floatEq(localVo2maxEnd, serverConfig.vo2maxEnd, 1));
+
+    return loessDiff || binDiff || methodDiff || minPowerDiff || trimStartDiff || trimEndDiff || vo2maxStartDiff || vo2maxEndDiff;
+  }, [serverConfig, analysisSettings, trimRange, vo2maxRange, persistenceLoaded, isServerPersisted]);
 
   // 컬럼 선택 상태
   const [selectedColumns, setSelectedColumns] = useState<string[]>(DEFAULT_SELECTED_COLUMNS);
@@ -785,6 +805,8 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         // or if config explicitly has them set
         trimStart: config.trim_start_sec,
         trimEnd: config.trim_end_sec,
+        vo2maxStart: config.vo2max_start_sec ?? null,
+        vo2maxEnd: config.vo2max_end_sec ?? null,
       };
 
       setServerConfig(newServerConfig);
@@ -819,6 +841,16 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         setTrimRange(null);
       }
 
+      // v1.2.0: VO2max segment range
+      if (config.vo2max_start_sec != null && config.vo2max_end_sec != null) {
+        setVo2maxRange({
+          start: config.vo2max_start_sec,
+          end: config.vo2max_end_sec,
+        });
+      } else {
+        setVo2maxRange(null);
+      }
+
     } catch (error) {
       console.warn('[Persistence] Failed to load saved config, using defaults:', error);
       // Keep current defaults
@@ -845,6 +877,8 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         trim_start_sec: trimRange?.start ?? null,
         trim_end_sec: trimRange?.end ?? null,
         fatmax_zone_threshold: 0.90,
+        vo2max_start_sec: vo2maxRange?.start ?? null,
+        vo2max_end_sec: vo2maxRange?.end ?? null,
       };
 
       const response = await api.saveProcessedMetabolism(selectedTestId, configToSave, true);
@@ -857,6 +891,8 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         minPower: response.config.min_power_threshold ?? 0,
         trimStart: response.config.trim_start_sec,
         trimEnd: response.config.trim_end_sec,
+        vo2maxStart: response.config.vo2max_start_sec ?? null,
+        vo2maxEnd: response.config.vo2max_end_sec ?? null,
       };
 
       setServerConfig(newServerConfig);
@@ -879,7 +915,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     } finally {
       setIsSaving(false);
     }
-  }, [selectedTestId, analysisSettings, trimRange, isSaving, dataMode]);
+  }, [selectedTestId, analysisSettings, trimRange, vo2maxRange, isSaving, dataMode]);
 
   // Reset to server defaults
   const handleResetSettings = useCallback(async () => {
@@ -900,6 +936,8 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         minPower: config.min_power_threshold ?? 0,
         trimStart: config.trim_start_sec,
         trimEnd: config.trim_end_sec,
+        vo2maxStart: config.vo2max_start_sec ?? null,
+        vo2maxEnd: config.vo2max_end_sec ?? null,
       };
 
       setServerConfig(newServerConfig);
@@ -921,6 +959,16 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         });
       } else {
         setTrimRange(null);
+      }
+
+      // Reset vo2max range
+      if (config.vo2max_start_sec != null && config.vo2max_end_sec != null) {
+        setVo2maxRange({
+          start: config.vo2max_start_sec,
+          end: config.vo2max_end_sec,
+        });
+      } else {
+        setVo2maxRange(null);
       }
 
       toast.success('기본 설정으로 리셋되었습니다.');
@@ -1012,12 +1060,14 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       setRawData(null);
       setProcessedData(null);
       setAnalysisData(null);
+      setVo2maxRange(null);
     } else {
       setFilteredTests([]);
       setSelectedTestId('');
       setRawData(null);
       setProcessedData(null);
       setAnalysisData(null);
+      setVo2maxRange(null);
     }
   }, [selectedSubjectId, tests]);
 
@@ -1039,7 +1089,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
     if (selectedTestId && useProcessedData) {
       loadProcessedData();
     }
-  }, [selectedTestId, useProcessedData, dataMode, debouncedLoess, debouncedBin, debouncedMinPower, analysisSettings.method, debouncedTrimRange]);
+  }, [selectedTestId, useProcessedData, dataMode, debouncedLoess, debouncedBin, debouncedMinPower, analysisSettings.method, debouncedTrimRange, debouncedVo2maxRange]);
 
   // 선택한 테스트의 raw data 로드
   async function loadRawData() {
@@ -1089,6 +1139,11 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       if (debouncedTrimRange) {
         params.set('trim_start_sec', String(debouncedTrimRange.start));
         params.set('trim_end_sec', String(debouncedTrimRange.end));
+      }
+      // v1.2.0: VO2max segment params
+      if (debouncedVo2maxRange) {
+        params.set('vo2max_start_sec', String(debouncedVo2maxRange.start));
+        params.set('vo2max_end_sec', String(debouncedVo2maxRange.end));
       }
       const response = await fetch(
         `${API_BASE}/tests/${selectedTestId}/analysis?${params.toString()}`,
@@ -1460,46 +1515,89 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
               </div>
             </div>
 
-            {/* Analysis Window Trim Slider */}
+            {/* Dual Segment Sliders (FATMAX + VO2max) */}
             {useProcessedData && (
-              <div className="flex items-center gap-4 py-2 px-3 bg-gray-50 rounded-lg border border-gray-200">
-                <div className="flex items-center gap-1.5 min-w-[100px]">
-                  <Scissors className="w-4 h-4 text-orange-500" />
-                  <span className="text-xs font-medium text-gray-700">Analysis Window</span>
-                </div>
-                <div className="flex-1 min-w-[200px]">
-                  <Slider
-                    min={0}
-                    max={totalDuration}
-                    step={5}
-                    value={trimRange ? [trimRange.start, trimRange.end] : [0, totalDuration]}
-                    onValueChange={(values) => {
-                      setTrimRange({ start: values[0], end: values[1] });
-                    }}
-                    className="w-full"
-                  />
-                </div>
-                <div className="text-xs text-gray-600 min-w-[120px] text-right">
-                  {trimRange ? (
-                    <>
-                      {Math.round(trimRange.start)}s - {Math.round(trimRange.end)}s
-                      <span className="ml-1.5 text-gray-400">
-                        ({Math.round(trimRange.end - trimRange.start)}s)
-                      </span>
-                    </>
-                  ) : (
-                    <span className="text-gray-400">Auto-detect</span>
+              <div className="flex flex-col gap-2 py-2 px-3 bg-gray-50 rounded-lg border border-gray-200 w-full">
+                {/* FATMAX Segment Slider */}
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-1.5 min-w-[110px]">
+                    <Scissors className="w-4 h-4 text-blue-500" />
+                    <span className="text-xs font-medium text-blue-700">FATMAX 구간</span>
+                  </div>
+                  <div className="flex-1 min-w-[200px]">
+                    <Slider
+                      min={0}
+                      max={totalDuration}
+                      step={5}
+                      value={trimRange ? [trimRange.start, trimRange.end] : [0, totalDuration]}
+                      onValueChange={(values) => {
+                        setTrimRange({ start: values[0], end: values[1] });
+                      }}
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="text-xs text-gray-600 min-w-[120px] text-right">
+                    {trimRange ? (
+                      <>
+                        {Math.round(trimRange.start)}s - {Math.round(trimRange.end)}s
+                        <span className="ml-1.5 text-gray-400">
+                          ({Math.round(trimRange.end - trimRange.start)}s)
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-gray-400">Auto-detect</span>
+                    )}
+                  </div>
+                  {trimRange && (
+                    <button
+                      onClick={() => setTrimRange(null)}
+                      className="p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-gray-600"
+                      title="Reset to auto-detect"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
                   )}
                 </div>
-                {trimRange && (
-                  <button
-                    onClick={() => setTrimRange(null)}
-                    className="p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-gray-600"
-                    title="Reset to auto-detect"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
+                {/* VO2max Segment Slider */}
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-1.5 min-w-[110px]">
+                    <Scissors className="w-4 h-4 text-orange-500" />
+                    <span className="text-xs font-medium text-orange-700">VO2max 구간</span>
+                  </div>
+                  <div className="flex-1 min-w-[200px]">
+                    <Slider
+                      min={0}
+                      max={totalDuration}
+                      step={5}
+                      value={vo2maxRange ? [vo2maxRange.start, vo2maxRange.end] : [0, totalDuration]}
+                      onValueChange={(values) => {
+                        setVo2maxRange({ start: values[0], end: values[1] });
+                      }}
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="text-xs text-gray-600 min-w-[120px] text-right">
+                    {vo2maxRange ? (
+                      <>
+                        {Math.round(vo2maxRange.start)}s - {Math.round(vo2maxRange.end)}s
+                        <span className="ml-1.5 text-gray-400">
+                          ({Math.round(vo2maxRange.end - vo2maxRange.start)}s)
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-gray-400">Not set</span>
+                    )}
+                  </div>
+                  {vo2maxRange && (
+                    <button
+                      onClick={() => setVo2maxRange(null)}
+                      className="p-1 hover:bg-gray-200 rounded text-gray-400 hover:text-gray-600"
+                      title="Clear VO2max segment"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1613,6 +1711,34 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                             formatter={overviewTooltipFormatter}
                             labelFormatter={overviewLabelFormatter}
                           />
+                          {/* FATMAX segment overlay (blue) */}
+                          {trimRange && (
+                            <ReferenceArea
+                              x1={trimRange.start}
+                              x2={trimRange.end}
+                              yAxisId="left"
+                              fill="#3B82F6"
+                              fillOpacity={0.08}
+                              stroke="#3B82F6"
+                              strokeOpacity={0.3}
+                              strokeDasharray="3 3"
+                              label={{ value: "FATMAX", position: "insideTopLeft", fontSize: 10, fill: "#3B82F6" }}
+                            />
+                          )}
+                          {/* VO2max segment overlay (orange) */}
+                          {vo2maxRange && (
+                            <ReferenceArea
+                              x1={vo2maxRange.start}
+                              x2={vo2maxRange.end}
+                              yAxisId="left"
+                              fill="#F97316"
+                              fillOpacity={0.08}
+                              stroke="#F97316"
+                              strokeOpacity={0.3}
+                              strokeDasharray="3 3"
+                              label={{ value: "VO2max", position: "insideTopLeft", fontSize: 10, fill: "#F97316" }}
+                            />
+                          )}
                           <Line
                             yAxisId="left"
                             type="monotone"

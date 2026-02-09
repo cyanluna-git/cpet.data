@@ -122,6 +122,8 @@ class ProcessedMetabolismService:
         record.min_power_threshold = config.min_power_threshold
         record.trim_start_sec = config.trim_start_sec
         record.trim_end_sec = config.trim_end_sec
+        record.vo2max_start_sec = getattr(config, "vo2max_start_sec", None)
+        record.vo2max_end_sec = getattr(config, "vo2max_end_sec", None)
         record.fatmax_zone_threshold = config.fatmax_zone_threshold
         record.is_manual_override = is_manual_override
 

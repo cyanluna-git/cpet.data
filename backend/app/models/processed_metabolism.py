@@ -61,9 +61,13 @@ class ProcessedMetabolism(Base):
     exclude_recovery: Mapped[bool] = mapped_column(Boolean, default=True)
     min_power_threshold: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # e.g., 50W 미만 제외
 
-    # Time-based trimming (analysis window)
+    # Time-based trimming (analysis window) - FATMAX segment
     trim_start_sec: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     trim_end_sec: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # v1.2.0: VO2max segment window (HYBRID protocol support)
+    vo2max_start_sec: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    vo2max_end_sec: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # Manual override flag (사용자가 직접 저장한 경우 True)
     is_manual_override: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -129,6 +133,8 @@ class ProcessedMetabolism(Base):
                 "min_power_threshold": self.min_power_threshold,
                 "trim_start_sec": self.trim_start_sec,
                 "trim_end_sec": self.trim_end_sec,
+                "vo2max_start_sec": self.vo2max_start_sec,
+                "vo2max_end_sec": self.vo2max_end_sec,
                 "fatmax_zone_threshold": self.fatmax_zone_threshold,
             },
             "is_manual_override": self.is_manual_override,

@@ -32,12 +32,20 @@ class MetabolismConfig(BaseModel):
         default=None, ge=0, le=200, description="Minimum power threshold (W)"
     )
 
-    # Time-based trimming (analysis window)
+    # Time-based trimming (analysis window) - FATMAX segment
     trim_start_sec: Optional[float] = Field(
         default=None, ge=0, description="Manual trim start (seconds)"
     )
     trim_end_sec: Optional[float] = Field(
         default=None, ge=0, description="Manual trim end (seconds)"
+    )
+
+    # v1.2.0: Dual segment windows (HYBRID protocol support) - VO2max segment
+    vo2max_start_sec: Optional[float] = Field(
+        default=None, ge=0, description="VO2max segment start (seconds)"
+    )
+    vo2max_end_sec: Optional[float] = Field(
+        default=None, ge=0, description="VO2max segment end (seconds)"
     )
 
     # FatMax zone
@@ -83,7 +91,7 @@ class MetabolismConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_trim_range(self) -> "MetabolismConfig":
-        """Ensure trim_end > trim_start and minimum 180 seconds duration"""
+        """Ensure trim_end > trim_start, minimum 180s duration, and non-overlapping segments"""
         if self.trim_start_sec is not None and self.trim_end_sec is not None:
             if self.trim_end_sec <= self.trim_start_sec:
                 raise ValueError("trim_end_sec must be greater than trim_start_sec")
@@ -92,6 +100,25 @@ class MetabolismConfig(BaseModel):
                 raise ValueError(
                     f"Trim range must be at least 180 seconds (got {duration:.1f}s)"
                 )
+
+        # v1.2.0: VO2max segment validation
+        if self.vo2max_start_sec is not None and self.vo2max_end_sec is not None:
+            if self.vo2max_end_sec <= self.vo2max_start_sec:
+                raise ValueError(
+                    "vo2max_end_sec must be greater than vo2max_start_sec"
+                )
+
+        # Check that FATMAX and VO2max segments don't overlap
+        if (
+            self.trim_end_sec is not None
+            and self.vo2max_start_sec is not None
+            and self.trim_end_sec > self.vo2max_start_sec
+        ):
+            raise ValueError(
+                "FATMAX segment (trim_end_sec) must end before "
+                "VO2max segment (vo2max_start_sec) begins"
+            )
+
         return self
 
 

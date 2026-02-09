@@ -236,6 +236,9 @@ class AnalysisConfig:
     # v1.1.0: FatMax bootstrap confidence interval
     fatmax_confidence_interval: bool = False  # Default off (computational cost)
     fatmax_bootstrap_iterations: int = 500
+    # v1.2.0: VO2max segment window (for HYBRID protocol)
+    vo2max_start_sec: Optional[float] = None
+    vo2max_end_sec: Optional[float] = None
     # v1.2.0: Physiological hard-cap
     physiological_cap_enabled: bool = True
     fat_oxidation_cap: float = 2.0  # g/min (엘리트 선수 상한)
@@ -278,6 +281,8 @@ class AnalysisConfig:
             "cho_oxidation_cap": self.cho_oxidation_cap,
             "sliding_median_enabled": self.sliding_median_enabled,
             "sliding_median_window": self.sliding_median_window,
+            "vo2max_start_sec": self.vo2max_start_sec,
+            "vo2max_end_sec": self.vo2max_end_sec,
         }
 
 
