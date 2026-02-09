@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { Navigation } from '@/components/layout/Navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Database, Download, ChevronLeft, ChevronRight, Settings2, Check, User, Calendar, LineChart, X, Scissors, Save, RotateCcw, AlertTriangle, Loader2 } from 'lucide-react';
+import { Database, Download, ChevronLeft, ChevronRight, Settings2, Check, User, Calendar, LineChart, X, Scissors, Save, RotateCcw, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getErrorMessage, getAuthToken } from '@/utils/apiHelpers';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -1140,7 +1140,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                 type="button"
                 onClick={handleSaveSettings}
                 disabled={!selectedTestId || isSaving}
-                className={`ml-2 px-3 py-1.5 text-sm font-medium rounded-md shadow-sm
+                className={`ml-2 px-3 py-1.5 text-sm font-medium rounded-md shadow-sm inline-flex items-center gap-1.5
                   ${isSaving
                     ? 'bg-gray-400 text-white cursor-wait'
                     : isDirty
@@ -1150,8 +1150,40 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                   focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50 transition-colors`}
                 title={isDirty ? "현재 설정으로 전처리 수행 및 저장" : "이미 저장됨"}
               >
-                {isSaving ? '저장 중...' : isDirty ? '전처리 수행' : '저장됨'}
+                {isSaving ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    저장 중...
+                  </>
+                ) : isDirty ? (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    전처리 수행
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    저장됨
+                  </>
+                )}
               </button>
+
+              {/* 리셋 버튼 */}
+              {selectedTestId && isServerPersisted && (
+                <button
+                  type="button"
+                  onClick={handleResetSettings}
+                  disabled={isResetting}
+                  className="px-2 py-1.5 text-sm font-medium rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50 transition-colors inline-flex items-center gap-1"
+                  title="기본 설정으로 리셋"
+                >
+                  {isResetting ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              )}
             </div>
 
             {/* 전처리 파라미터 컨트롤 */}
@@ -1258,61 +1290,6 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                     <X className="w-3.5 h-3.5" />
                   </button>
                 )}
-              </div>
-            )}
-
-            {/* Persistence Controls - Save/Reset buttons with status */}
-            {useProcessedData && selectedTestId && persistenceLoaded && (
-              <div className="flex items-center gap-3 py-2 px-3 bg-white rounded-lg border border-gray-200 shadow-sm">
-                {/* Status Badge */}
-                {isDirty ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-amber-100 text-amber-700 rounded-full">
-                    <AlertTriangle className="w-3 h-3" />
-                    저장 안됨
-                  </span>
-                ) : isServerPersisted ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-full">
-                    <Check className="w-3 h-3" />
-                    저장됨
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">
-                    기본값
-                  </span>
-                )}
-
-                {/* Save Button */}
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={handleSaveSettings}
-                  disabled={!isDirty || isSaving}
-                  className="gap-1"
-                >
-                  {isSaving ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Save className="w-3.5 h-3.5" />
-                  )}
-                  저장
-                </Button>
-
-                {/* Reset Button */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleResetSettings}
-                  disabled={isResetting}
-                  className="gap-1 text-gray-600 hover:text-gray-900"
-                  title="기본 설정으로 리셋"
-                >
-                  {isResetting ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <RotateCcw className="w-3.5 h-3.5" />
-                  )}
-                  리셋
-                </Button>
               </div>
             )}
 
