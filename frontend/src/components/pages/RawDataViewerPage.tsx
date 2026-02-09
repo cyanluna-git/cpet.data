@@ -16,7 +16,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   ZAxis,
   ReferenceLine,
@@ -255,6 +254,280 @@ const CHART_PRESETS = [
 
 const QUAD_PRESETS = CHART_PRESETS.filter((preset) => preset.key !== 'custom');
 
+// Stable tooltip formatters (defined outside component to prevent re-creation)
+const tooltipFormatter = (value: any, name: string) => {
+  const col = CHART_COLUMNS.find(c => c.key === name);
+  return [typeof value === 'number' ? value.toFixed(2) : value, col?.label || name];
+};
+
+const overviewTooltipFormatter = (value: any, name: string) => {
+  const col = CHART_COLUMNS.find(c => c.key === name);
+  return [typeof value === 'number' ? value.toFixed(1) : value, col?.label || name];
+};
+
+const overviewLabelFormatter = (label: any) =>
+  `Time(s): ${typeof label === 'number' ? label.toFixed(0) : label}`;
+
+const numberTickFormatter = (v: any) => typeof v === 'number' ? v.toFixed(0) : v;
+
+// PresetChart component - memoized to prevent unnecessary re-renders
+interface PresetChartProps {
+  preset: typeof QUAD_PRESETS[number];
+  presetIndex: number;
+  chartData: any[];
+  isProcessed: boolean;
+  dataMode: 'raw' | 'smoothed' | 'trend';
+  analysisData: any;
+}
+
+const PresetChart = React.memo(({ preset, presetIndex, chartData, isProcessed, dataMode, analysisData }: PresetChartProps) => {
+  const xLabel = CHART_COLUMNS.find(c => c.key === preset.x)?.label || preset.x;
+
+  const labelFormatter = useCallback(
+    (label: any) => `${xLabel}: ${typeof label === 'number' ? label.toFixed(1) : label}`,
+    [xLabel]
+  );
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-2">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-semibold text-gray-700">{preset.label}</span>
+        <span className="text-[11px] text-gray-400">X: {xLabel}</span>
+      </div>
+      {chartData.length === 0 ? (
+        <div className="aspect-square w-full flex items-center justify-center text-xs text-gray-400">
+          데이터 없음
+        </div>
+      ) : (
+        <div className="aspect-[4/3] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }} syncId="rawDataViewer">
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis
+                dataKey={preset.x}
+                type="number"
+                domain={['dataMin', 'dataMax']}
+                tick={{ fontSize: 10 }}
+                tickFormatter={numberTickFormatter}
+                label={preset.xUnit ? { value: preset.xUnit, position: 'insideBottomRight', offset: -5, style: { fontSize: 10, fill: '#6b7280' } } : undefined}
+              />
+              <YAxis
+                yAxisId="left"
+                type="number"
+                domain={preset.key === 'rer' ? [0.6, 1.2] : ['auto', 'auto']}
+                allowDataOverflow={preset.key === 'rer'}
+                tick={{ fontSize: 10 }}
+                tickFormatter={(v) => typeof v === 'number' ? (preset.key === 'rer' ? v.toFixed(2) : preset.key === 'fatmax' ? v.toFixed(2) : v.toFixed(0)) : v}
+                label={preset.yLeftUnit ? { value: preset.yLeftUnit, angle: -90, position: 'insideLeft', style: { fontSize: 10, fill: '#6b7280' } } : undefined}
+              />
+              {preset.yRight.length > 0 && (
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  type="number"
+                  domain={['auto', 'auto']}
+                  tick={{ fontSize: 10 }}
+                  tickFormatter={numberTickFormatter}
+                  label={preset.yRightUnit ? { value: preset.yRightUnit, angle: 90, position: 'insideRight', style: { fontSize: 10, fill: '#6b7280' } } : undefined}
+                />
+              )}
+              <ZAxis range={[20, 20]} />
+              <Tooltip
+                contentStyle={{ fontSize: 11 }}
+                formatter={tooltipFormatter}
+                labelFormatter={labelFormatter}
+              />
+              {/* FatMax Zone (90% MFO range) */}
+              {analysisData?.metabolic_markers?.fat_max?.zone_min &&
+                analysisData?.metabolic_markers?.fat_max?.zone_max &&
+                preset.key === 'fatmax' && (
+                  <ReferenceArea
+                    x1={analysisData.metabolic_markers.fat_max.zone_min}
+                    x2={analysisData.metabolic_markers.fat_max.zone_max}
+                    yAxisId="left"
+                    fill="#3B82F6"
+                    fillOpacity={0.1}
+                    stroke="#3B82F6"
+                    strokeOpacity={0.3}
+                    strokeDasharray="3 3"
+                  />
+                )}
+              {/* FatMax line */}
+              {analysisData?.metabolic_markers?.fat_max?.power && preset.key === 'fatmax' && (
+                <ReferenceLine
+                  x={analysisData.metabolic_markers.fat_max.power}
+                  yAxisId="left"
+                  stroke="#DC2626"
+                  strokeDasharray="5 5"
+                  strokeWidth={2}
+                >
+                  <Label
+                    value={`FatMax ${analysisData.metabolic_markers.fat_max.power}W`}
+                    position="top"
+                    dy={-5}
+                    fill="#DC2626"
+                    fontSize={11}
+                    fontWeight={600}
+                  />
+                </ReferenceLine>
+              )}
+              {/* Crossover line */}
+              {analysisData?.metabolic_markers?.crossover?.power && preset.key === 'fatmax' && (
+                <ReferenceLine
+                  x={analysisData.metabolic_markers.crossover.power}
+                  yAxisId="left"
+                  stroke="#8B5CF6"
+                  strokeDasharray="3 3"
+                  strokeWidth={2}
+                >
+                  <Label
+                    value={`Crossover ${analysisData.metabolic_markers.crossover.power}W`}
+                    position="insideTop"
+                    dy={15}
+                    fill="#8B5CF6"
+                    fontSize={10}
+                  />
+                </ReferenceLine>
+              )}
+              {/* VT1 and VT2 reference lines */}
+              {analysisData?.vt1_vo2 && preset.key === 'vt' && (
+                <ReferenceLine
+                  x={analysisData.vt1_vo2}
+                  yAxisId="left"
+                  stroke="#22C55E"
+                  strokeDasharray="4 4"
+                  strokeWidth={2}
+                >
+                  <Label value="VT1" position="top" fill="#22C55E" fontSize={11} />
+                </ReferenceLine>
+              )}
+              {analysisData?.vt2_vo2 && preset.key === 'vt' && (
+                <ReferenceLine
+                  x={analysisData.vt2_vo2}
+                  yAxisId="left"
+                  stroke="#EF4444"
+                  strokeDasharray="4 4"
+                  strokeWidth={2}
+                >
+                  <Label value="VT2" position="top" fill="#EF4444" fontSize={11} />
+                </ReferenceLine>
+              )}
+              {isProcessed ? (
+                <>
+                  {preset.yLeft.map((key, idx) => {
+                    const col = CHART_COLUMNS.find(c => c.key === key);
+                    const color = getDataColor(key, presetIndex + idx);
+                    return (
+                      <React.Fragment key={`${preset.key}-left-${key}-group`}>
+                        {dataMode === 'trend' && (
+                          <Line
+                            yAxisId="left"
+                            type="monotone"
+                            dataKey={`${key}_smooth`}
+                            stroke={color}
+                            strokeWidth={1.5}
+                            strokeOpacity={0.3}
+                            strokeDasharray="6 4"
+                            dot={false}
+                            isAnimationActive={false}
+                            connectNulls
+                          />
+                        )}
+                        <Line
+                          yAxisId="left"
+                          type="monotone"
+                          dataKey={key}
+                          name={col?.label || key}
+                          stroke={color}
+                          strokeWidth={dataMode === 'trend' ? 3.5 : 2.5}
+                          dot={false}
+                          connectNulls
+                        />
+                      </React.Fragment>
+                    );
+                  })}
+                  {preset.yRight.map((key, idx) => {
+                    const col = CHART_COLUMNS.find(c => c.key === key);
+                    const color = getDataColor(key, presetIndex + preset.yLeft.length + idx);
+                    return (
+                      <React.Fragment key={`${preset.key}-right-${key}-group`}>
+                        {dataMode === 'trend' && (
+                          <Line
+                            yAxisId="right"
+                            type="monotone"
+                            dataKey={`${key}_smooth`}
+                            stroke={color}
+                            strokeWidth={1}
+                            strokeOpacity={0.3}
+                            strokeDasharray="6 4"
+                            dot={false}
+                            isAnimationActive={false}
+                            connectNulls
+                          />
+                        )}
+                        <Line
+                          yAxisId="right"
+                          type="monotone"
+                          dataKey={key}
+                          name={col?.label || key}
+                          stroke={color}
+                          strokeWidth={dataMode === 'trend' ? 2.5 : 2}
+                          dot={false}
+                          connectNulls
+                        />
+                      </React.Fragment>
+                    );
+                  })}
+                </>
+              ) : (
+                <>
+                  {preset.yLeft.map((key, idx) => {
+                    const col = CHART_COLUMNS.find(c => c.key === key);
+                    const color = getDataColor(key, presetIndex + idx);
+                    return (
+                      <Scatter
+                        key={`${preset.key}-left-${key}`}
+                        yAxisId="left"
+                        dataKey={key}
+                        name={col?.label || key}
+                        fill={color}
+                        line={{ stroke: color, strokeWidth: 1 }}
+                        lineType="joint"
+                      />
+                    );
+                  })}
+                  {preset.yRight.map((key, idx) => {
+                    const col = CHART_COLUMNS.find(c => c.key === key);
+                    const color = getDataColor(key, presetIndex + preset.yLeft.length + idx);
+                    return (
+                      <Scatter
+                        key={`${preset.key}-right-${key}`}
+                        yAxisId="right"
+                        dataKey={key}
+                        name={col?.label || key}
+                        fill={color}
+                        line={{ stroke: color, strokeWidth: 1, strokeDasharray: '5 5' }}
+                        lineType="joint"
+                        shape="cross"
+                      />
+                    );
+                  })}
+                </>
+              )}
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+      <div className="mt-2 text-[11px] text-gray-400">
+        Y-left: {preset.yLeft.map(k => CHART_COLUMNS.find(c => c.key === k)?.label).join(', ')}
+        {preset.yRight.length > 0 && (
+          <> · Y-right: {preset.yRight.map(k => CHART_COLUMNS.find(c => c.key === k)?.label).join(', ')}</>
+        )}
+      </div>
+    </div>
+  );
+});
+
 const PAGE_SIZE = 50;
 
 export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerPageProps) {
@@ -325,20 +598,14 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   const isDirty = useMemo(() => {
     // If persistence hasn't loaded yet, we can't determine dirty state
     if (!persistenceLoaded) {
-      console.log('[isDirty] persistenceLoaded is false, returning false');
       return false;
     }
 
-    // If nothing is persisted on the server, ANY local state is considered dirty
-    // This ensures the user can always save their first configuration
     if (!isServerPersisted) {
-      console.log('[isDirty] isServerPersisted is false, returning true (any change is saveable)');
       return true;
     }
 
-    // If serverConfig hasn't loaded yet, we can't determine dirty state
     if (!serverConfig) {
-      console.log('[isDirty] serverConfig is null, returning false');
       return false;
     }
 
@@ -365,16 +632,7 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       (localTrimEnd !== null && serverConfig.trimEnd === null) ||
       (localTrimEnd !== null && serverConfig.trimEnd !== null && !floatEq(localTrimEnd, serverConfig.trimEnd, 1));
 
-    const result = loessDiff || binDiff || methodDiff || minPowerDiff || trimStartDiff || trimEndDiff;
-
-    console.log('[isDirty] Comparison:', {
-      result,
-      local: { loess: analysisSettings.loess, bin: analysisSettings.bin, method: analysisSettings.method, minPower: analysisSettings.minPower, trimStart: localTrimStart, trimEnd: localTrimEnd },
-      server: serverConfig,
-      diffs: { loessDiff, binDiff, methodDiff, minPowerDiff, trimStartDiff, trimEndDiff },
-    });
-
-    return result;
+    return loessDiff || binDiff || methodDiff || minPowerDiff || trimStartDiff || trimEndDiff;
   }, [serverConfig, analysisSettings, trimRange, persistenceLoaded, isServerPersisted]);
 
   // 컬럼 선택 상태
@@ -426,11 +684,9 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
 
   const rawChartData = useMemo(() => {
     if (!rawData) {
-      console.log('[RawDataViewer] rawChartData: no rawData');
       return [];
     }
     const data = rawData.data;
-    console.log('[RawDataViewer] rawChartData: processing', data.length, 'rows');
 
     // Dynamic maxPoints based on data density and duration
     // For longer tests, allow more points to preserve detail
@@ -479,16 +735,6 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       const processedHasValidData = hasValidXAxis && hasValidYAxis;
       const isProcessed = useProcessedData && processedHasValidData;
 
-      // Debug logging
-      if (useProcessedData && !processedHasValidData) {
-        console.warn(`[getChartDataForPreset] Falling back to raw data for xKey=${xKey}:`, {
-          hasValidXAxis,
-          hasValidYAxis,
-          processedDataLength: processedChartData.length,
-          samplePoint: processedChartData[0],
-        });
-      }
-
       const source = isProcessed ? processedChartData : rawChartData;
 
       const sortedData = [...source].sort((a, b) => {
@@ -506,10 +752,16 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   );
 
   const hasChartData = useMemo(() => {
-    const result = useProcessedData ? processedChartData.length > 0 : rawChartData.length > 0;
-    console.log('[RawDataViewer] hasChartData:', result, '(useProcessedData:', useProcessedData, 'processedLen:', processedChartData.length, 'rawLen:', rawChartData.length, ')');
-    return result;
+    return useProcessedData ? processedChartData.length > 0 : rawChartData.length > 0;
   }, [processedChartData, rawChartData, useProcessedData]);
+
+  // Pre-compute chart data for all 4 presets (avoids calling getChartDataForPreset per render)
+  const presetChartDataMap = useMemo(() => {
+    return QUAD_PRESETS.map(preset => ({
+      key: preset.key,
+      ...getChartDataForPreset(preset.x, preset.yLeft, preset.yRight),
+    }));
+  }, [getChartDataForPreset]);
 
   // ========== Persistence Functions ==========
 
@@ -567,11 +819,6 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         setTrimRange(null);
       }
 
-      console.log('[Persistence] Loaded config:', {
-        isServerPersisted: response.is_persisted,
-        serverConfig: newServerConfig,
-        autoDetectedTrimRange: response.trim_range,
-      });
     } catch (error) {
       console.warn('[Persistence] Failed to load saved config, using defaults:', error);
       // Keep current defaults
@@ -616,7 +863,6 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       setIsServerPersisted(true);
 
       toast.success('분석 설정이 저장되었습니다.');
-      console.log('[Persistence] Saved config:', newServerConfig);
 
       // 저장 후 전처리 데이터 리로드 (결과 반영)
       if (dataMode === 'raw') {
@@ -678,7 +924,6 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       }
 
       toast.success('기본 설정으로 리셋되었습니다.');
-      console.log('[Persistence] Reset to defaults:', newServerConfig);
 
       // Reload processed data with new settings
       if (useProcessedData) {
@@ -712,7 +957,6 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         name: s.encrypted_name || s.name || s.research_id,
         research_id: s.research_id,
       }));
-      console.log('Loaded subjects:', options.length, 'Sample:', options[0]);
       setSubjects(options);
 
       // 테스트 목록도 같이 로드
@@ -734,8 +978,6 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       });
       if (!response.ok) throw new Error('Failed to load tests');
       const data = await response.json();
-
-      console.log('Loaded tests:', data.items?.length, 'Sample:', data.items?.[0]);
 
       const options: TestOption[] = data.items.map((t: any) => {
         // subjects에서 subject_name 찾기
@@ -765,7 +1007,6 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       const filtered = tests.filter(t =>
         String(t.subject_id).toLowerCase() === String(selectedSubjectId).toLowerCase()
       );
-      console.log('Filtering tests for subject:', selectedSubjectId, 'Found:', filtered.length, 'of', tests.length);
       setFilteredTests(filtered);
       setSelectedTestId('');
       setRawData(null);
@@ -783,21 +1024,14 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   // 테스트 선택 시 저장된 설정 먼저 로드
   useEffect(() => {
     if (selectedTestId) {
-      console.log('[RawDataViewer] Loading saved config for test:', selectedTestId);
       loadSavedConfig(selectedTestId);
     }
   }, [selectedTestId, loadSavedConfig]);
 
   // 테스트 선택 시 자동으로 데이터 로드
   useEffect(() => {
-    console.log('[RawDataViewer] useEffect triggered - selectedTestId:', selectedTestId, 'useProcessedData:', useProcessedData);
-    if (selectedTestId) {
-      if (!useProcessedData) {
-        console.log('[RawDataViewer] Calling loadRawData()');
-        loadRawData();
-      } else {
-        console.log('[RawDataViewer] Skipping loadRawData (useProcessedData=true)');
-      }
+    if (selectedTestId && !useProcessedData) {
+      loadRawData();
     }
   }, [selectedTestId, useProcessedData]);
 
@@ -811,26 +1045,20 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
   async function loadRawData() {
     if (!selectedTestId) return;
 
-    console.log('[RawDataViewer] Loading raw data for test:', selectedTestId);
-
     try {
       setLoading(true);
       const token = getAuthToken();
-      console.log('[RawDataViewer] Fetching raw data...');
       const response = await fetch(`${API_BASE}/tests/${selectedTestId}/raw-data`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) {
         const err = await response.json();
-        console.error('[RawDataViewer] API error:', err);
         throw new Error(err.detail || 'Failed to load raw data');
       }
       const data: RawDataResponse = await response.json();
-      console.log('[RawDataViewer] Raw data loaded:', data.total_rows, 'rows');
       setRawData(data);
       setCurrentPage(1);
     } catch (error) {
-      console.error('[RawDataViewer] Error loading raw data:', error);
       toast.error(getErrorMessage(error));
       setRawData(null);
     } finally {
@@ -844,8 +1072,6 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
 
     // 명시적으로 전달된 mode를 우선 사용, 없으면 현재 state 사용
     const currentMode = overrideMode || dataMode;
-
-    console.log('[RawDataViewer] Loading processed data, mode:', currentMode);
 
     try {
       setLoading(true);
@@ -875,9 +1101,6 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         throw new Error(err.detail || 'Failed to load processed data');
       }
       const data = await response.json();
-      console.log('📊 Analysis API Response:', data);
-      console.log('📊 Available keys in processed_series:', Object.keys(data.processed_series || {}));
-      console.log(`📊 trend data length: ${data.processed_series?.trend?.length || 0}`);
 
       // Update trim range from API response (auto-detected value)
       // Always update if not manually set (trimRange === null), otherwise keep user's manual setting
@@ -900,18 +1123,23 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       // currentMode에 따라 적절한 데이터 소스 선택
       const sourceKey = currentMode === 'trend' ? 'trend' : 'smoothed';
       const sourceData = data.processed_series?.[sourceKey] || data.processed_series?.smoothed;
-      console.log(`🎯 Requested mode: ${currentMode}, sourceKey: ${sourceKey}, data length: ${sourceData?.length || 0}`);
 
       if (sourceData && sourceData.length > 0) {
-        console.log(`✨ Using ${sourceKey} data:`, sourceData.length, 'points');
 
         // Trend 모드일 경우 배경에 그릴 Smooth 데이터 준비
         const smoothData = data.processed_series?.smoothed || [];
 
-        const chartDataPoints = sourceData.map((point: any) => {
-          // null과 undefined를 구분하여 처리 (0은 유효한 값으로 유지)
-          const safeVal = (v: any) => (v !== null && v !== undefined ? v : null);
+        // Build a Map for O(1) smooth data lookup by rounded power (instead of O(n) per point)
+        const smoothMap = new Map<number, any>();
+        if (currentMode === 'trend' && smoothData.length > 0) {
+          for (const s of smoothData) {
+            smoothMap.set(Math.round(s.power), s);
+          }
+        }
 
+        const safeVal = (v: any) => (v !== null && v !== undefined ? v : null);
+
+        const chartDataPoints = sourceData.map((point: any) => {
           const base: any = {
             bike_power: point.power ?? 0,
             power: point.power ?? 0,
@@ -927,14 +1155,12 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
             total_oxidation: (point.fat_oxidation ?? 0) + (point.cho_oxidation ?? 0),
           };
 
-          // Trend 모드면 가장 가까운 Power를 가진 Smooth 데이터를 찾아 추가
-          if (currentMode === 'trend' && smoothData.length > 0) {
-            const nearestSmooth = smoothData.reduce((prev: any, curr: any) =>
-              Math.abs(curr.power - point.power) < Math.abs(prev.power - point.power) ? curr : prev
-            );
+          // Trend 모드: O(1) Map lookup for nearest smooth data
+          if (currentMode === 'trend' && smoothMap.size > 0) {
+            const roundedPower = Math.round(point.power);
+            const nearestSmooth = smoothMap.get(roundedPower);
 
-            // 5W 이내인 경우에만 Smooth 데이터로 간주
-            if (Math.abs(nearestSmooth.power - point.power) < 3) {
+            if (nearestSmooth) {
               base.fat_oxidation_smooth = safeVal(nearestSmooth.fat_oxidation);
               base.cho_oxidation_smooth = safeVal(nearestSmooth.cho_oxidation);
               base.rer_smooth = safeVal(nearestSmooth.rer);
@@ -950,14 +1176,6 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
           return base;
         });
 
-        console.log('📈 Chart Data Points:', chartDataPoints.length, 'Sample:', chartDataPoints[0]);
-        // Debug: Check which fields have valid data
-        const fieldStats = ['bike_power', 'vo2', 'vco2', 'hr', 've_vo2', 've_vco2'].reduce((acc, key) => {
-          const validCount = chartDataPoints.filter((d: any) => d[key] !== null && d[key] !== undefined).length;
-          acc[key] = `${validCount}/${chartDataPoints.length}`;
-          return acc;
-        }, {} as Record<string, string>);
-        console.log('📊 Field validity stats:', fieldStats);
         setProcessedData({
           data: chartDataPoints,
           // 모든 시리즈 저장 (차트 오버레이용)
@@ -970,7 +1188,6 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         });
         setShowChart(true);
       } else {
-        console.warn(`⚠️ No ${sourceKey} data in response, falling back...`);
         if (currentMode === 'trend' && !data.processed_series?.trend) {
           toast.warning('Trend 데이터가 없습니다. Smooth 모드를 사용하세요.');
         } else {
@@ -978,7 +1195,6 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
         }
       }
     } catch (error) {
-      console.error('❌ Load Processed Data Error:', error);
       toast.error(getErrorMessage(error));
       setProcessedData(null);
       setAnalysisData(null);
@@ -986,12 +1202,6 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
       setLoading(false);
     }
   }
-
-  useEffect(() => {
-    if (selectedTestId) {
-      loadRawData();
-    }
-  }, [selectedTestId]);
 
   // 페이지네이션
   const totalPages = rawData ? Math.ceil(rawData.data.length / PAGE_SIZE) : 0;
@@ -1381,14 +1591,14 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                             type="number"
                             domain={['dataMin', 'dataMax']}
                             tick={{ fontSize: 10 }}
-                            tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
+                            tickFormatter={numberTickFormatter}
                           />
                           <YAxis
                             yAxisId="left"
                             type="number"
                             domain={['auto', 'auto']}
                             tick={{ fontSize: 10 }}
-                            tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
+                            tickFormatter={numberTickFormatter}
                           />
                           <YAxis
                             yAxisId="right"
@@ -1396,15 +1606,12 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                             type="number"
                             domain={['auto', 'auto']}
                             tick={{ fontSize: 10 }}
-                            tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
+                            tickFormatter={numberTickFormatter}
                           />
                           <Tooltip
                             contentStyle={{ fontSize: 11 }}
-                            formatter={(value: any, name: string) => {
-                              const col = CHART_COLUMNS.find(c => c.key === name);
-                              return [typeof value === 'number' ? value.toFixed(1) : value, col?.label || name];
-                            }}
-                            labelFormatter={(label) => `Time(s): ${typeof label === 'number' ? label.toFixed(0) : label}`}
+                            formatter={overviewTooltipFormatter}
+                            labelFormatter={overviewLabelFormatter}
                           />
                           <Line
                             yAxisId="left"
@@ -1429,256 +1636,17 @@ export function RawDataViewerPage({ user, onLogout, onNavigate }: RawDataViewerP
                     </div>
                   </div>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                    {QUAD_PRESETS.map((preset, presetIndex) => {
-                      const { data: chartData, isProcessed } = getChartDataForPreset(preset.x, preset.yLeft, preset.yRight);
-                      const xLabel = CHART_COLUMNS.find(c => c.key === preset.x)?.label || preset.x;
-                      // Debug: log isProcessed for each chart
-                      console.log(`📊 Chart ${preset.key}: isProcessed=${isProcessed}, dataLength=${chartData.length}, dataMode=${dataMode}`);
-                      return (
-                        <div key={preset.key} className="rounded-lg border border-gray-200 bg-white p-2">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-semibold text-gray-700">{preset.label}</span>
-                            <span className="text-[11px] text-gray-400">X: {xLabel}</span>
-                          </div>
-                          {chartData.length === 0 ? (
-                            <div className="aspect-square w-full flex items-center justify-center text-xs text-gray-400">
-                              데이터 없음
-                            </div>
-                          ) : (
-                            <div className="aspect-[4/3] w-full">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <ComposedChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }} syncId="rawDataViewer">
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                  <XAxis
-                                    dataKey={preset.x}
-                                    type="number"
-                                    domain={['dataMin', 'dataMax']}
-                                    tick={{ fontSize: 10 }}
-                                    tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
-                                    label={preset.xUnit ? { value: preset.xUnit, position: 'insideBottomRight', offset: -5, style: { fontSize: 10, fill: '#6b7280' } } : undefined}
-                                  />
-                                  <YAxis
-                                    yAxisId="left"
-                                    type="number"
-                                    domain={preset.key === 'rer' ? [0.6, 1.2] : ['auto', 'auto']}
-                                    allowDataOverflow={preset.key === 'rer'}
-                                    tick={{ fontSize: 10 }}
-                                    tickFormatter={(v) => typeof v === 'number' ? (preset.key === 'rer' ? v.toFixed(2) : preset.key === 'fatmax' ? v.toFixed(2) : v.toFixed(0)) : v}
-                                    label={preset.yLeftUnit ? { value: preset.yLeftUnit, angle: -90, position: 'insideLeft', style: { fontSize: 10, fill: '#6b7280' } } : undefined}
-                                  />
-                                  {preset.yRight.length > 0 && (
-                                    <YAxis
-                                      yAxisId="right"
-                                      orientation="right"
-                                      type="number"
-                                      domain={['auto', 'auto']}
-                                      tick={{ fontSize: 10 }}
-                                      tickFormatter={(v) => typeof v === 'number' ? v.toFixed(0) : v}
-                                      label={preset.yRightUnit ? { value: preset.yRightUnit, angle: 90, position: 'insideRight', style: { fontSize: 10, fill: '#6b7280' } } : undefined}
-                                    />
-                                  )}
-                                  <ZAxis range={[20, 20]} />
-                                  <Tooltip
-                                    contentStyle={{ fontSize: 11 }}
-                                    formatter={(value: any, name: string) => {
-                                      const col = CHART_COLUMNS.find(c => c.key === name);
-                                      return [typeof value === 'number' ? value.toFixed(2) : value, col?.label || name];
-                                    }}
-                                    labelFormatter={(label) => `${xLabel}: ${typeof label === 'number' ? label.toFixed(1) : label}`}
-                                  />
-                                  {/* FatMax Zone (90% MFO range) - render as subtle background area */}
-                                  {analysisData?.metabolic_markers?.fat_max?.zone_min &&
-                                    analysisData?.metabolic_markers?.fat_max?.zone_max &&
-                                    preset.key === 'fatmax' && (
-                                      <ReferenceArea
-                                        x1={analysisData.metabolic_markers.fat_max.zone_min}
-                                        x2={analysisData.metabolic_markers.fat_max.zone_max}
-                                        yAxisId="left"
-                                        fill="#3B82F6"
-                                        fillOpacity={0.1}
-                                        stroke="#3B82F6"
-                                        strokeOpacity={0.3}
-                                        strokeDasharray="3 3"
-                                      />
-                                    )}
-                                  {/* FatMax line with label at top */}
-                                  {analysisData?.metabolic_markers?.fat_max?.power && preset.key === 'fatmax' && (
-                                    <ReferenceLine
-                                      x={analysisData.metabolic_markers.fat_max.power}
-                                      yAxisId="left"
-                                      stroke="#DC2626"
-                                      strokeDasharray="5 5"
-                                      strokeWidth={2}
-                                    >
-                                      <Label
-                                        value={`FatMax ${analysisData.metabolic_markers.fat_max.power}W`}
-                                        position="top"
-                                        dy={-5}
-                                        fill="#DC2626"
-                                        fontSize={11}
-                                        fontWeight={600}
-                                      />
-                                    </ReferenceLine>
-                                  )}
-                                  {/* Crossover line with label staggered lower to avoid overlap */}
-                                  {analysisData?.metabolic_markers?.crossover?.power && preset.key === 'fatmax' && (
-                                    <ReferenceLine
-                                      x={analysisData.metabolic_markers.crossover.power}
-                                      yAxisId="left"
-                                      stroke="#8B5CF6"
-                                      strokeDasharray="3 3"
-                                      strokeWidth={2}
-                                    >
-                                      <Label
-                                        value={`Crossover ${analysisData.metabolic_markers.crossover.power}W`}
-                                        position="insideTop"
-                                        dy={15}
-                                        fill="#8B5CF6"
-                                        fontSize={10}
-                                      />
-                                    </ReferenceLine>
-                                  )}
-                                  {/* VT1 and VT2 reference lines for VT Analysis chart */}
-                                  {analysisData?.vt1_vo2 && preset.key === 'vt' && (
-                                    <ReferenceLine
-                                      x={analysisData.vt1_vo2}
-                                      yAxisId="left"
-                                      stroke="#22C55E"
-                                      strokeDasharray="4 4"
-                                      strokeWidth={2}
-                                    >
-                                      <Label value="VT1" position="top" fill="#22C55E" fontSize={11} />
-                                    </ReferenceLine>
-                                  )}
-                                  {analysisData?.vt2_vo2 && preset.key === 'vt' && (
-                                    <ReferenceLine
-                                      x={analysisData.vt2_vo2}
-                                      yAxisId="left"
-                                      stroke="#EF4444"
-                                      strokeDasharray="4 4"
-                                      strokeWidth={2}
-                                    >
-                                      <Label value="VT2" position="top" fill="#EF4444" fontSize={11} />
-                                    </ReferenceLine>
-                                  )}
-                                  {isProcessed ? (
-                                    <>
-                                      {preset.yLeft.map((key, idx) => {
-                                        const col = CHART_COLUMNS.find(c => c.key === key);
-                                        const color = getDataColor(key, presetIndex + idx);
-                                        return (
-                                          <React.Fragment key={`${preset.key}-left-${key}-group`}>
-                                            {/* Trend 모드일 때 배경에 그리는 Smooth 라인 (흐리고 점선) */}
-                                            {dataMode === 'trend' && isProcessed && (
-                                              <Line
-                                                yAxisId="left"
-                                                type="monotone"
-                                                dataKey={`${key}_smooth`}
-                                                stroke={color}
-                                                strokeWidth={1.5}
-                                                strokeOpacity={0.3}
-                                                strokeDasharray="6 4"
-                                                dot={false}
-                                                isAnimationActive={false}
-                                                connectNulls
-                                              />
-                                            )}
-                                            {/* 메인 라인 - Trend 모드에서는 굵고 깔끔한 실선 */}
-                                            <Line
-                                              yAxisId="left"
-                                              type="monotone"
-                                              dataKey={key}
-                                              name={col?.label || key}
-                                              stroke={color}
-                                              strokeWidth={dataMode === 'trend' ? 3.5 : 2.5}
-                                              dot={false}
-                                              connectNulls
-                                            />
-                                          </React.Fragment>
-                                        );
-                                      })}
-                                      {preset.yRight.map((key, idx) => {
-                                        const col = CHART_COLUMNS.find(c => c.key === key);
-                                        const color = getDataColor(key, presetIndex + preset.yLeft.length + idx);
-                                        return (
-                                          <React.Fragment key={`${preset.key}-right-${key}-group`}>
-                                            {/* Trend 모드일 때 배경에 그리는 Smooth 라인 */}
-                                            {dataMode === 'trend' && isProcessed && (
-                                              <Line
-                                                yAxisId="right"
-                                                type="monotone"
-                                                dataKey={`${key}_smooth`}
-                                                stroke={color}
-                                                strokeWidth={1}
-                                                strokeOpacity={0.3}
-                                                strokeDasharray="6 4"
-                                                dot={false}
-                                                isAnimationActive={false}
-                                                connectNulls
-                                              />
-                                            )}
-                                            <Line
-                                              yAxisId="right"
-                                              type="monotone"
-                                              dataKey={key}
-                                              name={col?.label || key}
-                                              stroke={color}
-                                              strokeWidth={dataMode === 'trend' ? 2.5 : 2}
-                                              dot={false}
-                                              connectNulls
-                                            />
-                                          </React.Fragment>
-                                        );
-                                      })}
-                                    </>
-                                  ) : (
-                                    <>
-                                      {preset.yLeft.map((key, idx) => {
-                                        const col = CHART_COLUMNS.find(c => c.key === key);
-                                        const color = getDataColor(key, presetIndex + idx);
-                                        return (
-                                          <Scatter
-                                            key={`${preset.key}-left-${key}`}
-                                            yAxisId="left"
-                                            dataKey={key}
-                                            name={col?.label || key}
-                                            fill={color}
-                                            line={{ stroke: color, strokeWidth: 1 }}
-                                            lineType="joint"
-                                          />
-                                        );
-                                      })}
-                                      {preset.yRight.map((key, idx) => {
-                                        const col = CHART_COLUMNS.find(c => c.key === key);
-                                        const color = getDataColor(key, presetIndex + preset.yLeft.length + idx);
-                                        return (
-                                          <Scatter
-                                            key={`${preset.key}-right-${key}`}
-                                            yAxisId="right"
-                                            dataKey={key}
-                                            name={col?.label || key}
-                                            fill={color}
-                                            line={{ stroke: color, strokeWidth: 1, strokeDasharray: '5 5' }}
-                                            lineType="joint"
-                                            shape="cross"
-                                          />
-                                        );
-                                      })}
-                                    </>
-                                  )}
-                                </ComposedChart>
-                              </ResponsiveContainer>
-                            </div>
-                          )}
-                          <div className="mt-2 text-[11px] text-gray-400">
-                            Y-left: {preset.yLeft.map(k => CHART_COLUMNS.find(c => c.key === k)?.label).join(', ')}
-                            {preset.yRight.length > 0 && (
-                              <> · Y-right: {preset.yRight.map(k => CHART_COLUMNS.find(c => c.key === k)?.label).join(', ')}</>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {QUAD_PRESETS.map((preset, presetIndex) => (
+                      <PresetChart
+                        key={preset.key}
+                        preset={preset}
+                        presetIndex={presetIndex}
+                        chartData={presetChartDataMap[presetIndex].data}
+                        isProcessed={presetChartDataMap[presetIndex].isProcessed}
+                        dataMode={dataMode}
+                        analysisData={analysisData}
+                      />
+                    ))}
                   </div>
                 </div>
               )}
