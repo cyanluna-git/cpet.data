@@ -1,131 +1,85 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) when working with this repository.
 
 ## Project Overview
 
-CPET (Cardiopulmonary Exercise Test) Platform - A web application for collecting, analyzing, and visualizing metabolic data from COSMED K5 CPET equipment. Key features include automated CPET data processing, metabolic analysis (FATMAX, VO2MAX), and interactive visualization.
+CPET (Cardiopulmonary Exercise Test) Platform — Web application for metabolic data collection, analysis, and visualization from COSMED K5 equipment. Features: automated CPET processing, FATMAX/VO2MAX analysis, breath-by-breath visualization.
 
-## Build & Development Commands
+## Repository Structure
 
-### Database
-```bash
-docker-compose up -d              # Start PostgreSQL + TimescaleDB (port 5100)
-docker-compose down               # Stop database
-```
+- `backend/` — Python 3.11 FastAPI + SQLAlchemy Async
+- `frontend/` — React 18 + TypeScript 5 + Vite + Shadcn UI
+- `docker-compose.yml` — PostgreSQL 15 + TimescaleDB
+- `run.py` — Dev launcher (backend + frontend)
+- `.claude/rules/` — Shared coding conventions
 
-### Backend (Python/FastAPI)
-```bash
-cd backend
-source .venv/bin/activate         # Activate virtualenv
-uvicorn app.main:app --reload --port 8100   # Start dev server
+## Tech Stack & Key Dependencies
 
-# Testing
-pytest                            # Run all tests
-pytest -v -k "auth"               # Run specific tests
-pytest --tb=short                 # Short traceback
-
-# Code quality
-black .                           # Format
-flake8 .                          # Lint
-mypy .                            # Type check
-```
-
-### Frontend (React/TypeScript/Vite)
-```bash
-cd frontend
-npm run dev                       # Start dev server (port 3100)
-npm run build                     # Production build
-
-# Testing
-pnpm test                         # Unit tests (vitest)
-pnpm test:e2e                     # E2E tests (playwright)
-
-# Code quality
-npm run lint                      # ESLint
-```
-
-### Full Stack
-```bash
-./dev.sh                          # Start backend + frontend together
-```
+**Backend**: FastAPI, SQLAlchemy (async), Pydantic, pytest, PostgreSQL, TimescaleDB, openpyxl  
+**Frontend**: React 18, TypeScript, Vite, Tailwind, Shadcn UI, Recharts, React Query  
+**Infrastructure**: Docker, docker-compose, Python 3.11
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Frontend (React 18 + TypeScript + Vite)                   │
-│  Port 3100 | shadcn/ui + Tailwind | Recharts for viz       │
-└─────────────────────────┬───────────────────────────────────┘
-                          │ REST API
-┌─────────────────────────▼───────────────────────────────────┐
-│  Backend (FastAPI + SQLAlchemy Async)                       │
-│  Port 8100 | JWT Auth | Pydantic schemas                    │
-│  Services: AuthService, TestService, CohortService          │
-│  Parser: COSMEDParser (Excel → breath data)                 │
-└─────────────────────────┬───────────────────────────────────┘
-                          │ SQL
-┌─────────────────────────▼───────────────────────────────────┐
-│  PostgreSQL 15 + TimescaleDB                                │
-│  Port 5100 | Tables: users, subjects, cpet_tests,           │
-│  breath_data (hypertable), processed_metabolism             │
-└─────────────────────────────────────────────────────────────┘
+Browser → React (port 3100, Vite proxy /api)
+       → FastAPI (port 8100, JWT auth)
+       → PostgreSQL 15 + TimescaleDB (port 5100)
 ```
 
-### Key Data Flow
+**Key modules:**
+- **Backend**: `app/api/`, `app/services/` (COSMEDParser, MetabolismAnalyzer), `app/models/`
+- **Frontend**: `pages/`, `hooks/` (useAuth, useFetch), `components/`, `lib/api.ts`
+- **Data flow**: Excel → Parser → breath_data → Analyzer → visualization
 
-1. **File Upload**: Excel file → `COSMEDParser` extracts metadata + breath data
-2. **Analysis**: `MetabolismAnalyzer` calculates FATMAX, VO2MAX, fat/CHO oxidation
-3. **Storage**: Raw data → `breath_data` (TimescaleDB), processed → `processed_metabolism`
-4. **Visualization**: Frontend fetches via `useFetch` hook → Recharts rendering
+## Commands
 
-### Frontend Patterns
-
-- **Hooks**: `useAuth()` (auth state), `useFetch()` (data fetching with retry), `useNavigation()` (routing)
-- **API Client**: Centralized axios instance with Authorization header, timeout, exponential backoff
-- **Lazy Loading**: All page components use `React.lazy()` for code splitting
-- **Error Handling**: `ErrorBoundary` + toast notifications via Sonner
-
-### Backend Patterns
-
-- **Dependency Injection**: `db: DBSession`, `current_user: CurrentUser` via FastAPI Depends
-- **Service Layer**: Business logic in `app/services/`, CRUD in service classes
-- **Auth**: JWT tokens with role-based access (`admin`, `researcher`, `subject`)
-- **Permissions**: `ResearcherUser`, `CurrentUser` dependencies for endpoint protection
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `backend/app/api/tests.py` | Test upload/analysis endpoints |
-| `backend/app/services/cosmed_parser.py` | COSMED Excel parsing |
-| `backend/app/services/metabolism_analysis.py` | FATMAX/VO2MAX calculation |
-| `frontend/src/hooks/useAuth.tsx` | Authentication state management |
-| `frontend/src/hooks/useFetch.ts` | Data fetching with retry logic |
-| `frontend/src/lib/api.ts` | API endpoint definitions |
-| `frontend/src/components/pages/MetabolismPage.tsx` | Main analysis visualization |
-
-## Database Schema Notes
-
-- `breath_data`: TimescaleDB hypertable for time-series CPET data
-- `cpet_tests`: Test metadata including calculated vo2_max, fat_max_hr, vt1/vt2
-- `subjects`: Uses `encrypted_name`, `birth_year` (not `name`, `age`)
-- `users`: Uses `password_hash` field (not `hashed_password`)
-- All IDs are UUIDs
-
-## Environment Variables
-
-Backend `.env`:
-```
-DATABASE_URL=postgresql+asyncpg://cpet_user:cpet_password@localhost:5100/cpet_db
-SECRET_KEY=your-secret-key
+### Database
+```bash
+docker-compose up -d && docker-compose down
 ```
 
-Frontend `.env`:
+### Backend
+```bash
+cd backend && source .venv/bin/activate
+uvicorn app.main:app --reload --port 8100
+pytest && black . && flake8 . && mypy .
 ```
-VITE_API_URL=http://localhost:8100
+
+### Frontend
+```bash
+cd frontend
+npm run dev && npm run build && npm run lint
+pnpm test && pnpm test:e2e
 ```
+
+### Full Stack
+```bash
+./dev.sh
+```
+
+## Environment Setup
+
+Backend `.env`: `DATABASE_URL`, `SECRET_KEY`, `CORS_ORIGINS`  
+Frontend `.env`: `VITE_API_URL=http://localhost:8100`
+
+## Database
+
+- **breath_data**: TimescaleDB hypertable (time-series)
+- **cpet_tests**: Metadata + calculated metrics
+- **subjects**: encrypted_name, birth_year
+- All IDs: UUID
 
 ## API Documentation
 
-When backend is running: http://localhost:8100/docs (Swagger UI)
+http://localhost:8100/docs (Swagger UI)
+
+## Imports
+
+See `.claude/rules/`:
+- code-style.md — Python/TypeScript conventions
+- testing.md — pytest/Vitest patterns
+- api-conventions.md — REST API standards
+- commit-workflow.md — Git conventions
+- security.md — Secrets & validation
