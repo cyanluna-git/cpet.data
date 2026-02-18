@@ -12,6 +12,7 @@ backend/env/
 # Environment variables (root .env)
 .env
 !.env.example
+docs/.env.deply
 *.egg-info/
 .pytest_cache/
 .coverage
