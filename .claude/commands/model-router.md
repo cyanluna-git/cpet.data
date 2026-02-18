@@ -1,72 +1,72 @@
 ---
 allowed-tools: Task
-description: 작업 복잡도를 분석하여 적절한 Claude 모델(Haiku/Sonnet/Opus)로 자동 라우팅
+description: Analyze task complexity and automatically route to appropriate Claude model (Haiku/Sonnet/Opus)
 argument-hint: "[task description]"
 model: haiku
 ---
 
 # Model Router
 
-작업 설명을 받아 복잡도를 분석한 후, 가장 적합한 Claude 모델로 자동 라우팅합니다.
+Analyzes task description and automatically routes to the most appropriate Claude model based on complexity.
 
-## 모델 선택 기준
+## Model Selection Criteria
 
-### Haiku (빠른 응답)
-- 기본 질문, 조회, 검색
-- 파일 읽기, 간단한 수정
-- 코드 분석, 타입 확인
-- 예상 시간: <30초
-- 예시: "어떤 파일에서 FATMAX 로직이 있어?", "이 함수 설명해줘"
+### Haiku (Fast)
+- Basic questions, queries, searches
+- File reading, simple modifications
+- Code analysis, type checking
+- **Time:** <30s
+- **Examples:** "Which files contain FATMAX logic?", "Explain this function"
 
-### Sonnet (균형잡힌 성능)
-- 세부 분석, 탐색
-- 중간 규모 설계 (3–5 파일)
-- 기능 구현, 버그 수정
-- 예상 시간: 30초–2분
-- 예시: "이 API 엔드포인트 구현해줘", "성능 최적화할 부분 찾아줘"
+### Sonnet (Balanced)
+- Detailed analysis, exploration
+- Medium-scale design (3–5 files)
+- Feature implementation, bug fixes
+- **Time:** 30s–2m
+- **Examples:** "Implement new API endpoint", "Find performance bottlenecks"
 
-### Opus (깊은 추론)
-- 복잡한 설계, 아키텍처
-- 대규모 리팩토링 (5+ 파일)
-- 포괄적인 구현
-- 예상 시간: 2–10분
-- 예시: "전체 데이터 파이프라인 재설계해줘", "새로운 테스팅 프레임워크 구축해줘"
+### Opus (Deep reasoning)
+- Complex architecture design
+- Large-scale refactoring (5+ files)
+- Comprehensive implementations
+- **Time:** 2–10m
+- **Examples:** "Redesign entire data pipeline", "Build new testing framework"
 
-## 실행
+## Usage
 
 ```
-/model-router "당신의 작업 설명"
+/model-router "your task description"
 ```
 
-## 작동 방식
+## How It Works
 
-1. **복잡도 분석**: 작업 설명에서 파일 수, 범위, 추론 필요도 분석
-2. **모델 선택**: 분석 결과에 따라 Haiku/Sonnet/Opus 결정
-3. **작업 실행**: 선택된 모델로 Task 에이전트 실행
-4. **결과 반환**: 작업 완료 후 결과 제시
+1. **Complexity Analysis**: Extract scope, file count, reasoning required
+2. **Model Selection**: Choose Haiku/Sonnet/Opus based on analysis
+3. **Task Execution**: Run with selected model
+4. **Result Return**: Present results
 
-## 예시
+## Examples
 
-### Haiku로 라우팅되는 작업
+### Haiku Routing
 ```
-/model-router "FATMAX 분석 관련 파일 목록 보여줘"
-→ 빠른 파일 검색, Haiku 실행
-```
-
-### Sonnet으로 라우팅되는 작업
-```
-/model-router "새로운 API 엔드포인트 /api/vo2max/export 구현해줘"
-→ 중간 규모 코드 작성, Sonnet 실행
+/model-router "List files related to FATMAX analysis"
+→ Fast search, Haiku execution
 ```
 
-### Opus로 라우팅되는 작업
+### Sonnet Routing
 ```
-/model-router "전체 데이터 수집부터 시각화까지 파이프라인을 재설계해줘"
-→ 복잡한 설계, Opus 실행
+/model-router "Implement new API endpoint /api/vo2max/export"
+→ Medium-scale code, Sonnet execution
 ```
 
-## 주의사항
+### Opus Routing
+```
+/model-router "Redesign entire data pipeline from collection to visualization"
+→ Complex design, Opus execution
+```
 
-- 작업 설명이 명확할수록 더 정확한 모델 선택
-- 작업이 예상보다 복잡하면 더 강력한 모델 자동 선택 가능
-- 특정 모델 강제 지정: `[Opus] 당신의 작업`
+## Notes
+
+- Clearer descriptions → better model selection
+- Tasks more complex than expected → auto-upgrade to stronger model
+- Force specific model: `[Opus] your task`
