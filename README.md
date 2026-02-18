@@ -188,12 +188,18 @@ Bike Power 기반:
 - Power binning (5–10W, median/trimmed mean)
 - Shape-preserving interpolation (PCHIP/Akima) 또는 LOESS
 
-## 문서
+## 📚 문서
 
-- [요구사항 정의서 (SRS)](./doc/srs.md)
-- [개발 TODO 리스트](./TODOS.md)
-- [에이전트 가이드](./agent.md.claude.md)
-- [API 문서](http://localhost:8000/docs) (서버 실행 시)
+### 빠른 링크
+- [개발 TODO 리스트](./TODOS.md) - 현재 진행 중인 작업
+- [API 문서](http://localhost:8000/docs) - 서버 실행 시 확인
+
+### 전체 문서는 `docs/` 폴더에서 확인하세요
+- **[📖 문서 홈](./docs/)** - 모든 문서 인덱스
+- **[🏗️ 가이드](./docs/guides/)** - 아키텍처, 기여 방법, 테스트 전략
+- **[📊 작업 보고서](./docs/reports/)** - 완료된 작업 및 개선 사항
+
+더 자세한 정보는 [docs/README.md](./docs/README.md) 참고
 
 ## 기여 가이드
 
