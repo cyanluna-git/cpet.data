@@ -1,3 +1,9 @@
+---
+paths:
+  - "backend/app/api/**/*.py"
+  - "frontend/src/lib/**/*.ts"
+---
+
 # api-conventions.md - API Design Rules
 
 ## REST API Standards

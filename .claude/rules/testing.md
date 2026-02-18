@@ -1,3 +1,10 @@
+---
+paths:
+  - "backend/tests/**/*.py"
+  - "frontend/src/**/*.test.{ts,tsx}"
+  - "frontend/e2e/**/*.spec.ts"
+---
+
 # testing.md - Testing Conventions
 
 ## Backend Testing (pytest + FastAPI)

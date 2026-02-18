@@ -1,3 +1,9 @@
+---
+paths:
+  - "backend/**/*.py"
+  - "frontend/src/**/*.{ts,tsx}"
+---
+
 # security.md - Security Guidelines
 
 ## Environment Variables

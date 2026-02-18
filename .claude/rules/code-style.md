@@ -1,3 +1,9 @@
+---
+paths:
+  - "backend/**/*.py"
+  - "frontend/src/**/*.{ts,tsx}"
+---
+
 # code-style.md - Coding Standards
 
 ## Python (Backend / FastAPI)

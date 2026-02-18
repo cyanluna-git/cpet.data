@@ -75,11 +75,24 @@ Frontend `.env`: `VITE_API_URL=http://localhost:8100`
 
 http://localhost:8100/docs (Swagger UI)
 
-## Imports
+## Memory & Rules
 
-See `.claude/rules/`:
-- code-style.md — Python/TypeScript conventions
-- testing.md — pytest/Vitest patterns
-- api-conventions.md — REST API standards
-- commit-workflow.md — Git conventions
-- security.md — Secrets & validation
+### Imports
+See `.claude/rules/` (auto-loaded, path-scoped):
+- **code-style.md** — Python/TypeScript conventions
+- **testing.md** — pytest/Vitest patterns
+- **api-conventions.md** — REST API standards
+- **commit-workflow.md** — Git conventions (all files)
+- **security.md** — Secrets & validation
+
+### Project-specific Rules
+- **backend/.claude/CLAUDE.md** — FastAPI service config
+- **frontend/.claude/CLAUDE.md** — React SPA config
+
+### Auto Memory
+To enable auto memory learning across sessions:
+```bash
+export CLAUDE_CODE_DISABLE_AUTO_MEMORY=0
+/memory  # View/edit memory files
+```
+Auto memory stores patterns, debugging insights, and architecture notes in `~/.claude/projects/cpet.db/memory/`

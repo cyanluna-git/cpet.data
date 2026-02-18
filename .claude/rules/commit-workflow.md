@@ -1,3 +1,7 @@
+---
+paths: []
+---
+
 # commit-workflow.md - Git & Commit Conventions
 
 ## Branch Strategy
