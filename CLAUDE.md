@@ -99,7 +99,12 @@ Auto memory stores patterns, debugging insights, and architecture notes in `~/.c
 
 ## Model Selection Guide
 
-Automatically route tasks to appropriate Claude models based on complexity:
+Automatically route tasks to appropriate Claude models based on complexity.
+
+**Status:** ✅ Fully automated with proactive skill detection (`.claude/skills/model-router/`)
+- No explicit slash command needed—just state your task
+- Skill auto-detects complexity and routes to Haiku/Sonnet/Opus
+- Optional: `[Opus] Design the new...` to force specific model
 
 ### Haiku (Fast responses)
 **Use for:** Basic questions, queries, file searches, simple modifications
