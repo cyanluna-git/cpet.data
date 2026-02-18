@@ -96,3 +96,42 @@ export CLAUDE_CODE_DISABLE_AUTO_MEMORY=0
 /memory  # View/edit memory files
 ```
 Auto memory stores patterns, debugging insights, and architecture notes in `~/.claude/projects/cpet.db/memory/`
+
+## Model Selection Guide
+
+Automatically route tasks to appropriate Claude models based on complexity:
+
+### Haiku (Fast responses)
+**Use for:** Basic questions, queries, file searches, simple modifications
+- "What files contain FATMAX logic?"
+- "Explain this function"
+- "Fix this typo in README"
+- "List database tables"
+- **Time:** <30 seconds
+
+### Sonnet (Balanced performance)
+**Use for:** Detailed analysis, exploration, planning, medium-scale code changes (3–5 files)
+- "Analyze COSMED parser efficiency"
+- "Design caching strategy for breath_data"
+- "Refactor authentication flow"
+- "Implement new API endpoint"
+- "Debug performance issue"
+- **Time:** 30s–2 minutes
+
+### Opus (Deep reasoning)
+**Use for:** Complex reasoning, architecture design, large refactoring (5+ files), comprehensive implementations
+- "Plan full-stack VO2MAX calculation redesign"
+- "Refactor entire data pipeline"
+- "Optimize database query performance"
+- "Implement real-time data processing"
+- "Design new testing framework"
+- **Time:** 2–10 minutes
+
+**Quick Reference:**
+```
+/ask "what is..."              → Haiku
+/analyze "improve this..."     → Sonnet
+/design "architect..."         → Opus
+```
+
+Explicitly specify model when needed: `[Opus] Design the new...`
