@@ -755,8 +755,8 @@ class TestSlidingMedian:
         spike_point = [p for p in result if abs(p.power - 50.0) < 1.0][0]
         assert spike_point.fat_oxidation < 1.0  # Should be close to 0.5
 
-    def test_sorted_by_power(self):
-        """Output should be sorted by power"""
+    def test_sorted_by_time(self):
+        """Output should be sorted by t_sec (time-domain ordering)"""
         config = AnalysisConfig(
             sliding_median_enabled=True,
             sliding_median_window=3,
@@ -764,18 +764,18 @@ class TestSlidingMedian:
         )
         analyzer = MetabolismAnalyzer(config=config)
 
-        # Create unsorted points
+        # Create points with t_sec in non-power order
         points = [
-            ProcessedDataPoint(power=50.0, fat_oxidation=0.5, cho_oxidation=0.3),
-            ProcessedDataPoint(power=10.0, fat_oxidation=0.4, cho_oxidation=0.2),
-            ProcessedDataPoint(power=30.0, fat_oxidation=0.6, cho_oxidation=0.4),
-            ProcessedDataPoint(power=20.0, fat_oxidation=0.3, cho_oxidation=0.5),
-            ProcessedDataPoint(power=40.0, fat_oxidation=0.5, cho_oxidation=0.3),
+            ProcessedDataPoint(power=50.0, fat_oxidation=0.5, cho_oxidation=0.3, t_sec=10.0),
+            ProcessedDataPoint(power=10.0, fat_oxidation=0.4, cho_oxidation=0.2, t_sec=20.0),
+            ProcessedDataPoint(power=30.0, fat_oxidation=0.6, cho_oxidation=0.4, t_sec=30.0),
+            ProcessedDataPoint(power=20.0, fat_oxidation=0.3, cho_oxidation=0.5, t_sec=40.0),
+            ProcessedDataPoint(power=40.0, fat_oxidation=0.5, cho_oxidation=0.3, t_sec=50.0),
         ]
 
         result = analyzer._apply_sliding_median(points)
-        powers = [p.power for p in result]
-        assert powers == sorted(powers)
+        t_secs = [p.t_sec for p in result]
+        assert t_secs == sorted(t_secs)
 
     def test_handles_none_values(self):
         """Should handle None values without errors"""
@@ -1064,6 +1064,110 @@ class TestPowerBinningRounding:
         assert 5.0 in bin_powers, f"2.5W should map to 5W bin, got bins: {bin_powers}"
         assert 10.0 in bin_powers, f"7.5W should map to 10W bin, got bins: {bin_powers}"
         assert 15.0 in bin_powers, f"12.5W should map to 15W bin, got bins: {bin_powers}"
+
+
+class TestSlidingMedianTimeDomain:
+    """Verify _apply_sliding_median uses time-domain (t_sec) ordering."""
+
+    def _make_analyzer(self, window=5):
+        config = AnalysisConfig(
+            sliding_median_enabled=True,
+            sliding_median_window=window,
+            auto_trim_enabled=False,
+        )
+        return MetabolismAnalyzer(config=config)
+
+    def test_time_domain_sort_key(self):
+        """Points with t_sec in reverse power order are sorted by time."""
+        analyzer = self._make_analyzer(window=5)
+
+        # High power but early time; low power but late time
+        points = [
+            ProcessedDataPoint(power=200.0, fat_oxidation=0.5, cho_oxidation=0.3, t_sec=10.0),
+            ProcessedDataPoint(power=150.0, fat_oxidation=0.5, cho_oxidation=0.3, t_sec=20.0),
+            ProcessedDataPoint(power=100.0, fat_oxidation=0.5, cho_oxidation=0.3, t_sec=30.0),
+            ProcessedDataPoint(power=50.0, fat_oxidation=0.5, cho_oxidation=0.3, t_sec=40.0),
+            ProcessedDataPoint(power=25.0, fat_oxidation=0.5, cho_oxidation=0.3, t_sec=50.0),
+        ]
+
+        result = analyzer._apply_sliding_median(points)
+        t_secs = [p.t_sec for p in result]
+        assert t_secs == [10.0, 20.0, 30.0, 40.0, 50.0]
+        # Power order is NOT ascending — confirms sort is by t_sec, not power
+        powers = [p.power for p in result]
+        assert powers != sorted(powers)
+
+    def test_step_protocol_noise_removal(self):
+        """Synthetic step protocol: temporal noise spike removed correctly.
+
+        Step protocol: 50W for t=0..50s, then 100W for t=60..110s.
+        Inject a fat_oxidation spike at t=80s (100W step).
+        With time-sort, the spike at t=80 is surrounded by t=70,90 (same step) -> removed.
+        """
+        analyzer = self._make_analyzer(window=5)
+
+        points = []
+        # 50W step: t=0..50, fat=0.4
+        for t in range(0, 60, 10):
+            points.append(
+                ProcessedDataPoint(
+                    power=50.0, fat_oxidation=0.4, cho_oxidation=0.3, t_sec=float(t)
+                )
+            )
+        # 100W step: t=60..110, fat=0.3 (except spike at t=80)
+        for t in range(60, 120, 10):
+            fat = 5.0 if t == 80 else 0.3
+            points.append(
+                ProcessedDataPoint(
+                    power=100.0, fat_oxidation=fat, cho_oxidation=0.3, t_sec=float(t)
+                )
+            )
+
+        result = analyzer._apply_sliding_median(points)
+        # Find point at t=80
+        spike_point = [p for p in result if p.t_sec == 80.0][0]
+        # Spike should be smoothed down (median of neighbors at t=60,70,80,90,100 -> mostly 0.3)
+        assert spike_point.fat_oxidation < 1.0, (
+            f"Spike at t=80 should be removed by time-domain median, got {spike_point.fat_oxidation}"
+        )
+
+    def test_same_power_different_times(self):
+        """Points at same power, different times: spike at t=30 removed."""
+        analyzer = self._make_analyzer(window=5)
+
+        points = []
+        for t in range(0, 70, 10):
+            fat = 5.0 if t == 30 else 0.5
+            points.append(
+                ProcessedDataPoint(
+                    power=100.0, fat_oxidation=fat, cho_oxidation=0.3, t_sec=float(t)
+                )
+            )
+
+        result = analyzer._apply_sliding_median(points)
+        spike_point = [p for p in result if p.t_sec == 30.0][0]
+        assert spike_point.fat_oxidation < 1.0, (
+            f"Spike at t=30 should be smoothed, got {spike_point.fat_oxidation}"
+        )
+
+    def test_fallback_when_no_t_sec(self):
+        """When all t_sec=None, no crash, falls back to power sort."""
+        analyzer = self._make_analyzer(window=5)
+
+        points = [
+            ProcessedDataPoint(power=float(i * 10), fat_oxidation=0.5, cho_oxidation=0.3)
+            for i in range(10)
+        ]
+        # Inject spike
+        points[5].fat_oxidation = 5.0
+
+        result = analyzer._apply_sliding_median(points)
+        # Should not crash and should still smooth the spike
+        spike_point = [p for p in result if abs(p.power - 50.0) < 1.0][0]
+        assert spike_point.fat_oxidation < 1.0
+        # Verify power ordering (fallback)
+        powers = [p.power for p in result]
+        assert powers == sorted(powers)
 
 
 if __name__ == "__main__":

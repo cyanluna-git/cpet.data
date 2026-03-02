@@ -46,6 +46,7 @@ class ProcessedDataPoint:
     hr: Optional[float] = None  # HR for VO2 Kinetics chart
     ve_vo2: Optional[float] = None  # VE/VO2 for VT Analysis chart
     ve_vco2: Optional[float] = None  # VE/VCO2 for VT Analysis chart
+    t_sec: Optional[float] = None  # Time in seconds for time-domain filtering
 
     def to_dict(self) -> Dict[str, Any]:
         """모든 필드를 항상 포함하여 프론트엔드에서 키 존재 여부 체크가 가능하도록 함"""
@@ -61,6 +62,7 @@ class ProcessedDataPoint:
             "hr": self.hr,
             "ve_vo2": self.ve_vo2,
             "ve_vco2": self.ve_vco2,
+            "t_sec": self.t_sec,
         }
 
 
@@ -734,11 +736,18 @@ class MetabolismAnalyzer:
     def _apply_sliding_median(
         self, points: List[ProcessedDataPoint]
     ) -> List[ProcessedDataPoint]:
-        """Power 순 정렬 후 sliding window median 적용"""
+        """시간 순 정렬 후 sliding window median 적용 (t_sec 없으면 power fallback)"""
         if len(points) < self.config.sliding_median_window:
             return points
 
-        points_sorted = sorted(points, key=lambda p: p.power)
+        # Sort by time domain; fall back to power if t_sec unavailable
+        if all(p.t_sec is None for p in points):
+            points_sorted = sorted(points, key=lambda p: p.power)
+        else:
+            points_sorted = sorted(
+                points,
+                key=lambda p: (p.t_sec is None, p.t_sec if p.t_sec is not None else 0),
+            )
         w = self.config.sliding_median_window
         half = w // 2
 
@@ -795,6 +804,7 @@ class MetabolismAnalyzer:
                     hr=safe_float(getattr(bd, "hr", None)),
                     ve_vo2=safe_float(getattr(bd, "ve_vo2", None)),
                     ve_vco2=safe_float(getattr(bd, "ve_vco2", None)),
+                    t_sec=safe_float(getattr(bd, "t_sec", None)),
                     count=1,
                 )
             )

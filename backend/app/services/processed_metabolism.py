@@ -13,7 +13,8 @@ from app.services.metabolism_analysis import AnalysisConfig, MetabolismAnalyzer
 # Algorithm version for reproducibility and future compatibility
 # Increment this when the calculation logic changes
 # 1.2.1: Fixed banker's rounding in _power_binning (half-values now round up)
-CURRENT_ALGORITHM_VERSION = "1.2.1"
+# 1.2.2: Sliding median sort key changed from power to t_sec (time-domain filtering)
+CURRENT_ALGORITHM_VERSION = "1.2.2"
 
 
 def _sort_series_by_time(series: Optional[List[Dict[str, Any]]]) -> Optional[List[Dict[str, Any]]]:
