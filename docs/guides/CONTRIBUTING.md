@@ -90,8 +90,8 @@ EOF
 ### 6단계: 개발 서버 실행
 
 ```bash
-# 모든 서비스 시작 (run.py 사용)
-python run.py
+# 모든 서비스 시작 (DB는 Docker, 나머지는 로컬)
+./run.sh
 
 # 또는 수동으로 터미널을 나누어 시작
 # Terminal 1: Backend

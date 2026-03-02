@@ -11,7 +11,7 @@ CPET (Cardiopulmonary Exercise Test) Platform — Web application for metabolic 
 - `backend/` — Python 3.11 FastAPI + SQLAlchemy Async
 - `frontend/` — React 18 + TypeScript 5 + Vite + Shadcn UI
 - `docker-compose.yml` — PostgreSQL 15 + TimescaleDB
-- `run.py` — Dev launcher (backend + frontend)
+- `run.sh` — Dev launcher (DB via Docker, Backend + Frontend local)
 - `.claude/rules/` — Shared coding conventions
 
 ## Tech Stack & Key Dependencies
@@ -56,7 +56,10 @@ pnpm test && pnpm test:e2e
 
 ### Full Stack
 ```bash
-./dev.sh
+./run.sh              # 모든 서비스 (DB + Backend + Frontend)
+./run.sh db           # DB만 (Docker)
+./run.sh backend      # Backend만
+./run.sh frontend     # Frontend만
 ```
 
 ## Environment Setup
