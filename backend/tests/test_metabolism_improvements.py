@@ -915,5 +915,156 @@ class TestV120Integration:
         assert result.metabolic_markers.fat_max.mfo > 0
 
 
+class TestPowerBinningRounding:
+    """10. Power binning rounding fix (half-values should round UP, not banker's round)"""
+
+    def _make_exact_power_data(self, powers: list, bin_size: int = 10):
+        """Create breath data with exact power values for binning tests."""
+        data = []
+        for i, p in enumerate(powers):
+            data.append(
+                FakeBreathData(
+                    bike_power=float(p),
+                    fat_oxidation=0.4,
+                    cho_oxidation=0.3,
+                    rer=0.85,
+                    vo2=1500.0,
+                    vo2_rel=21.0,
+                    vco2=1275.0,
+                    hr=130.0,
+                    ve_vo2=25.0,
+                    ve_vco2=28.0,
+                    t_sec=float(60 + i * 10),
+                    phase="Exercise",
+                )
+            )
+        return data
+
+    def test_bin_size_10_half_values_round_up(self):
+        """bin_size=10: 25W->30W, 35W->40W, 45W->50W (not banker's rounding)"""
+        # Each half-value gets multiple data points to form its own bin
+        powers = [25.0] * 5 + [35.0] * 5 + [45.0] * 5
+        data = self._make_exact_power_data(powers, bin_size=10)
+
+        config = AnalysisConfig(
+            bin_size=10,
+            min_bin_count=1,
+            outlier_detection_enabled=False,
+            auto_trim_enabled=False,
+            physiological_cap_enabled=False,
+            sliding_median_enabled=False,
+            exclude_initial_hyperventilation=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+        raw_points = analyzer._extract_raw_points(data)
+        binned = analyzer._power_binning(raw_points)
+
+        bin_powers = sorted([p.power for p in binned])
+        # 25W -> 30W, 35W -> 40W, 45W -> 50W
+        assert 30.0 in bin_powers, f"25W should map to 30W bin, got bins: {bin_powers}"
+        assert 40.0 in bin_powers, f"35W should map to 40W bin, got bins: {bin_powers}"
+        assert 50.0 in bin_powers, f"45W should map to 50W bin, got bins: {bin_powers}"
+        # These should NOT appear (banker's rounding would put them here)
+        assert 20.0 not in bin_powers, f"20W bin should not exist, got bins: {bin_powers}"
+
+    def test_bin_size_5_half_values_round_up(self):
+        """bin_size=5: 22.5W->25W, 27.5W->30W"""
+        powers = [22.5] * 5 + [27.5] * 5
+        data = self._make_exact_power_data(powers, bin_size=5)
+
+        config = AnalysisConfig(
+            bin_size=5,
+            min_bin_count=1,
+            outlier_detection_enabled=False,
+            auto_trim_enabled=False,
+            physiological_cap_enabled=False,
+            sliding_median_enabled=False,
+            exclude_initial_hyperventilation=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+        raw_points = analyzer._extract_raw_points(data)
+        binned = analyzer._power_binning(raw_points)
+
+        bin_powers = sorted([p.power for p in binned])
+        assert 25.0 in bin_powers, f"22.5W should map to 25W bin, got bins: {bin_powers}"
+        assert 30.0 in bin_powers, f"27.5W should map to 30W bin, got bins: {bin_powers}"
+        # Banker's rounding would put 22.5 -> 20 (even) and 27.5 -> 28 (even)
+        assert 20.0 not in bin_powers, f"20W bin should not exist, got bins: {bin_powers}"
+
+    def test_bin_size_20_half_values_round_up(self):
+        """bin_size=20: 50W->60W, 70W->80W, 90W->100W"""
+        powers = [50.0] * 5 + [70.0] * 5 + [90.0] * 5
+        data = self._make_exact_power_data(powers, bin_size=20)
+
+        config = AnalysisConfig(
+            bin_size=20,
+            min_bin_count=1,
+            outlier_detection_enabled=False,
+            auto_trim_enabled=False,
+            physiological_cap_enabled=False,
+            sliding_median_enabled=False,
+            exclude_initial_hyperventilation=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+        raw_points = analyzer._extract_raw_points(data)
+        binned = analyzer._power_binning(raw_points)
+
+        bin_powers = sorted([p.power for p in binned])
+        # 50/20 = 2.5 -> floor(2.5+0.5)=3 -> 60W
+        assert 60.0 in bin_powers, f"50W should map to 60W bin, got bins: {bin_powers}"
+        # 70/20 = 3.5 -> floor(3.5+0.5)=4 -> 80W
+        assert 80.0 in bin_powers, f"70W should map to 80W bin, got bins: {bin_powers}"
+        # 90/20 = 4.5 -> floor(4.5+0.5)=5 -> 100W
+        assert 100.0 in bin_powers, f"90W should map to 100W bin, got bins: {bin_powers}"
+
+    def test_non_half_values_unchanged(self):
+        """Non-half values should still round to nearest bin correctly"""
+        # 42W -> 40W (42/10=4.2, floor(4.2+0.5)=4, 4*10=40)
+        # 48W -> 50W (48/10=4.8, floor(4.8+0.5)=5, 5*10=50)
+        # 50W -> 50W (exact bin)
+        powers = [42.0] * 5 + [48.0] * 5 + [50.0] * 5
+        data = self._make_exact_power_data(powers, bin_size=10)
+
+        config = AnalysisConfig(
+            bin_size=10,
+            min_bin_count=1,
+            outlier_detection_enabled=False,
+            auto_trim_enabled=False,
+            physiological_cap_enabled=False,
+            sliding_median_enabled=False,
+            exclude_initial_hyperventilation=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+        raw_points = analyzer._extract_raw_points(data)
+        binned = analyzer._power_binning(raw_points)
+
+        bin_powers = sorted([p.power for p in binned])
+        assert 40.0 in bin_powers, f"42W should map to 40W bin, got bins: {bin_powers}"
+        assert 50.0 in bin_powers, f"48W and 50W should map to 50W bin, got bins: {bin_powers}"
+
+    def test_bin_size_5_more_half_values(self):
+        """bin_size=5: additional half-value cases (2.5W->5W, 7.5W->10W, 12.5W->15W)"""
+        powers = [2.5] * 5 + [7.5] * 5 + [12.5] * 5
+        data = self._make_exact_power_data(powers, bin_size=5)
+
+        config = AnalysisConfig(
+            bin_size=5,
+            min_bin_count=1,
+            outlier_detection_enabled=False,
+            auto_trim_enabled=False,
+            physiological_cap_enabled=False,
+            sliding_median_enabled=False,
+            exclude_initial_hyperventilation=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+        raw_points = analyzer._extract_raw_points(data)
+        binned = analyzer._power_binning(raw_points)
+
+        bin_powers = sorted([p.power for p in binned])
+        assert 5.0 in bin_powers, f"2.5W should map to 5W bin, got bins: {bin_powers}"
+        assert 10.0 in bin_powers, f"7.5W should map to 10W bin, got bins: {bin_powers}"
+        assert 15.0 in bin_powers, f"12.5W should map to 15W bin, got bins: {bin_powers}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

@@ -12,7 +12,8 @@ from app.services.metabolism_analysis import AnalysisConfig, MetabolismAnalyzer
 
 # Algorithm version for reproducibility and future compatibility
 # Increment this when the calculation logic changes
-CURRENT_ALGORITHM_VERSION = "1.1.0"
+# 1.2.1: Fixed banker's rounding in _power_binning (half-values now round up)
+CURRENT_ALGORITHM_VERSION = "1.2.1"
 
 
 def _sort_series_by_time(series: Optional[List[Dict[str, Any]]]) -> Optional[List[Dict[str, Any]]]:

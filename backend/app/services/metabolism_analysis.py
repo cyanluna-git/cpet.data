@@ -832,8 +832,11 @@ class MetabolismAnalyzer:
         )
 
         # Power bin 할당
+        # NOTE: Python/pandas round() uses banker's rounding (round half to even),
+        # which causes half-values like 45W (bin_size=10) to round to 40W instead of 50W.
+        # Use floor(x + 0.5) to always round half-values up (standard rounding).
         bin_size = self.config.bin_size
-        df["power_bin"] = (df["power"] / bin_size).round() * bin_size
+        df["power_bin"] = np.floor(df["power"] / bin_size + 0.5) * bin_size
 
         # Sparse bin 병합: min_bin_count 미만인 bin을 가장 가까운 bin에 병합
         if self.config.min_bin_count > 1:

@@ -366,6 +366,113 @@ async def list_all_tests(
     )
 
 
+@router.post("/reprocess-all-metabolism")
+async def reprocess_all_metabolism(
+    admin_user: AdminUser,
+    db: DBSession,
+    dry_run: bool = Query(False, description="If true, count only without saving"),
+) -> dict:
+    """
+    [Admin] Reprocess ALL existing ProcessedMetabolism records.
+
+    Re-runs the analysis pipeline on every saved record using the current
+    algorithm version. This is needed after fixing calculation bugs
+    (e.g. banker's rounding fix in v1.2.1) to bring all stored results
+    up to date.
+
+    - **dry_run**: If true, just counts records without modifying anything.
+    """
+    from app.models import ProcessedMetabolism, BreathData
+    from app.services.processed_metabolism import ProcessedMetabolismService, CURRENT_ALGORITHM_VERSION
+    from app.services.metabolism_analysis import AnalysisConfig
+
+    # Find all ProcessedMetabolism records
+    result = await db.execute(select(ProcessedMetabolism))
+    all_records = list(result.scalars().all())
+
+    if not all_records:
+        return {
+            "message": "No ProcessedMetabolism records found",
+            "total": 0,
+            "reprocessed": 0,
+            "skipped": 0,
+            "failed": 0,
+            "algorithm_version": CURRENT_ALGORITHM_VERSION,
+        }
+
+    if dry_run:
+        return {
+            "message": f"Dry run: {len(all_records)} records would be reprocessed",
+            "total": len(all_records),
+            "reprocessed": 0,
+            "skipped": 0,
+            "failed": 0,
+            "dry_run": True,
+            "algorithm_version": CURRENT_ALGORITHM_VERSION,
+        }
+
+    reprocessed = 0
+    skipped = 0
+    failed = 0
+    errors = []
+
+    pm_service = ProcessedMetabolismService(db)
+
+    for record in all_records:
+        try:
+            # Fetch breath data for this test
+            breath_result = await db.execute(
+                select(BreathData)
+                .where(BreathData.test_id == record.cpet_test_id)
+                .order_by(BreathData.t_sec)
+            )
+            breath_data = list(breath_result.scalars().all())
+
+            if len(breath_data) < 10:
+                skipped += 1
+                continue
+
+            # Reconstruct config from saved record fields
+            config = AnalysisConfig(
+                bin_size=record.bin_size or 10,
+                aggregation_method=record.aggregation_method or "median",
+                loess_frac=record.loess_frac or 0.25,
+                exclude_rest=record.exclude_rest if record.exclude_rest is not None else True,
+                exclude_warmup=record.exclude_warmup if record.exclude_warmup is not None else True,
+                exclude_recovery=record.exclude_recovery if record.exclude_recovery is not None else True,
+                min_power_threshold=record.min_power_threshold,
+                trim_start_sec=record.trim_start_sec,
+                trim_end_sec=record.trim_end_sec,
+                fatmax_zone_threshold=record.fatmax_zone_threshold or 0.90,
+                auto_trim_enabled=(record.trim_start_sec is None and record.trim_end_sec is None),
+            )
+
+            await pm_service.save(
+                test_id=record.cpet_test_id,
+                breath_data=breath_data,
+                config=config,
+                is_manual_override=record.is_manual_override or False,
+            )
+            reprocessed += 1
+
+        except Exception as e:
+            failed += 1
+            errors.append({"test_id": str(record.cpet_test_id), "error": str(e)})
+
+    result_dict = {
+        "message": f"Reprocessed {reprocessed}/{len(all_records)} records",
+        "total": len(all_records),
+        "reprocessed": reprocessed,
+        "skipped": skipped,
+        "failed": failed,
+        "algorithm_version": CURRENT_ALGORITHM_VERSION,
+    }
+    if errors:
+        result_dict["errors"] = errors  # type: ignore[assignment]
+
+    return result_dict
+
+
 @router.patch("/tests/{test_id}/demographics")
 async def update_test_demographics(
     test_id: UUID,
