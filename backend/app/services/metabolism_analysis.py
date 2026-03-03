@@ -70,10 +70,10 @@ class ProcessedDataPoint:
 class FatMaxMarker:
     """FatMax 마커 정보"""
 
-    power: int  # FatMax 지점 파워 (W)
-    mfo: float  # Maximum Fat Oxidation (g/min)
-    zone_min: int  # FatMax zone 하한 (W)
-    zone_max: int  # FatMax zone 상한 (W)
+    power: Optional[int]  # FatMax 지점 파워 (W), None if no valid peak
+    mfo: Optional[float]  # Maximum Fat Oxidation (g/min), None if no valid peak
+    zone_min: Optional[int]  # FatMax zone 하한 (W), None if no valid peak
+    zone_max: Optional[int]  # FatMax zone 상한 (W), None if no valid peak
     mfo_ci_lower: Optional[float] = None  # Bootstrap 95% CI lower bound (g/min)
     mfo_ci_upper: Optional[float] = None  # Bootstrap 95% CI upper bound (g/min)
     power_ci_lower: Optional[int] = None  # Bootstrap 95% CI lower bound (W)
@@ -82,7 +82,7 @@ class FatMaxMarker:
     def to_dict(self) -> Dict[str, Any]:
         result = {
             "power": self.power,
-            "mfo": round(self.mfo, 4),
+            "mfo": round(self.mfo, 4) if self.mfo is not None else None,
             "zone_min": self.zone_min,
             "zone_max": self.zone_max,
         }
@@ -394,11 +394,13 @@ class MetabolismAnalyzer:
         # 4. Polynomial Trend Fit (binned 데이터에서 직접 계산하여 깔끔한 포물선 생성)
         trend_points = self._polynomial_fit(binned_points)
 
-        # 5. FatMax & Zone 계산
-        fatmax_marker = self._calculate_fatmax(smoothed_points)
+        # 5. FatMax & Zone 계산 (prefer trend over smoothed for frac-invariance)
+        fatmax_input = trend_points if trend_points else smoothed_points
+        fatmax_marker = self._calculate_fatmax(fatmax_input)
 
-        # 6. Crossover Point 계산
-        crossover_marker, all_crossovers = self._calculate_crossover(smoothed_points)
+        # 6. Crossover Point 계산 (prefer trend over smoothed for frac-invariance)
+        crossover_input = trend_points if trend_points else smoothed_points
+        crossover_marker, all_crossovers = self._calculate_crossover(crossover_input)
 
         return MetabolismAnalysisResult(
             processed_series=ProcessedSeries(
@@ -1309,36 +1311,56 @@ class MetabolismAnalyzer:
             return []
 
     def _calculate_fatmax(
-        self, smoothed_points: List[ProcessedDataPoint]
+        self, series_points: List[ProcessedDataPoint]
     ) -> FatMaxMarker:
         """
         FatMax (Maximum Fat Oxidation) 및 Zone 계산
 
         Args:
-            smoothed_points: Smoothed 데이터 포인트 리스트
+            series_points: Trend or smoothed 데이터 포인트 리스트
 
         Returns:
-            FatMaxMarker
+            FatMaxMarker (fields are None when no valid interior peak exists)
         """
-        if not smoothed_points:
-            return FatMaxMarker(power=0, mfo=0, zone_min=0, zone_max=0)
+        none_marker = FatMaxMarker(power=None, mfo=None, zone_min=None, zone_max=None)
+
+        if not series_points:
+            return none_marker
+
+        # All-negative fat check: if max fat oxidation <= 0, no valid FatMax
+        fat_values = [
+            p.fat_oxidation
+            for p in series_points
+            if p.fat_oxidation is not None
+        ]
+        if not fat_values:
+            return none_marker
+
+        max_fat_val = max(fat_values)
+        if max_fat_val <= 0:
+            return none_marker
+
+        # Monotone fat check: peak at boundary means no interior peak
+        peak_idx = fat_values.index(max_fat_val)
+        if peak_idx == 0 or peak_idx == len(fat_values) - 1:
+            return none_marker
 
         # MFO (Maximum Fat Oxidation) 찾기
         max_fat = 0.0
         max_fat_power = 0.0
-        for p in smoothed_points:
+        for p in series_points:
             if p.fat_oxidation is not None and p.fat_oxidation > max_fat:
                 max_fat = p.fat_oxidation
                 max_fat_power = p.power
 
         if max_fat == 0:
-            return FatMaxMarker(power=0, mfo=0, zone_min=0, zone_max=0)
+            return none_marker
 
         # FatMax Zone 계산 (MFO의 90% 이상 유지 구간)
         threshold = max_fat * self.config.fatmax_zone_threshold
         zone_powers = [
             p.power
-            for p in smoothed_points
+            for p in series_points
             if p.fat_oxidation is not None and p.fat_oxidation >= threshold
         ]
 
@@ -1357,15 +1379,15 @@ class MetabolismAnalyzer:
         )
 
         # Bootstrap confidence interval
-        if self.config.fatmax_confidence_interval and len(smoothed_points) >= 5:
+        if self.config.fatmax_confidence_interval and len(series_points) >= 5:
             try:
                 rng = np.random.default_rng(42)
-                n = len(smoothed_points)
+                n = len(series_points)
                 mfo_samples = []
                 power_samples = []
                 for _ in range(self.config.fatmax_bootstrap_iterations):
                     indices = rng.choice(n, size=n, replace=True)
-                    sample = [smoothed_points[i] for i in indices]
+                    sample = [series_points[i] for i in indices]
                     sample_max_fat = 0.0
                     sample_max_power = 0.0
                     for p in sample:
@@ -1386,7 +1408,7 @@ class MetabolismAnalyzer:
         return marker
 
     def _calculate_crossover(
-        self, smoothed_points: List[ProcessedDataPoint]
+        self, series_points: List[ProcessedDataPoint]
     ) -> Tuple[CrossoverMarker, Optional[List[CrossoverMarker]]]:
         """
         Crossover Point (FatOx = CHOOx 지점) 계산 - 다중 교차점 탐지
@@ -1395,27 +1417,27 @@ class MetabolismAnalyzer:
         가장 confidence가 높은 교차점을 primary로 반환.
 
         Args:
-            smoothed_points: Smoothed 데이터 포인트 리스트
+            series_points: Trend or smoothed 데이터 포인트 리스트
 
         Returns:
             Tuple of (primary CrossoverMarker, all_crossovers list or None)
         """
         empty = CrossoverMarker(power=None, fat_value=None, cho_value=None)
-        if len(smoothed_points) < 3:
+        if len(series_points) < 3:
             return empty, None
 
         # 데이터 추출
-        powers = np.array([p.power for p in smoothed_points])
+        powers = np.array([p.power for p in series_points])
         fat_ox = np.array(
             [
                 p.fat_oxidation if p.fat_oxidation is not None else 0
-                for p in smoothed_points
+                for p in series_points
             ]
         )
         cho_ox = np.array(
             [
                 p.cho_oxidation if p.cho_oxidation is not None else 0
-                for p in smoothed_points
+                for p in series_points
             ]
         )
 

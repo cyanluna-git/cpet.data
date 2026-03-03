@@ -1170,5 +1170,133 @@ class TestSlidingMedianTimeDomain:
         assert powers == sorted(powers)
 
 
+class TestFatMaxTrendBased:
+    """Tests for v1.2.3: FatMax/Crossover use polynomial trend instead of LOESS.
+
+    Verifies:
+    - LOESS frac parameter does not affect FatMax/Crossover results
+    - Monotone fat data returns FatMaxMarker with None fields
+    - All-negative fat data returns FatMaxMarker with None fields
+    - No-crossing data returns CrossoverMarker with None power
+    """
+
+    def test_frac_invariance(self):
+        """Same data with different LOESS frac produces identical FatMax/Crossover.
+
+        Since FatMax/Crossover now use polynomial trend (not LOESS),
+        changing loess_frac should not affect the marker results.
+        """
+        data = _make_breath_data(n=50, seed=123)
+
+        config_a = AnalysisConfig(loess_frac=0.15)
+        config_b = AnalysisConfig(loess_frac=0.25)
+        config_c = AnalysisConfig(loess_frac=0.40)
+
+        result_a = MetabolismAnalyzer(config=config_a).analyze(data)
+        result_b = MetabolismAnalyzer(config=config_b).analyze(data)
+        result_c = MetabolismAnalyzer(config=config_c).analyze(data)
+
+        assert result_a is not None
+        assert result_b is not None
+        assert result_c is not None
+
+        fm_a = result_a.metabolic_markers.fat_max
+        fm_b = result_b.metabolic_markers.fat_max
+        fm_c = result_c.metabolic_markers.fat_max
+
+        # FatMax markers must be identical across frac values
+        assert fm_a.power == fm_b.power == fm_c.power, (
+            f"FatMax power differs: {fm_a.power} vs {fm_b.power} vs {fm_c.power}"
+        )
+        assert fm_a.mfo == fm_b.mfo == fm_c.mfo, (
+            f"FatMax mfo differs: {fm_a.mfo} vs {fm_b.mfo} vs {fm_c.mfo}"
+        )
+
+        co_a = result_a.metabolic_markers.crossover
+        co_b = result_b.metabolic_markers.crossover
+        co_c = result_c.metabolic_markers.crossover
+
+        assert co_a.power == co_b.power == co_c.power, (
+            f"Crossover power differs: {co_a.power} vs {co_b.power} vs {co_c.power}"
+        )
+
+    def test_monotone_fat_returns_none(self):
+        """Fat oxidation monotonically increasing => no interior peak => FatMax=None."""
+        # Create data where fat always increases (peak at last point = boundary)
+        data = []
+        for i in range(30):
+            p = 30.0 + i * 10.0
+            fat = 0.1 + 0.02 * i  # Monotonically increasing
+            cho = 0.5 + 0.01 * i
+            data.append(
+                FakeBreathData(
+                    bike_power=p,
+                    fat_oxidation=fat,
+                    cho_oxidation=cho,
+                    t_sec=60.0 + i * 10.0,
+                    phase="Exercise",
+                )
+            )
+
+        config = AnalysisConfig()
+        result = MetabolismAnalyzer(config=config).analyze(data)
+        assert result is not None
+
+        fm = result.metabolic_markers.fat_max
+        assert fm.power is None, f"Expected None power for monotone fat, got {fm.power}"
+        assert fm.mfo is None, f"Expected None mfo for monotone fat, got {fm.mfo}"
+        assert fm.zone_min is None
+        assert fm.zone_max is None
+
+    def test_all_negative_fat_returns_none(self):
+        """All fat oxidation values <= 0 => FatMax=None."""
+        data = []
+        for i in range(30):
+            p = 30.0 + i * 10.0
+            fat = -0.1 - 0.01 * i  # All negative
+            cho = 0.5 + 0.02 * i
+            data.append(
+                FakeBreathData(
+                    bike_power=p,
+                    fat_oxidation=fat,
+                    cho_oxidation=cho,
+                    t_sec=60.0 + i * 10.0,
+                    phase="Exercise",
+                )
+            )
+
+        config = AnalysisConfig()
+        result = MetabolismAnalyzer(config=config).analyze(data)
+        assert result is not None
+
+        fm = result.metabolic_markers.fat_max
+        assert fm.power is None, f"Expected None for all-negative fat, got {fm.power}"
+        assert fm.mfo is None
+
+    def test_crossover_no_intersection_returns_none(self):
+        """Fat < CHO everywhere => no crossover => CrossoverMarker.power=None."""
+        data = []
+        for i in range(30):
+            p = 30.0 + i * 10.0
+            fat = 0.1  # Flat low
+            cho = 1.0 + 0.02 * i  # Always above fat
+            data.append(
+                FakeBreathData(
+                    bike_power=p,
+                    fat_oxidation=fat,
+                    cho_oxidation=cho,
+                    t_sec=60.0 + i * 10.0,
+                    phase="Exercise",
+                )
+            )
+
+        config = AnalysisConfig()
+        result = MetabolismAnalyzer(config=config).analyze(data)
+        assert result is not None
+
+        co = result.metabolic_markers.crossover
+        assert co.power is None, f"Expected None for no-crossing, got {co.power}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

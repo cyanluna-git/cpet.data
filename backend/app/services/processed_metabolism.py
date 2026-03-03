@@ -14,7 +14,8 @@ from app.services.metabolism_analysis import AnalysisConfig, MetabolismAnalyzer
 # Increment this when the calculation logic changes
 # 1.2.1: Fixed banker's rounding in _power_binning (half-values now round up)
 # 1.2.2: Sliding median sort key changed from power to t_sec (time-domain filtering)
-CURRENT_ALGORITHM_VERSION = "1.2.2"
+# 1.2.3: FatMax/Crossover now use polynomial trend instead of LOESS (frac-invariant)
+CURRENT_ALGORITHM_VERSION = "1.2.3"
 
 
 def _sort_series_by_time(series: Optional[List[Dict[str, Any]]]) -> Optional[List[Dict[str, Any]]]:
