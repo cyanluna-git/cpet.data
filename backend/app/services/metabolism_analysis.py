@@ -370,23 +370,24 @@ class MetabolismAnalyzer:
             self.warnings.append("Insufficient raw data points after extraction")
             return None
 
-        # 1.3. 생리학적 hard-cap 적용 (IQR 전에 극단값 무효화)
+        # 1.3. 생리학적 hard-cap 적용 (극단값 무효화)
         if self.config.physiological_cap_enabled:
             raw_points = self._apply_physiological_cap(raw_points)
 
-        # 1.5. IQR 기반 이상치 제거 (raw는 원본 유지, cleaned만 binning에 전달)
-        raw_points_clean = self._detect_and_remove_outliers(raw_points)
-
-        # 1.7. Sliding window median 필터 (IQR 후, binning 전)
+        # 1.5. Sliding window median 필터 (binning 전 노이즈 평활)
         if self.config.sliding_median_enabled:
-            raw_points_clean = self._apply_sliding_median(raw_points_clean)
+            raw_points = self._apply_sliding_median(raw_points)
 
         # 2. Power Binning
-        binned_points = self._power_binning(raw_points_clean)
+        binned_points = self._power_binning(raw_points)
 
         if len(binned_points) < 3:
             self.warnings.append("Insufficient binned data points")
             return None
+
+        # 2.5. Binned IQR outlier removal (upper bound on fat only)
+        if self.config.outlier_detection_enabled:
+            binned_points = self._apply_binned_iqr(binned_points)
 
         # 3. LOESS Smoothing
         smoothed_points = self._loess_smoothing(binned_points)
@@ -649,66 +650,36 @@ class MetabolismAnalyzer:
 
         return filtered
 
-    def _detect_and_remove_outliers(
-        self, raw_points: List[ProcessedDataPoint]
+    def _apply_binned_iqr(
+        self, binned_points: List[ProcessedDataPoint]
     ) -> List[ProcessedDataPoint]:
+        """Remove binned outliers using upper-bound IQR on fat_oxidation only.
+
+        Operates on aggregated bin values after power binning. Upper-bound only:
+        removes bins where fat_oxidation > Q3 + k*IQR.
         """
-        IQR 기반 이상치 탐지 및 제거
+        fat_values = [p.fat_oxidation for p in binned_points if p.fat_oxidation is not None]
+        if len(fat_values) < 4:
+            return binned_points  # Too few bins for meaningful IQR
 
-        fat_oxidation, cho_oxidation에 대해 IQR 계산 후
-        Q1 - k*IQR ~ Q3 + k*IQR 범위를 벗어나는 포인트 제거.
-        10개 미만이면 스킵 (데이터 부족 시 제거하면 안 됨).
+        q1, q3 = np.percentile(fat_values, [25, 75])
+        iqr = q3 - q1
+        if iqr == 0:
+            return binned_points  # All identical values, nothing to remove
 
-        Args:
-            raw_points: 원본 raw 데이터 포인트 리스트
+        upper_bound = q3 + self.config.outlier_iqr_multiplier * iqr
 
-        Returns:
-            이상치가 제거된 데이터 포인트 리스트
-        """
-        if not self.config.outlier_detection_enabled:
-            return raw_points
+        filtered = [p for p in binned_points
+                    if p.fat_oxidation is None or p.fat_oxidation <= upper_bound]
 
-        if len(raw_points) < 10:
-            return raw_points
-
-        k = self.config.outlier_iqr_multiplier
-        fat_vals = np.array([
-            p.fat_oxidation for p in raw_points if p.fat_oxidation is not None
-        ])
-        cho_vals = np.array([
-            p.cho_oxidation for p in raw_points if p.cho_oxidation is not None
-        ])
-
-        def iqr_bounds(vals):
-            if len(vals) < 4:
-                return -np.inf, np.inf
-            q1, q3 = np.percentile(vals, [25, 75])
-            iqr = q3 - q1
-            return q1 - k * iqr, q3 + k * iqr
-
-        fat_lo, fat_hi = iqr_bounds(fat_vals)
-        cho_lo, cho_hi = iqr_bounds(cho_vals)
-
-        cleaned = []
-        removed = 0
-        for p in raw_points:
-            fat_ok = p.fat_oxidation is None or (fat_lo <= p.fat_oxidation <= fat_hi)
-            cho_ok = p.cho_oxidation is None or (cho_lo <= p.cho_oxidation <= cho_hi)
-            if fat_ok and cho_ok:
-                cleaned.append(p)
-            else:
-                removed += 1
-
+        removed = len(binned_points) - len(filtered)
         if removed > 0:
             self.warnings.append(
-                f"Removed {removed} outlier(s) via IQR method (k={k})"
+                f"Removed {removed} outlier bin(s) via binned IQR (fat > {upper_bound:.3f})"
             )
-            logger.info(
-                f"🔧 [OUTLIER] Removed {removed}/{len(raw_points)} points "
-                f"(fat: [{fat_lo:.3f}, {fat_hi:.3f}], cho: [{cho_lo:.3f}, {cho_hi:.3f}])"
-            )
+            logger.debug(f"Binned IQR removed {removed} outlier bin(s) (fat > {upper_bound:.3f})")
 
-        return cleaned
+        return filtered
 
     def _apply_physiological_cap(
         self, raw_points: List[ProcessedDataPoint]

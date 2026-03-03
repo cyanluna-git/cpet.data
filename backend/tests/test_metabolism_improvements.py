@@ -102,25 +102,31 @@ def _make_breath_data_with_outliers(n=30, n_outliers=3, seed=42):
 
 
 class TestOutlierDetection:
-    """1. IQR-based outlier detection"""
+    """1. Binned IQR-based outlier detection (upper bound on fat only)"""
 
-    def test_outliers_removed(self):
-        """Outliers should be removed from clean data"""
-        data, outlier_indices = _make_breath_data_with_outliers(n=30, n_outliers=3)
+    def test_binned_iqr_removes_outlier_bin(self):
+        """Bins with extreme fat_oxidation should be removed by binned IQR"""
         config = AnalysisConfig(
             outlier_detection_enabled=True,
             outlier_iqr_multiplier=1.5,
-            auto_trim_enabled=False,
         )
         analyzer = MetabolismAnalyzer(config=config)
-        result = analyzer.analyze(data)
-        assert result is not None
-        # Warnings should mention outlier removal
-        outlier_warnings = [w for w in result.warnings if "outlier" in w.lower()]
-        assert len(outlier_warnings) > 0
+        # Create bins with one extreme fat outlier
+        bins = [
+            ProcessedDataPoint(power=50, fat_oxidation=0.3, cho_oxidation=0.2, count=5),
+            ProcessedDataPoint(power=60, fat_oxidation=0.35, cho_oxidation=0.25, count=5),
+            ProcessedDataPoint(power=70, fat_oxidation=0.4, cho_oxidation=0.3, count=5),
+            ProcessedDataPoint(power=80, fat_oxidation=0.38, cho_oxidation=0.35, count=5),
+            ProcessedDataPoint(power=90, fat_oxidation=0.32, cho_oxidation=0.4, count=5),
+            ProcessedDataPoint(power=100, fat_oxidation=5.0, cho_oxidation=0.45, count=5),  # outlier
+        ]
+        result = analyzer._apply_binned_iqr(bins)
+        # The extreme bin should be removed
+        assert len(result) < len(bins)
+        assert all(p.fat_oxidation <= 1.0 for p in result if p.fat_oxidation is not None)
 
     def test_outlier_disabled(self):
-        """When disabled, no outlier removal should occur"""
+        """When disabled, no outlier removal should occur in full pipeline"""
         data, _ = _make_breath_data_with_outliers(n=30, n_outliers=3)
         config = AnalysisConfig(
             outlier_detection_enabled=False,
@@ -132,22 +138,51 @@ class TestOutlierDetection:
         outlier_warnings = [w for w in result.warnings if "outlier" in w.lower()]
         assert len(outlier_warnings) == 0
 
-    def test_no_removal_when_few_points(self):
-        """Should skip outlier detection with < 10 data points"""
-        data = _make_breath_data(n=8)
-        data[0].fat_oxidation = 10.0  # Obvious outlier
-        config = AnalysisConfig(
-            outlier_detection_enabled=True,
-            auto_trim_enabled=False,
-        )
+    def test_no_removal_when_few_bins(self):
+        """Should skip binned IQR with < 4 bins"""
+        config = AnalysisConfig(outlier_detection_enabled=True)
         analyzer = MetabolismAnalyzer(config=config)
-        raw_points = analyzer._extract_raw_points(data)
-        cleaned = analyzer._detect_and_remove_outliers(raw_points)
-        # Should NOT remove (< 10 points)
-        assert len(cleaned) == len(raw_points)
+        bins = [
+            ProcessedDataPoint(power=50, fat_oxidation=0.3, cho_oxidation=0.2, count=5),
+            ProcessedDataPoint(power=60, fat_oxidation=0.4, cho_oxidation=0.3, count=5),
+            ProcessedDataPoint(power=70, fat_oxidation=5.0, cho_oxidation=0.4, count=5),  # would be outlier
+        ]
+        result = analyzer._apply_binned_iqr(bins)
+        # Should NOT remove anything (< 4 bins)
+        assert len(result) == 3
 
-    def test_raw_series_preserves_original(self):
-        """ProcessedSeries.raw should contain original data (after phase trim, before outlier removal)"""
+    def test_no_removal_when_iqr_zero(self):
+        """Should skip binned IQR when all fat values are identical (IQR=0)"""
+        config = AnalysisConfig(outlier_detection_enabled=True)
+        analyzer = MetabolismAnalyzer(config=config)
+        bins = [
+            ProcessedDataPoint(power=50, fat_oxidation=0.3, cho_oxidation=0.2, count=5),
+            ProcessedDataPoint(power=60, fat_oxidation=0.3, cho_oxidation=0.3, count=5),
+            ProcessedDataPoint(power=70, fat_oxidation=0.3, cho_oxidation=0.4, count=5),
+            ProcessedDataPoint(power=80, fat_oxidation=0.3, cho_oxidation=0.5, count=5),
+        ]
+        result = analyzer._apply_binned_iqr(bins)
+        # Should NOT remove anything (IQR = 0)
+        assert len(result) == 4
+
+    def test_fat_none_bins_kept(self):
+        """Bins with fat_oxidation=None should be kept (not removed)"""
+        config = AnalysisConfig(outlier_detection_enabled=True)
+        analyzer = MetabolismAnalyzer(config=config)
+        bins = [
+            ProcessedDataPoint(power=50, fat_oxidation=0.3, cho_oxidation=0.2, count=5),
+            ProcessedDataPoint(power=60, fat_oxidation=None, cho_oxidation=0.3, count=5),
+            ProcessedDataPoint(power=70, fat_oxidation=0.4, cho_oxidation=0.4, count=5),
+            ProcessedDataPoint(power=80, fat_oxidation=0.35, cho_oxidation=0.5, count=5),
+            ProcessedDataPoint(power=90, fat_oxidation=0.32, cho_oxidation=0.6, count=5),
+        ]
+        result = analyzer._apply_binned_iqr(bins)
+        # The None bin should still be present
+        none_bins = [p for p in result if p.fat_oxidation is None]
+        assert len(none_bins) == 1
+
+    def test_raw_points_not_filtered(self):
+        """Raw series should contain all points even when binned IQR removes outliers"""
         data, _ = _make_breath_data_with_outliers(n=30, n_outliers=3)
         config = AnalysisConfig(
             outlier_detection_enabled=True,
@@ -157,8 +192,49 @@ class TestOutlierDetection:
         analyzer = MetabolismAnalyzer(config=config)
         result = analyzer.analyze(data)
         assert result is not None
-        # raw should have all points from extraction (before outlier removal)
+        # raw should have all points (no pre-binning removal)
         assert len(result.processed_series.raw) == 30
+
+    def test_warning_generated_when_bin_removed(self):
+        """A warning message should be appended when binned IQR removes at least one bin"""
+        config = AnalysisConfig(
+            outlier_detection_enabled=True,
+            outlier_iqr_multiplier=1.5,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+        bins = [
+            ProcessedDataPoint(power=50, fat_oxidation=0.3, cho_oxidation=0.2, count=5),
+            ProcessedDataPoint(power=60, fat_oxidation=0.35, cho_oxidation=0.25, count=5),
+            ProcessedDataPoint(power=70, fat_oxidation=0.4, cho_oxidation=0.3, count=5),
+            ProcessedDataPoint(power=80, fat_oxidation=0.38, cho_oxidation=0.35, count=5),
+            ProcessedDataPoint(power=90, fat_oxidation=0.32, cho_oxidation=0.4, count=5),
+            ProcessedDataPoint(power=100, fat_oxidation=5.0, cho_oxidation=0.45, count=5),  # outlier
+        ]
+        analyzer.warnings = []
+        result = analyzer._apply_binned_iqr(bins)
+        assert len(result) < len(bins), "Outlier bin should have been removed"
+        iqr_warnings = [w for w in analyzer.warnings if "outlier bin" in w.lower() or "iqr" in w.lower()]
+        assert len(iqr_warnings) >= 1, "Warning should be added when a bin is removed"
+
+    def test_cho_extreme_does_not_remove_bin(self):
+        """Bins with extreme cho_oxidation but normal fat_oxidation must NOT be removed"""
+        config = AnalysisConfig(
+            outlier_detection_enabled=True,
+            outlier_iqr_multiplier=1.5,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+        bins = [
+            ProcessedDataPoint(power=50, fat_oxidation=0.3, cho_oxidation=0.2, count=5),
+            ProcessedDataPoint(power=60, fat_oxidation=0.35, cho_oxidation=0.25, count=5),
+            ProcessedDataPoint(power=70, fat_oxidation=0.4, cho_oxidation=0.3, count=5),
+            ProcessedDataPoint(power=80, fat_oxidation=0.38, cho_oxidation=0.35, count=5),
+            ProcessedDataPoint(power=90, fat_oxidation=0.32, cho_oxidation=99.9, count=5),  # extreme CHO
+        ]
+        result = analyzer._apply_binned_iqr(bins)
+        # All 5 bins should be kept — CHO is not filtered
+        assert len(result) == 5, "Bins with extreme CHO but normal fat must not be removed"
+        extreme_cho_bins = [p for p in result if p.cho_oxidation == 99.9]
+        assert len(extreme_cho_bins) == 1, "The extreme CHO bin should still be present"
 
 
 class TestSparseBinMerging:
@@ -602,9 +678,10 @@ class TestEndToEnd:
         analyzer = MetabolismAnalyzer(config=config)
         result = analyzer.analyze(data)
         assert result is not None
-        # Should have removed some outliers
-        outlier_warnings = [w for w in result.warnings if "outlier" in w.lower()]
-        assert len(outlier_warnings) > 0
+        # Extreme values are handled by physiological cap and/or binned IQR
+        # Pipeline should produce valid results regardless
+        assert len(result.processed_series.binned) >= 3
+        assert len(result.processed_series.smoothed) >= 3
 
 
 class TestPhysiologicalCap:

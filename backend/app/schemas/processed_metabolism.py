@@ -55,7 +55,7 @@ class MetabolismConfig(BaseModel):
 
     # v1.1.0: Outlier detection
     outlier_detection_enabled: bool = Field(
-        default=True, description="Enable IQR-based outlier detection"
+        default=True, description="Enable IQR-based outlier detection on binned data (upper bound on fat only)"
     )
     outlier_iqr_multiplier: float = Field(
         default=1.5, ge=1.0, le=3.0, description="IQR multiplier for outlier bounds"
