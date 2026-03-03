@@ -35,12 +35,13 @@ def _sort_series_by_time(series: Optional[List[Dict[str, Any]]]) -> Optional[Lis
     if not series:
         return series
 
-    # Determine sort key: prefer t_sec, fallback to power
-    if "t_sec" in series[0]:
-        return sorted(series, key=lambda x: x.get("t_sec", 0))
+    # Determine sort key: prefer t_sec (if values are non-None), fallback to power
+    # Note: t_sec key is always present in dicts (may be None for binned/smoothed/trend)
+    if series[0].get("t_sec") is not None:
+        return sorted(series, key=lambda x: x.get("t_sec") or 0)
     elif "power" in series[0]:
         # For binned/smoothed/trend series that use power as x-axis
-        return sorted(series, key=lambda x: x.get("power", 0))
+        return sorted(series, key=lambda x: x.get("power") or 0)
 
     return series
 
