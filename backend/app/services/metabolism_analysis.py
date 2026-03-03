@@ -51,12 +51,23 @@ class ProcessedDataPoint:
     ve_vco2: Optional[float] = None  # VE/VCO2 for VT Analysis chart
     t_sec: Optional[float] = None  # Time in seconds for time-domain filtering
 
-    def to_dict(self) -> Dict[str, Any]:
-        """모든 필드를 항상 포함하여 프론트엔드에서 키 존재 여부 체크가 가능하도록 함"""
+    def to_dict(self, clamp: bool = False) -> Dict[str, Any]:
+        """모든 필드를 항상 포함하여 프론트엔드에서 키 존재 여부 체크가 가능하도록 함
+
+        Args:
+            clamp: True이면 fat_oxidation/cho_oxidation을 max(0, v)로 클램핑 (시각화용)
+        """
+        fat = self.fat_oxidation
+        cho = self.cho_oxidation
+        if clamp:
+            if fat is not None:
+                fat = max(0.0, fat)
+            if cho is not None:
+                cho = max(0.0, cho)
         return {
             "power": self.power,
-            "fat_oxidation": self.fat_oxidation,
-            "cho_oxidation": self.cho_oxidation,
+            "fat_oxidation": fat,
+            "cho_oxidation": cho,
             "count": self.count,
             "vo2": self.vo2,
             "vo2_rel": self.vo2_rel,
@@ -154,10 +165,10 @@ class ProcessedSeries:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "raw": [p.to_dict() for p in self.raw],
-            "binned": [p.to_dict() for p in self.binned],
-            "smoothed": [p.to_dict() for p in self.smoothed],
-            "trend": [p.to_dict() for p in self.trend],  # 항상 포함 (빈 리스트도 포함)
+            "raw": [p.to_dict(clamp=True) for p in self.raw],
+            "binned": [p.to_dict(clamp=True) for p in self.binned],
+            "smoothed": [p.to_dict(clamp=True) for p in self.smoothed],
+            "trend": [p.to_dict(clamp=True) for p in self.trend],  # 항상 포함 (빈 리스트도 포함)
         }
 
 
@@ -215,7 +226,7 @@ class AnalysisConfig:
     exclude_recovery: bool = True
     min_power_threshold: Optional[int] = None  # e.g., 50W 미만 제외
     max_power_threshold: Optional[int] = None  # e.g., 400W 초과 제외
-    non_negative_constraint: bool = True  # 음수 값 0으로 클램핑
+    non_negative_constraint: bool = False  # deprecated: 클램핑은 to_dict(clamp=True)에서 처리
     # Initial hyperventilation filtering (RER spike at start)
     exclude_initial_hyperventilation: bool = True
     initial_time_threshold: float = 120.0  # seconds - first 2 minutes
@@ -994,13 +1005,6 @@ class MetabolismAnalyzer:
             ve_vo2_val = float(row["ve_vo2"]) if pd.notna(row["ve_vo2"]) else None
             ve_vco2_val = float(row["ve_vco2"]) if pd.notna(row["ve_vco2"]) else None
 
-            # Non-negative constraint (for oxidation values only)
-            if self.config.non_negative_constraint:
-                if fat_ox is not None:
-                    fat_ox = max(0.0, fat_ox)
-                if cho_ox is not None:
-                    cho_ox = max(0.0, cho_ox)
-
             binned_points.append(
                 ProcessedDataPoint(
                     power=float(row["power_bin"]),
@@ -1138,11 +1142,6 @@ class MetabolismAnalyzer:
                     fat_val = 0.0
                 if math.isnan(cho_val) or math.isinf(cho_val):
                     cho_val = 0.0
-
-                # Non-negative constraint for oxidation values
-                if self.config.non_negative_constraint:
-                    fat_val = max(0.0, fat_val)
-                    cho_val = max(0.0, cho_val)
 
                 smoothed_points.append(
                     ProcessedDataPoint(
@@ -1334,11 +1333,6 @@ class MetabolismAnalyzer:
             for p in trend_powers:
                 fat_val = eval_poly(fat_poly, p, default=0.0)
                 cho_val = eval_poly(cho_poly, p, default=0.0)
-
-                # Non-negative constraint for oxidation values
-                if self.config.non_negative_constraint:
-                    fat_val = max(0.0, fat_val)
-                    cho_val = max(0.0, cho_val)
 
                 trend_points.append(
                     ProcessedDataPoint(
@@ -1536,10 +1530,6 @@ class MetabolismAnalyzer:
                 p_min, p_max = s_powers.min(), s_powers.max()
                 eval_powers = np.linspace(p_min, p_max, max(50, int(p_max - p_min)))
                 eval_fat = poly(eval_powers)
-
-                # Non-negative constraint
-                if self.config.non_negative_constraint:
-                    eval_fat = np.maximum(0.0, eval_fat)
 
                 # Find peak (interior only)
                 peak_idx = int(np.argmax(eval_fat))
