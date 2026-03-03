@@ -237,7 +237,7 @@ class AnalysisConfig:
     adaptive_polynomial: bool = True
     # v1.1.0: FatMax bootstrap confidence interval
     fatmax_confidence_interval: bool = False  # Default off (computational cost)
-    fatmax_bootstrap_iterations: int = 500
+    fatmax_bootstrap_iterations: int = 200
     # v1.2.0: VO2max segment window (for HYBRID protocol)
     vo2max_start_sec: Optional[float] = None
     vo2max_end_sec: Optional[float] = None
@@ -398,6 +398,10 @@ class MetabolismAnalyzer:
         # 5. FatMax & Zone 계산 (prefer trend over smoothed for frac-invariance)
         fatmax_input = trend_points if trend_points else smoothed_points
         fatmax_marker = self._calculate_fatmax(fatmax_input)
+
+        # 5.5. Bootstrap CI for FatMax (resample from binned_points)
+        if self.config.fatmax_confidence_interval and binned_points:
+            self._calculate_fatmax_bootstrap_ci(binned_points, fatmax_marker)
 
         # 6. Crossover Point 계산 (prefer trend over smoothed for frac-invariance)
         crossover_input = trend_points if trend_points else smoothed_points
@@ -1349,34 +1353,128 @@ class MetabolismAnalyzer:
             zone_max=int(round(zone_max)),
         )
 
-        # Bootstrap confidence interval
-        if self.config.fatmax_confidence_interval and len(series_points) >= 5:
-            try:
-                rng = np.random.default_rng(42)
-                n = len(series_points)
-                mfo_samples = []
-                power_samples = []
-                for _ in range(self.config.fatmax_bootstrap_iterations):
-                    indices = rng.choice(n, size=n, replace=True)
-                    sample = [series_points[i] for i in indices]
-                    sample_max_fat = 0.0
-                    sample_max_power = 0.0
-                    for p in sample:
-                        if p.fat_oxidation is not None and p.fat_oxidation > sample_max_fat:
-                            sample_max_fat = p.fat_oxidation
-                            sample_max_power = p.power
-                    mfo_samples.append(sample_max_fat)
-                    power_samples.append(sample_max_power)
-                mfo_arr = np.array(mfo_samples)
-                power_arr = np.array(power_samples)
-                marker.mfo_ci_lower = float(np.percentile(mfo_arr, 2.5))
-                marker.mfo_ci_upper = float(np.percentile(mfo_arr, 97.5))
-                marker.power_ci_lower = int(round(np.percentile(power_arr, 2.5)))
-                marker.power_ci_upper = int(round(np.percentile(power_arr, 97.5)))
-            except Exception as e:
-                self.warnings.append(f"FatMax bootstrap CI failed: {str(e)}")
-
         return marker
+
+    def _calculate_fatmax_bootstrap_ci(
+        self,
+        binned_points: List[ProcessedDataPoint],
+        marker: FatMaxMarker,
+    ) -> None:
+        """
+        Bootstrap CI for FatMax marker using binned data resampling.
+
+        Each iteration:
+        1. Resample binned_points with replacement
+        2. Sort by power
+        3. Apply LOESS smoothing (same adaptive frac as main pipeline)
+        4. Apply polynomial fit on LOESS output (degree 4)
+        5. Find FatMax on polynomial trend
+        6. Exclude iterations where FatMax is None
+
+        Mutates marker in-place: sets mfo_ci_lower/upper, power_ci_lower/upper.
+
+        Args:
+            binned_points: Binned data points (resampling source)
+            marker: FatMaxMarker to update with CI fields
+        """
+        if len(binned_points) < 3:
+            return
+
+        try:
+            rng = np.random.default_rng(42)
+            n = len(binned_points)
+            mfo_samples = []
+            power_samples = []
+
+            for _ in range(self.config.fatmax_bootstrap_iterations):
+                # 1. Resample binned_points with replacement
+                indices = rng.choice(n, size=n, replace=True)
+                sample = sorted(
+                    [binned_points[i] for i in indices],
+                    key=lambda p: p.power,
+                )
+
+                if len(sample) < 3:
+                    continue
+
+                # 2. Apply LOESS smoothing (fat_oxidation only, same adaptive frac)
+                powers = np.array([p.power for p in sample])
+                fat_ox = np.array(
+                    [
+                        p.fat_oxidation if p.fat_oxidation is not None else 0
+                        for p in sample
+                    ]
+                )
+
+                # Deduplicate powers for LOESS (average fat_ox at same power)
+                unique_powers, inv_idx = np.unique(powers, return_inverse=True)
+                if len(unique_powers) < 3:
+                    continue
+                avg_fat = np.zeros(len(unique_powers))
+                counts = np.zeros(len(unique_powers))
+                for i, idx in enumerate(inv_idx):
+                    avg_fat[idx] += fat_ox[i]
+                    counts[idx] += 1
+                avg_fat /= counts
+                powers = unique_powers
+                fat_ox = avg_fat
+
+                if HAS_STATSMODELS and len(powers) >= 4:
+                    # Adaptive frac (same logic as _loess_smoothing)
+                    if self.config.adaptive_loess:
+                        frac = max(0.15, min(0.5, 4.0 / len(powers)))
+                    else:
+                        frac = self.config.loess_frac
+                    frac = min(frac, (len(powers) - 1) / len(powers))
+                    frac = max(frac, 0.15)
+
+                    smoothed = lowess(fat_ox, powers, frac=frac, return_sorted=True)
+                    s_powers = smoothed[:, 0]
+                    s_fat = smoothed[:, 1]
+                else:
+                    s_powers = powers
+                    s_fat = fat_ox
+
+                # 3. Polynomial fit on LOESS output (degree 4, capped by n-1)
+                degree = min(4, len(s_powers) - 1)
+                if degree < 1:
+                    continue
+                coeffs = np.polyfit(s_powers, s_fat, degree)
+                poly = np.poly1d(coeffs)
+
+                # 4. Evaluate polynomial on fine grid and find FatMax
+                p_min, p_max = s_powers.min(), s_powers.max()
+                eval_powers = np.linspace(p_min, p_max, max(50, int(p_max - p_min)))
+                eval_fat = poly(eval_powers)
+
+                # Non-negative constraint
+                if self.config.non_negative_constraint:
+                    eval_fat = np.maximum(0.0, eval_fat)
+
+                # Find peak (interior only)
+                peak_idx = int(np.argmax(eval_fat))
+                if peak_idx == 0 or peak_idx == len(eval_fat) - 1:
+                    continue  # boundary peak → no valid FatMax
+                peak_fat = float(eval_fat[peak_idx])
+                if peak_fat <= 0:
+                    continue
+
+                peak_power = float(eval_powers[peak_idx])
+                mfo_samples.append(peak_fat)
+                power_samples.append(peak_power)
+
+            if not mfo_samples:
+                return
+
+            mfo_arr = np.array(mfo_samples)
+            power_arr = np.array(power_samples)
+            marker.mfo_ci_lower = float(np.percentile(mfo_arr, 2.5))
+            marker.mfo_ci_upper = float(np.percentile(mfo_arr, 97.5))
+            marker.power_ci_lower = int(round(np.percentile(power_arr, 2.5)))
+            marker.power_ci_upper = int(round(np.percentile(power_arr, 97.5)))
+
+        except Exception as e:
+            self.warnings.append(f"FatMax bootstrap CI failed: {str(e)}")
 
     def _calculate_crossover(
         self, series_points: List[ProcessedDataPoint]

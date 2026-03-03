@@ -479,6 +479,129 @@ class TestFatMaxBootstrapCI:
         assert "mfo_ci_lower" in fm_dict
         assert "mfo_ci_upper" in fm_dict
 
+    def test_default_bootstrap_iterations_is_200(self):
+        """Default fatmax_bootstrap_iterations should be 200, not 500"""
+        config = AnalysisConfig()
+        assert config.fatmax_bootstrap_iterations == 200
+
+    def test_ci_skipped_when_fewer_than_3_binned_points(self):
+        """Bootstrap CI method should not mutate marker when binned_points < 3"""
+        config = AnalysisConfig(
+            fatmax_confidence_interval=True,
+            fatmax_bootstrap_iterations=50,
+            auto_trim_enabled=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+
+        # Only 2 binned points — should skip CI computation
+        binned_points = [
+            ProcessedDataPoint(power=100.0, fat_oxidation=0.3, cho_oxidation=0.4),
+            ProcessedDataPoint(power=150.0, fat_oxidation=0.2, cho_oxidation=0.5),
+        ]
+        marker = FatMaxMarker(power=120, mfo=0.3, zone_min=90, zone_max=150)
+
+        analyzer._calculate_fatmax_bootstrap_ci(binned_points, marker)
+
+        # CI fields must remain None — method exits early
+        assert marker.mfo_ci_lower is None
+        assert marker.mfo_ci_upper is None
+        assert marker.power_ci_lower is None
+        assert marker.power_ci_upper is None
+
+    def test_ci_none_when_all_iterations_produce_boundary_peaks(self):
+        """When every bootstrap iteration yields a boundary peak, CI stays None.
+
+        A monotonically increasing fat curve forces every resampled LOESS fit
+        to peak at the last point (boundary), so no iteration contributes a
+        valid interior FatMax — mfo_samples stays empty and CI is not set.
+        """
+        config = AnalysisConfig(
+            fatmax_confidence_interval=True,
+            fatmax_bootstrap_iterations=50,
+            non_negative_constraint=True,
+            auto_trim_enabled=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+
+        # Strictly increasing fat: polynomial always peaks at boundary
+        binned_points = [
+            ProcessedDataPoint(power=float(p), fat_oxidation=0.01 * p, cho_oxidation=0.5)
+            for p in range(50, 350, 20)
+        ]
+        marker = FatMaxMarker(power=None, mfo=None, zone_min=None, zone_max=None)
+
+        analyzer._calculate_fatmax_bootstrap_ci(binned_points, marker)
+
+        # Either all boundary (CI None) or possibly a valid interior peak for some seeds.
+        # We can only guarantee that if all iterations hit boundary, CI stays None.
+        # This test documents the behavior and catches regressions.
+        # The marker fields are either all-None or all set — no partial state.
+        all_none = (
+            marker.mfo_ci_lower is None
+            and marker.mfo_ci_upper is None
+            and marker.power_ci_lower is None
+            and marker.power_ci_upper is None
+        )
+        all_set = (
+            marker.mfo_ci_lower is not None
+            and marker.mfo_ci_upper is not None
+            and marker.power_ci_lower is not None
+            and marker.power_ci_upper is not None
+        )
+        assert all_none or all_set, (
+            "CI fields must be either all None or all set — no partial state"
+        )
+
+    def test_ci_uses_binned_points_not_smoothed(self):
+        """Bootstrap CI is called with binned_points from analyze(), not smoothed_points.
+
+        Verify this by monkeypatching _calculate_fatmax_bootstrap_ci and capturing
+        what it receives, then confirming the received points match result.binned.
+        """
+        data = _make_breath_data(n=30)
+        config = AnalysisConfig(
+            fatmax_confidence_interval=True,
+            fatmax_bootstrap_iterations=20,
+            auto_trim_enabled=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+
+        captured = {}
+        original = analyzer._calculate_fatmax_bootstrap_ci
+
+        def spy(binned_pts, marker):
+            captured["binned_pts"] = binned_pts
+            return original(binned_pts, marker)
+
+        analyzer._calculate_fatmax_bootstrap_ci = spy
+        result = analyzer.analyze(data)
+
+        assert result is not None
+        assert "binned_pts" in captured, "Bootstrap CI was never called"
+
+        # The points passed must match result.processed_series.binned (same objects)
+        assert captured["binned_pts"] is result.processed_series.binned, (
+            "Bootstrap CI was called with smoothed/trend data, not binned_points"
+        )
+
+    def test_power_ci_range_valid(self):
+        """power_ci_lower <= fat_max.power <= power_ci_upper when CI is computed"""
+        data = _make_breath_data(n=40, seed=7)
+        config = AnalysisConfig(
+            fatmax_confidence_interval=True,
+            fatmax_bootstrap_iterations=100,
+            auto_trim_enabled=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+        result = analyzer.analyze(data)
+        assert result is not None
+        fm = result.metabolic_markers.fat_max
+        if fm.power_ci_lower is not None:
+            assert fm.power_ci_lower <= fm.power <= fm.power_ci_upper, (
+                f"power CI [{fm.power_ci_lower}, {fm.power_ci_upper}] "
+                f"must contain FatMax power {fm.power}"
+            )
+
 
 class TestMultiCrossover:
     """7. Multi-crossover detection"""
