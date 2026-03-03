@@ -22,6 +22,9 @@ from scipy.stats import trim_mean
 
 logger = logging.getLogger(__name__)
 
+# Threshold for warning when time-window trim and phase trim boundaries diverge
+MISMATCH_WARNING_THRESHOLD_SEC = 30
+
 try:
     from statsmodels.nonparametric.smoothers_lowess import lowess
 
@@ -339,11 +342,22 @@ class MetabolismAnalyzer:
         self.warnings = []
         trim_range = None
 
+        # --- Trim priority rules ---
+        # 1. Manual trim (trim_start_sec/trim_end_sec set): time-window ONLY.
+        #    Phase trimming is fully disabled so the user-specified range is
+        #    preserved without algorithmic interference.
+        # 2. Auto trim (both None): time-window AND phase trimming applied
+        #    (intersection). A warning is emitted when boundaries diverge by
+        #    >= MISMATCH_WARNING_THRESHOLD_SEC.
+        manual_trim = (
+            self.config.trim_start_sec is not None
+            or self.config.trim_end_sec is not None
+        )
+
         # 0. Time-based analysis window trimming (before phase filtering)
         if (
             self.config.auto_trim_enabled
-            or self.config.trim_start_sec is not None
-            or self.config.trim_end_sec is not None
+            or manual_trim
         ):
             breath_data, trim_range = self._detect_analysis_window(breath_data)
             if trim_range:
@@ -355,7 +369,20 @@ class MetabolismAnalyzer:
         breath_data = self._fill_missing_oxidation(breath_data)
 
         # Phase trimming: 구간별 제외 옵션 적용
-        filtered_data = self._apply_phase_trimming(breath_data)
+        # Skipped when manual trim is active (user-specified range takes priority)
+        if manual_trim:
+            # Manual trim mode: skip phase trimming entirely.
+            # Still apply required-field and power-threshold filters only.
+            filtered_data = self._apply_phase_trimming_minimal(breath_data)
+            logger.info(
+                "🔧 [PHASE_TRIM] Skipped — manual trim_start/end overrides phase trimming"
+            )
+        else:
+            filtered_data = self._apply_phase_trimming(breath_data)
+            # Boundary mismatch warning: compare time-window start with
+            # phase warmup end to flag divergence in auto trim mode.
+            if trim_range is not None:
+                self._check_trim_phase_mismatch(breath_data, trim_range)
 
         if len(filtered_data) < 10:
             self.warnings.append(
@@ -653,6 +680,69 @@ class MetabolismAnalyzer:
             logger.warning(f"🔍 [PHASE_TRIM] Output: 0 points (all filtered out)")
 
         return filtered
+
+    def _apply_phase_trimming_minimal(self, breath_data: List[Any]) -> List[Any]:
+        """Minimal filtering when manual trim overrides phase trimming.
+
+        Only applies required-field checks and power-threshold filters.
+        Phase labels (Rest, Warmup, Recovery) are intentionally kept so the
+        user-specified analysis window is not further narrowed.
+        """
+        filtered = []
+        for bd in breath_data:
+            # Required field check (same as full phase trimming)
+            if (
+                bd.bike_power is None
+                or bd.fat_oxidation is None
+                or bd.cho_oxidation is None
+            ):
+                continue
+
+            # Power threshold filtering
+            if self.config.min_power_threshold is not None:
+                if bd.bike_power < self.config.min_power_threshold:
+                    continue
+            if self.config.max_power_threshold is not None:
+                if bd.bike_power > self.config.max_power_threshold:
+                    continue
+
+            filtered.append(bd)
+        return filtered
+
+    def _check_trim_phase_mismatch(
+        self, breath_data: List[Any], trim_range: TrimRange
+    ) -> None:
+        """Detect boundary divergence between time-window trim and phase warmup.
+
+        In auto trim mode, compare the time-window start with the end of the
+        warmup phase. If the gap is >= MISMATCH_WARNING_THRESHOLD_SEC, emit a
+        warning to both analysis_warnings and the server log.
+        """
+        # Find the last warmup breath's time (warmup end boundary)
+        warmup_end_sec: Optional[float] = None
+        for bd in breath_data:
+            phase = getattr(bd, "phase", None) or ""
+            t_sec = getattr(bd, "t_sec", None)
+            if t_sec is not None and phase.lower() in (
+                "warmup",
+                "warm-up",
+                "warm_up",
+            ):
+                if warmup_end_sec is None or t_sec > warmup_end_sec:
+                    warmup_end_sec = t_sec
+
+        if warmup_end_sec is None:
+            return  # No warmup phase — nothing to compare
+
+        diff = abs(trim_range.start_sec - warmup_end_sec)
+        if diff >= MISMATCH_WARNING_THRESHOLD_SEC:
+            msg = (
+                f"Trim boundary mismatch: time-window start ({trim_range.start_sec:.1f}s) "
+                f"differs from warmup phase end ({warmup_end_sec:.1f}s) by {diff:.1f}s "
+                f"(threshold={MISMATCH_WARNING_THRESHOLD_SEC}s)"
+            )
+            self.warnings.append(msg)
+            logger.warning(f"⚠️ [TRIM] {msg}")
 
     def _apply_binned_iqr(
         self, binned_points: List[ProcessedDataPoint]
