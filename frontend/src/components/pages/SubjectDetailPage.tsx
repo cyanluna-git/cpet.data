@@ -254,6 +254,14 @@ export function SubjectDetailPage({ user, subjectId, onLogout, onNavigate }: Sub
                                 <CheckCircle2 className="w-3 h-3" />
                                 v{test.last_analysis_version || '1.0.0'}
                               </Badge>
+                            ) : test.processing_status === 'failed' ? (
+                              <Badge
+                                variant="outline"
+                                className="bg-red-50 text-red-600 border-red-200 text-xs gap-1"
+                                title="데이터 부족으로 분석 불가"
+                              >
+                                분석 불가
+                              </Badge>
                             ) : (
                               <Badge
                                 variant="secondary"

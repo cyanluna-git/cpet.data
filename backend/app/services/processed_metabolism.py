@@ -106,6 +106,8 @@ class ProcessedMetabolismService:
         # Calculate analysis
         analysis_result = self._calculate_analysis(breath_data, config)
         if analysis_result is None:
+            await self._sync_parent_test_on_failure(test_id, "Analysis failed - insufficient data")
+            await self.db.commit()
             raise ValueError("Analysis failed - insufficient data")
 
         # Check for existing record (upsert logic)
@@ -296,3 +298,18 @@ class ProcessedMetabolismService:
             test.processing_status = "none"
             test.last_analysis_version = None
             test.analysis_saved_at = None
+
+    async def _sync_parent_test_on_failure(self, test_id: UUID, error_msg: str) -> None:
+        """
+        Sync denormalized processing status to parent CPETTest on analysis failure.
+
+        Sets:
+            - processing_status = 'failed'
+        Note: last_analysis_version / analysis_saved_at are left unchanged.
+        """
+        result = await self.db.execute(
+            select(CPETTest).where(CPETTest.test_id == test_id)
+        )
+        test = result.scalar_one_or_none()
+        if test:
+            test.processing_status = "failed"

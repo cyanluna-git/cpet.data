@@ -129,7 +129,7 @@ export interface CPETTest {
   hr_max?: number;
   created_at: string;
   // Processing status (denormalized from processed_metabolism)
-  processing_status?: "none" | "complete";
+  processing_status?: "none" | "complete" | "failed";
   last_analysis_version?: string;
   analysis_saved_at?: string;
 }

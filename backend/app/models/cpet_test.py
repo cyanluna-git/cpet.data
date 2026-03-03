@@ -106,7 +106,7 @@ class CPETTest(Base):
     # Processing status (denormalized from processed_metabolism for list performance)
     processing_status: Mapped[str] = mapped_column(
         String(20), default="none", nullable=False
-    )  # 'none', 'complete'
+    )  # 'none', 'complete', 'failed'
     last_analysis_version: Mapped[Optional[str]] = mapped_column(
         String(20), nullable=True
     )  # Algorithm version (e.g., '1.0.0')

@@ -56,7 +56,7 @@ interface AdminTestRow {
   vo2_max?: number;
   fat_max_watt?: number;
   // Processing status (denormalized from processed_metabolism)
-  processing_status?: "none" | "complete";
+  processing_status?: "none" | "complete" | "failed";
   last_analysis_version?: string;
   analysis_saved_at?: string;
 }
@@ -637,6 +637,13 @@ export function AdminDataPage({
                                       >
                                         <CheckCircle2 className="w-3 h-3" />v
                                         {test.last_analysis_version || "1.0.0"}
+                                      </span>
+                                    ) : test.processing_status === "failed" ? (
+                                      <span
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-red-50 text-red-600 border border-red-200 rounded-full"
+                                        title="데이터 부족으로 분석 불가"
+                                      >
+                                        분석 불가
                                       </span>
                                     ) : (
                                       <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 rounded-full">

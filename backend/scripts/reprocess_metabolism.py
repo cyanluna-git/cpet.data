@@ -20,6 +20,7 @@ import asyncio
 import logging
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
@@ -170,6 +171,15 @@ async def reprocess(
             except Exception as e:
                 logger.error("   Failed: %s", e)
                 failed += 1
+                # Mark DB record as failed so it's distinguishable from unprocessed
+                try:
+                    error_msg = f"Reprocess failed (v{CURRENT_ALGORITHM_VERSION}): {e}"
+                    record.processing_status = "failed"
+                    record.processing_warnings = [error_msg]
+                    record.updated_at = datetime.utcnow()
+                    await db.commit()
+                except Exception as db_err:
+                    logger.error("   Also failed to update status: %s", db_err)
 
         # Summary
         logger.info("=" * 60)
