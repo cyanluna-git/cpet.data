@@ -1088,8 +1088,8 @@ class MetabolismAnalyzer:
             # frac 값 조정
             if self.config.adaptive_loess:
                 n = len(powers)
-                # n=8→0.5, n=15→0.27, n=20→0.20, n=27+→0.15
-                frac = max(0.15, min(0.5, 4.0 / n))
+                # n=12→0.5, n=15→0.40, n=20→0.30, n=40+→0.15
+                frac = max(0.15, min(0.5, 6.0 / n))
             else:
                 frac = self.config.loess_frac
             frac = min(frac, (len(powers) - 1) / len(powers))
@@ -1506,7 +1506,7 @@ class MetabolismAnalyzer:
                 if HAS_STATSMODELS and len(powers) >= 4:
                     # Adaptive frac (same logic as _loess_smoothing)
                     if self.config.adaptive_loess:
-                        frac = max(0.15, min(0.5, 4.0 / len(powers)))
+                        frac = max(0.15, min(0.5, 6.0 / len(powers)))
                     else:
                         frac = self.config.loess_frac
                     frac = min(frac, (len(powers) - 1) / len(powers))

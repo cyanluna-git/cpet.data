@@ -16,7 +16,8 @@ from app.services.metabolism_analysis import AnalysisConfig, MetabolismAnalyzer
 # 1.2.2: Sliding median sort key changed from power to t_sec (time-domain filtering)
 # 1.2.3: FatMax/Crossover now use polynomial trend instead of LOESS (frac-invariant)
 # 1.2.4: Non-negative constraint moved from algorithm to visualization layer (to_dict clamp)
-CURRENT_ALGORITHM_VERSION = "1.2.4"
+# 1.2.5: Adaptive LOESS minimum neighbor points increased (4→6) for small-n stability
+CURRENT_ALGORITHM_VERSION = "1.2.5"
 
 
 def _sort_series_by_time(series: Optional[List[Dict[str, Any]]]) -> Optional[List[Dict[str, Any]]]:
