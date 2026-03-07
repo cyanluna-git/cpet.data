@@ -48,14 +48,28 @@ export function SubjectDetailPage({ user, subjectId, onLogout, onNavigate }: Sub
   }
 
   const tests = subject.tests || [];
+  const inscydReports = subject.inscyd_reports || [];
   
   // Prepare timeline data
   const timelineData = tests.map((test: any) => ({
     date: new Date(test.test_date).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' }),
-    vo2_max: test.summary?.vo2_max_rel,
-    fat_max_hr: test.summary?.fat_max_hr,
-    hr_max: test.summary?.hr_max
+    vo2_max: test.vo2_max_rel,
+    fat_max_hr: test.fat_max_hr,
+    hr_max: test.hr_max,
   })).reverse();
+  const latestTest = tests[0];
+
+  const inscydTrendData = inscydReports
+    .slice()
+    .sort((a: any, b: any) => new Date(a.report_date || a.created_at).getTime() - new Date(b.report_date || b.created_at).getTime())
+    .map((report: any) => ({
+      date: new Date(report.report_date || report.created_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' }),
+      vo2max_rel: report.vo2max_rel_ml_kg_min,
+      fatmax_watt: report.fatmax_watt,
+      at_watt: report.at_abs_watt,
+      vlamax: report.vlamax_mmol_l_s,
+    }));
+  const latestInscyd = inscydReports[0];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -108,8 +122,8 @@ export function SubjectDetailPage({ user, subjectId, onLogout, onNavigate }: Sub
                     </p>
                   </div>
                   <div>
-                    <p className="text-gray-500 mb-1">총 검사 수</p>
-                    <p className="font-semibold text-gray-900">{tests.length}회</p>
+                    <p className="text-gray-500 mb-1">총 리포트 수</p>
+                    <p className="font-semibold text-gray-900">{tests.length + inscydReports.length}회</p>
                   </div>
                 </div>
               </div>
@@ -126,95 +140,183 @@ export function SubjectDetailPage({ user, subjectId, onLogout, onNavigate }: Sub
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
-            {tests.length === 0 ? (
+            {tests.length === 0 && inscydReports.length === 0 ? (
               <Card className="p-12 text-center">
                 <Activity className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">검사 기록이 없습니다</h3>
-                <p className="text-gray-600">이 피험자의 첫 번째 테스트를 업로드하세요.</p>
+                <p className="text-gray-600">이 피험자의 첫 번째 CPET 또는 INSCYD 리포트를 업로드하세요.</p>
               </Card>
             ) : (
               <>
-                {/* Timeline Chart */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <TrendingUp className="w-5 h-5 text-[#2563EB]" />
-                      주요 지표 변화 추이
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-80">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={timelineData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                          <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                          <YAxis tick={{ fontSize: 12 }} />
-                          <Tooltip />
-                          <Line
-                            type="monotone"
-                            dataKey="vo2_max"
-                            stroke="#3B82F6"
-                            strokeWidth={2}
-                            name="VO2 MAX (mL/kg/min)"
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="fat_max_hr"
-                            stroke="#10B981"
-                            strokeWidth={2}
-                            name="FATMAX HR (bpm)"
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="hr_max"
-                            stroke="#EF4444"
-                            strokeWidth={2}
-                            name="HR MAX (bpm)"
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </CardContent>
-                </Card>
+                {tests.length > 0 && (
+                  <>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <TrendingUp className="w-5 h-5 text-[#2563EB]" />
+                          주요 지표 변화 추이
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="h-80">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={timelineData}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                              <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                              <YAxis tick={{ fontSize: 12 }} />
+                              <Tooltip />
+                              <Line
+                                type="monotone"
+                                dataKey="vo2_max"
+                                stroke="#3B82F6"
+                                strokeWidth={2}
+                                name="VO2 MAX (mL/kg/min)"
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="fat_max_hr"
+                                stroke="#10B981"
+                                strokeWidth={2}
+                                name="FATMAX HR (bpm)"
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="hr_max"
+                                stroke="#EF4444"
+                                strokeWidth={2}
+                                name="HR MAX (bpm)"
+                              />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </CardContent>
+                    </Card>
 
-                {/* Latest Test Summary */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>최근 검사 결과</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                      <div>
-                        <p className="text-sm text-gray-500 mb-2">VO2 MAX</p>
-                        <p className="text-2xl font-bold text-[#3B82F6]">
-                          {tests[0]?.summary?.vo2_max_rel?.toFixed(1)}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">mL/kg/min</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-500 mb-2">HR MAX</p>
-                        <p className="text-2xl font-bold text-[#EF4444]">
-                          {tests[0]?.summary?.hr_max}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">bpm</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-500 mb-2">FATMAX</p>
-                        <p className="text-2xl font-bold text-[#10B981]">
-                          {tests[0]?.summary?.fat_max_hr}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">bpm</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-500 mb-2">RER MAX</p>
-                        <p className="text-2xl font-bold text-[#A855F7]">
-                          {tests[0]?.summary?.rer_max?.toFixed(2)}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">ratio</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>최근 검사 결과</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                          <div>
+                            <p className="text-sm text-gray-500 mb-2">VO2 MAX</p>
+                            <p className="text-2xl font-bold text-[#3B82F6]">
+                              {latestTest?.vo2_max_rel?.toFixed(1) ?? '-'}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">mL/kg/min</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-500 mb-2">HR MAX</p>
+                            <p className="text-2xl font-bold text-[#EF4444]">
+                              {latestTest?.hr_max ?? '-'}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">bpm</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-500 mb-2">FATMAX</p>
+                            <p className="text-2xl font-bold text-[#10B981]">
+                              {latestTest?.fat_max_hr ?? '-'}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">bpm</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-500 mb-2">RER MAX</p>
+                            <p className="text-2xl font-bold text-[#A855F7]">-</p>
+                            <p className="text-xs text-gray-500 mt-1">ratio</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </>
+                )}
+
+                {inscydReports.length > 0 && (
+                  <>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <TrendingUp className="w-5 h-5 text-[#0F766E]" />
+                          INSCYD 리포트 추이
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="h-80">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={inscydTrendData}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                              <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                              <YAxis yAxisId="fitness" tick={{ fontSize: 12 }} />
+                              <YAxis yAxisId="power" orientation="right" tick={{ fontSize: 12 }} />
+                              <Tooltip />
+                              <Line
+                                yAxisId="fitness"
+                                type="monotone"
+                                dataKey="vo2max_rel"
+                                stroke="#0F766E"
+                                strokeWidth={2}
+                                name="VO2max (mL/kg/min)"
+                              />
+                              <Line
+                                yAxisId="power"
+                                type="monotone"
+                                dataKey="fatmax_watt"
+                                stroke="#F59E0B"
+                                strokeWidth={2}
+                                name="FatMax (W)"
+                              />
+                              <Line
+                                yAxisId="power"
+                                type="monotone"
+                                dataKey="at_watt"
+                                stroke="#DC2626"
+                                strokeWidth={2}
+                                name="AT (W)"
+                              />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>최신 INSCYD 요약</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                          <div>
+                            <p className="text-sm text-gray-500 mb-2">VO2max</p>
+                            <p className="text-2xl font-bold text-[#0F766E]">
+                              {latestInscyd?.vo2max_rel_ml_kg_min?.toFixed(1) ?? '-'}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">mL/kg/min</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-500 mb-2">VLamax</p>
+                            <p className="text-2xl font-bold text-[#7C3AED]">
+                              {latestInscyd?.vlamax_mmol_l_s?.toFixed(2) ?? '-'}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">mmol/L/s</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-500 mb-2">FatMax</p>
+                            <p className="text-2xl font-bold text-[#F59E0B]">
+                              {latestInscyd?.fatmax_watt ?? '-'}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">W</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-500 mb-2">AT</p>
+                            <p className="text-2xl font-bold text-[#DC2626]">
+                              {latestInscyd?.at_abs_watt ?? '-'}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">W</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </>
+                )}
               </>
             )}
           </TabsContent>
@@ -228,9 +330,9 @@ export function SubjectDetailPage({ user, subjectId, onLogout, onNavigate }: Sub
             ) : (
               tests.map((test: any) => (
                 <Card
-                  key={test.id}
+                  key={test.test_id || test.id}
                   className="hover:shadow-md transition-shadow cursor-pointer"
-                  onClick={() => onNavigate('test-view', { testId: test.id })}
+                  onClick={() => onNavigate('test-view', { testId: test.test_id || test.id })}
                 >
                   <CardContent className="pt-6">
                     <div className="flex items-center justify-between">
@@ -278,15 +380,15 @@ export function SubjectDetailPage({ user, subjectId, onLogout, onNavigate }: Sub
                         <div className="grid grid-cols-3 gap-2 sm:gap-4">
                           <div>
                             <p className="text-xs text-gray-500">VO2 MAX</p>
-                            <p className="font-bold text-[#3B82F6]">{test.summary?.vo2_max_rel?.toFixed(1)}</p>
+                            <p className="font-bold text-[#3B82F6]">{test.vo2_max_rel?.toFixed(1) ?? '-'}</p>
                           </div>
                           <div>
                             <p className="text-xs text-gray-500">HR MAX</p>
-                            <p className="font-bold text-[#EF4444]">{test.summary?.hr_max}</p>
+                            <p className="font-bold text-[#EF4444]">{test.hr_max ?? '-'}</p>
                           </div>
                           <div>
                             <p className="text-xs text-gray-500">FATMAX</p>
-                            <p className="font-bold text-[#10B981]">{test.summary?.fat_max_hr}</p>
+                            <p className="font-bold text-[#10B981]">{test.fat_max_hr ?? '-'}</p>
                           </div>
                         </div>
                       </div>
@@ -294,6 +396,61 @@ export function SubjectDetailPage({ user, subjectId, onLogout, onNavigate }: Sub
                   </CardContent>
                 </Card>
               ))
+            )}
+
+            {inscydReports.length > 0 && (
+              <Card className="mt-6">
+                <CardHeader>
+                  <CardTitle>INSCYD 리포트 히스토리</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {inscydReports.map((report: any) => (
+                    <div
+                      key={report.report_id}
+                      className="flex flex-col gap-2 rounded-lg border border-gray-200 p-4 md:flex-row md:items-center md:justify-between"
+                    >
+                      <div>
+                        <p className="font-semibold text-gray-900">
+                          {new Date(report.report_date || report.created_at).toLocaleDateString('ko-KR', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {report.sport || 'Sport 미기재'} · {report.test_type || 'Type 미기재'} · {report.source_filename}
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 text-sm md:min-w-[320px]">
+                        <div>
+                          <p className="text-gray-500">VO2max</p>
+                          <p className="font-semibold text-[#0F766E]">
+                            {report.vo2max_rel_ml_kg_min?.toFixed(1) ?? '-'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">VLamax</p>
+                          <p className="font-semibold text-[#7C3AED]">
+                            {report.vlamax_mmol_l_s?.toFixed(2) ?? '-'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">FatMax</p>
+                          <p className="font-semibold text-[#F59E0B]">
+                            {report.fatmax_watt ?? '-'} W
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">AT</p>
+                          <p className="font-semibold text-[#DC2626]">
+                            {report.at_abs_watt ?? '-'} W
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
             )}
           </TabsContent>
 

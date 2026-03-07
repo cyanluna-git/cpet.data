@@ -115,6 +115,80 @@ export interface Subject {
   group?: string;
 }
 
+export interface InscydTrainingZone {
+  zone_number: number;
+  name: string;
+  code?: string | null;
+  lower_watt?: number | null;
+  upper_watt?: number | null;
+  target_watt?: number | null;
+  energy_kcal_h?: number | null;
+  fat_percent?: number | null;
+  carbohydrate_percent?: number | null;
+  fat_g_h?: number | null;
+  carbohydrate_g_h?: number | null;
+}
+
+export interface InscydTestDataRow {
+  type: string;
+  average_power_watt?: number | null;
+  duration_sec?: number | null;
+  additional_value?: string | null;
+}
+
+export interface InscydReport {
+  report_id: string;
+  subject_id: string;
+  external_test_id?: string | null;
+  report_date?: string | null;
+  sport?: string | null;
+  test_type?: string | null;
+  athlete_name?: string | null;
+  coach_name?: string | null;
+  body_mass_kg?: number | null;
+  body_height_cm?: number | null;
+  body_mass_index?: number | null;
+  projected_bsa_m2?: number | null;
+  body_fat_percent?: number | null;
+  body_fat_kg?: number | null;
+  fat_free_percent?: number | null;
+  fat_free_kg?: number | null;
+  vo2max_abs_ml_min?: number | null;
+  vo2max_rel_ml_kg_min?: number | null;
+  vlamax_mmol_l_s?: number | null;
+  mfo_abs_kcal_h?: number | null;
+  mfo_rel_kcal_h_kg?: number | null;
+  fatmax_watt?: number | null;
+  carbmax_abs_watt?: number | null;
+  carbmax_rel_w_kg?: number | null;
+  at_abs_watt?: number | null;
+  at_rel_w_kg?: number | null;
+  at_pct_vo2max?: number | null;
+  glycogen_abs_g?: number | null;
+  glycogen_rel_g_kg?: number | null;
+  hr_max_bpm?: number | null;
+  pwc150_watt?: number | null;
+  training_zones?: InscydTrainingZone[];
+  test_data_rows?: InscydTestDataRow[];
+  weighted_regression?: Record<string, number>;
+  source_filename?: string | null;
+  parsing_status?: string | null;
+  parsing_warnings?: string[] | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InscydUploadAutoResponse {
+  report_id: string;
+  subject_id: string;
+  subject_created: boolean;
+  subject_name: string;
+  source_filename: string;
+  parsing_status: string;
+  parsing_warnings: string[] | null;
+  created_at: string;
+}
+
 export interface CPETTest {
   id: string;
   subject_id: string;
@@ -155,6 +229,14 @@ export interface TestUploadAutoResponse {
   parsing_warnings: string[] | null;
   data_points_count: number;
   created_at: string;
+}
+
+export interface CurrentUser {
+  id: string;
+  email: string;
+  name: string;
+  role: "admin" | "researcher" | "subject";
+  subject_id?: string | null;
 }
 
 export interface TestMetrics {
@@ -347,14 +429,21 @@ export const api = {
     return token ? { access_token: token } : null;
   },
 
-  async getCurrentUser() {
+  async getCurrentUser(): Promise<CurrentUser> {
     if (isDemoMode()) {
-      const role = localStorage.getItem("demoRole") || "researcher";
+      const role: "researcher" | "subject" =
+        localStorage.getItem("demoRole") === "subject"
+          ? "subject"
+          : "researcher";
       return {
         id:
           role === "subject"
             ? "660e8400-e29b-41d4-a716-446655440001"
             : "demo-researcher-1",
+        subject_id:
+          role === "subject"
+            ? "660e8400-e29b-41d4-a716-446655440001"
+            : null,
         email: role === "subject" ? "demo@subject.com" : "demo@researcher.com",
         name: role === "subject" ? "박용두" : "연구자 데모",
         role: role,
@@ -368,6 +457,7 @@ export const api = {
       email: raw.email,
       name: (raw.email || "").split("@")[0] || raw.email,
       role: roleFromBackend(raw.role),
+      subject_id: raw.subject_id ?? null,
     };
   },
 
@@ -541,11 +631,11 @@ export const api = {
     return response.data;
   },
 
-  async getSubject(id: string): Promise<Subject & { tests: CPETTest[] }> {
+  async getSubject(id: string): Promise<Subject & { tests?: CPETTest[]; inscyd_reports?: InscydReport[] }> {
     if (isDemoMode()) {
       const subject =
         sampleSubjects.find((s) => s.id === id) || sampleSubjects[0];
-      return { ...subject, tests: [sampleTestData] } as any;
+      return { ...subject, tests: [sampleTestData], inscyd_reports: [] } as any;
     }
     const response = await client.get(`/subjects/${id}`);
     return response.data;
@@ -695,6 +785,31 @@ export const api = {
     const response = await client.post("/tests/upload-auto", formData, {
       headers: { "Content-Type": "multipart/form-data" },
       timeout: 120000, // 2분 타임아웃 (대용량 파일)
+    });
+    return response.data;
+  },
+
+  async uploadInscydReportAuto(file: File): Promise<InscydUploadAutoResponse> {
+    if (isDemoMode()) {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      return {
+        report_id: "demo-inscyd-" + Date.now(),
+        subject_id: "demo-subject-" + Date.now(),
+        subject_created: false,
+        subject_name: "Demo Subject",
+        source_filename: file.name,
+        parsing_status: "success",
+        parsing_warnings: null,
+        created_at: new Date().toISOString(),
+      };
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await client.post("/inscyd/upload-auto", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 120000,
     });
     return response.data;
   },

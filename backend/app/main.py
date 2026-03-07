@@ -8,6 +8,7 @@ from app.api import (
     auth_router,
     admin_router,
     subjects_router,
+    inscyd_router,
     tests_router,
     subject_tests_router,
     processed_metabolism_router,
@@ -53,6 +54,7 @@ async def health_check():
 app.include_router(auth_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
 app.include_router(subjects_router, prefix="/api")
+app.include_router(inscyd_router, prefix="/api")
 app.include_router(tests_router, prefix="/api")
 app.include_router(subject_tests_router, prefix="/api")
 app.include_router(processed_metabolism_router, prefix="/api")

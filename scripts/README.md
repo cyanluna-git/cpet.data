@@ -8,6 +8,7 @@
 scripts/
 ├── init-db.sql                 # DB 초기화 (필수)
 ├── insert_cpet_users.sql       # 기본 사용자/피험자 생성
+├── verify_local_inscyd.sh      # 로컬 INSCYD 검증 (migration + pytest + build)
 ├── backups/                    # 데이터베이스 백업 파일들
 │   ├── backup_data.sql         # 전체 데이터 백업 (52.5MB)
 │   ├── backup_with_columns.sql # 구조 포함 백업
@@ -41,6 +42,11 @@ cd scripts/fixtures
 bash -c 'for file in restore_*.sql; do psql -U postgres -d cpet_db < "$file"; done'
 ```
 
+### 4️⃣ INSCYD 로컬 검증
+```bash
+./scripts/verify_local_inscyd.sh
+```
+
 ## 스크립트 설명
 
 ### 필수 스크립트 (Root)
@@ -49,6 +55,7 @@ bash -c 'for file in restore_*.sql; do psql -U postgres -d cpet_db < "$file"; do
 |------|------|----------|
 | `init-db.sql` | 테이블, 인덱스, 컬럼 생성 | DB 초기 구성 시 (1회) |
 | `insert_cpet_users.sql` | Admin 계정, 테스트 피험자 생성 | DB 초기 구성 시 |
+| `verify_local_inscyd.sh` | INSCYD migration/test/build 검증 | 로컬 회귀 검증 시 |
 
 ### 선택사항 (Backups)
 
@@ -89,4 +96,3 @@ psql -U postgres -d cpet_db < scripts/insert_cpet_users.sql
 1. **자동 백업**: Docker Compose로 정기 백업 (권장)
 2. **수동 백업**: 필요시 `backup_data.sql` 사용
 3. **Supabase 마이그레이션**: `supabase_restore.sql` 활용
-

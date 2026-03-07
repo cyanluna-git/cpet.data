@@ -11,6 +11,7 @@ from app.core.database import Base
 
 if TYPE_CHECKING:
     from app.models.cpet_test import CPETTest
+    from app.models.inscyd_report import InscydReport
     from app.models.user import User
 
 
@@ -49,6 +50,9 @@ class Subject(Base):
     # Relationships
     tests: Mapped[list["CPETTest"]] = relationship(
         "CPETTest", back_populates="subject", cascade="all, delete-orphan"
+    )
+    inscyd_reports: Mapped[list["InscydReport"]] = relationship(
+        "InscydReport", back_populates="subject", cascade="all, delete-orphan"
     )
     user: Mapped[Optional["User"]] = relationship("User", back_populates="subject")
 

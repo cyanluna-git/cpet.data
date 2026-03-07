@@ -4,7 +4,10 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from app.schemas.inscyd import InscydReportResponse
+from app.schemas.test import CPETTestResponse
 
 
 class SubjectCreate(BaseModel):
@@ -78,6 +81,20 @@ class SubjectListResponse(BaseModel):
 
 class SubjectWithTests(SubjectResponse):
     """테스트 포함 피험자 응답 스키마"""
+
+    tests: List[CPETTestResponse] = Field(default_factory=list)
+    inscyd_reports: List[InscydReportResponse] = Field(default_factory=list)
     test_count: int = 0
     latest_test_date: Optional[datetime] = None
     vo2_max_best: Optional[float] = None
+
+    model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def compute_stats(self):
+        if self.tests:
+            self.test_count = len(self.tests)
+            self.latest_test_date = max(test.test_date for test in self.tests)
+            vo2_values = [test.vo2_max for test in self.tests if test.vo2_max is not None]
+            self.vo2_max_best = max(vo2_values) if vo2_values else None
+        return self

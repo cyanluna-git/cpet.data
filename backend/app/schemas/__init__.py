@@ -15,6 +15,12 @@ from app.schemas.subject import (
     SubjectListResponse,
     SubjectWithTests,
 )
+from app.schemas.inscyd import (
+    InscydReportResponse,
+    InscydTrainingZone,
+    InscydTestDataRow,
+    InscydUploadAutoResponse,
+)
 from app.schemas.test import (
     CPETTestCreate,
     CPETTestUpdate,
@@ -60,6 +66,10 @@ __all__ = [
     "SubjectResponse",
     "SubjectListResponse",
     "SubjectWithTests",
+    "InscydReportResponse",
+    "InscydTrainingZone",
+    "InscydTestDataRow",
+    "InscydUploadAutoResponse",
     # Test
     "CPETTestCreate",
     "CPETTestUpdate",

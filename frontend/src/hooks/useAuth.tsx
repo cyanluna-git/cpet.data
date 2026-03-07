@@ -6,6 +6,7 @@ export interface User {
   email: string;
   name: string;
   role: 'admin' | 'researcher' | 'subject';
+  subject_id?: string | null;
 }
 
 interface AuthContextType {
@@ -63,12 +64,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: 'demo@researcher.com',
         name: '연구자 데모',
         role: 'researcher' as const,
+        subject_id: null,
       },
       subject: {
         id: '660e8400-e29b-41d4-a716-446655440001',
         email: 'demo@subject.com',
         name: '박용두',
         role: 'subject' as const,
+        subject_id: '660e8400-e29b-41d4-a716-446655440001',
       }
     };
 

@@ -22,11 +22,16 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
-import { api, type TestUploadAutoResponse } from "@/lib/api";
+import {
+  api,
+  type InscydUploadAutoResponse,
+  type TestUploadAutoResponse,
+} from "@/lib/api";
 import { toast } from "sonner";
 import {
   Upload,
   FileSpreadsheet,
+  FileText,
   CheckCircle2,
   AlertCircle,
   Loader2,
@@ -43,6 +48,11 @@ interface TestUploadModalProps {
 }
 
 type UploadState = "idle" | "uploading" | "success" | "error";
+type UploadResult = TestUploadAutoResponse | InscydUploadAutoResponse;
+
+function isInscydFile(filename: string) {
+  return filename.toLowerCase().endsWith(".pdf");
+}
 
 export function TestUploadModal({
   open,
@@ -51,7 +61,7 @@ export function TestUploadModal({
 }: TestUploadModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [uploadState, setUploadState] = useState<UploadState>("idle");
-  const [result, setResult] = useState<TestUploadAutoResponse | null>(null);
+  const [result, setResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [calcMethod, setCalcMethod] = useState<"Frayn" | "Jeukendrup">("Frayn");
@@ -75,13 +85,13 @@ export function TestUploadModal({
     if (!selectedFile) return;
 
     // Validate file type
-    const validExtensions = [".xlsx", ".xls"];
+    const validExtensions = [".xlsx", ".xls", ".pdf"];
     const ext = selectedFile.name
       .toLowerCase()
       .slice(selectedFile.name.lastIndexOf("."));
     if (!validExtensions.includes(ext)) {
       toast.error(
-        "지원하지 않는 파일 형식입니다. Excel 파일(.xlsx, .xls)만 업로드 가능합니다.",
+        "지원하지 않는 파일 형식입니다. COSMED Excel(.xlsx, .xls) 또는 INSCYD PDF(.pdf)만 업로드 가능합니다.",
       );
       return;
     }
@@ -124,22 +134,25 @@ export function TestUploadModal({
     setError(null);
 
     try {
-      const response = await api.uploadTestAuto(file, {
-        calc_method: calcMethod,
-        smoothing_window: smoothingWindow,
-      });
+      const response = isInscydFile(file.name)
+        ? await api.uploadInscydReportAuto(file)
+        : await api.uploadTestAuto(file, {
+            calc_method: calcMethod,
+            smoothing_window: smoothingWindow,
+          });
 
       setResult(response);
       setUploadState("success");
+      const itemLabel = isInscydFile(file.name) ? "INSCYD 리포트" : "테스트";
 
       // Show toast with result
       if (response.subject_created) {
         toast.success(
-          `새 피험자 "${response.subject_name}"가 생성되고 테스트가 업로드되었습니다.`,
+          `새 피험자 "${response.subject_name}"가 생성되고 ${itemLabel}가 업로드되었습니다.`,
         );
       } else {
         toast.success(
-          `기존 피험자 "${response.subject_name}"에 테스트가 추가되었습니다.`,
+          `기존 피험자 "${response.subject_name}"에 ${itemLabel}가 추가되었습니다.`,
         );
       }
 
@@ -171,15 +184,22 @@ export function TestUploadModal({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".xlsx,.xls"
+        accept=".xlsx,.xls,.pdf"
         className="hidden"
         onChange={(e) => handleFileSelect(e.target.files?.[0] || null)}
       />
 
       {file ? (
         <div className="flex flex-col items-center gap-2">
-          <FileSpreadsheet className="w-12 h-12 text-green-600" />
+          {isInscydFile(file.name) ? (
+            <FileText className="w-12 h-12 text-blue-600" />
+          ) : (
+            <FileSpreadsheet className="w-12 h-12 text-green-600" />
+          )}
           <p className="font-medium text-gray-900">{file.name}</p>
+          <p className="text-sm text-gray-500">
+            {isInscydFile(file.name) ? "INSCYD PDF 리포트" : "COSMED Excel 테스트 파일"}
+          </p>
           <p className="text-sm text-gray-500">
             {(file.size / 1024 / 1024).toFixed(2)} MB
           </p>
@@ -202,7 +222,7 @@ export function TestUploadModal({
             파일을 드래그하거나 클릭하여 선택하세요
           </p>
           <p className="text-sm text-gray-500">
-            COSMED Excel 파일 (.xlsx, .xls) 지원
+            COSMED Excel(.xlsx, .xls) 또는 INSCYD PDF(.pdf) 지원
           </p>
         </div>
       )}
@@ -318,7 +338,9 @@ export function TestUploadModal({
             </div>
           )}
 
-          {result.parsing_errors && result.parsing_errors.length > 0 && (
+          {"parsing_errors" in result &&
+            result.parsing_errors &&
+            result.parsing_errors.length > 0 && (
             <div className="pt-2 border-t">
               <p className="text-sm text-red-600 font-medium mb-1">오류:</p>
               <ul className="text-sm text-red-700 list-disc list-inside">
@@ -353,8 +375,7 @@ export function TestUploadModal({
         <DialogHeader>
           <DialogTitle>테스트 데이터 업로드</DialogTitle>
           <DialogDescription>
-            COSMED Excel 파일을 업로드하면 피험자를 자동으로 매칭하거나
-            생성합니다.
+            COSMED Excel 또는 INSCYD PDF를 업로드하면 피험자를 자동으로 매칭하거나 생성합니다.
           </DialogDescription>
         </DialogHeader>
 
@@ -362,7 +383,7 @@ export function TestUploadModal({
           {uploadState === "idle" && (
             <div className="space-y-4">
               {renderDropZone()}
-              {renderAdvancedSettings()}
+              {!file || !isInscydFile(file.name) ? renderAdvancedSettings() : null}
             </div>
           )}
 
@@ -371,7 +392,7 @@ export function TestUploadModal({
               <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
               <p className="text-gray-600">파일 처리 중...</p>
               <p className="text-sm text-gray-500">
-                피험자 매칭 및 데이터 파싱 중입니다.
+                피험자 매칭 및 {file && isInscydFile(file.name) ? "INSCYD 리포트" : "테스트 데이터"} 파싱 중입니다.
               </p>
             </div>
           )}

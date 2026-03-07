@@ -72,9 +72,10 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
       const testsData = extractItems<any>(testsResponse);
       setTests(testsData);
 
-      // subject 정보는 첫 번째 테스트에서 추출 (있는 경우)
-      if (testsData.length > 0 && testsData[0].subject_id) {
-        setSubject({ id: testsData[0].subject_id });
+      const subjectId = user.subject_id || testsData[0]?.subject_id;
+      if (subjectId) {
+        const subjectData = await api.getSubject(subjectId);
+        setSubject(subjectData);
       }
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -98,6 +99,30 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
       }))
       .filter(d => d.vo2Max !== null || d.fatMaxHr !== null);
   }, [tests]);
+
+  const inscydReports = subject?.inscyd_reports || [];
+  const latestInscyd = inscydReports[0];
+  const inscydTrendData = useMemo(() => {
+    if (inscydReports.length < 2) return null;
+
+    return inscydReports
+      .slice()
+      .sort(
+        (a: any, b: any) =>
+          new Date(a.report_date || a.created_at).getTime() -
+          new Date(b.report_date || b.created_at).getTime(),
+      )
+      .map((report: any) => ({
+        date: new Date(report.report_date || report.created_at).toLocaleDateString('ko-KR', {
+          month: 'short',
+          day: 'numeric',
+        }),
+        vo2max: report.vo2max_rel_ml_kg_min || null,
+        fatmax: report.fatmax_watt || null,
+        at: report.at_abs_watt || null,
+      }))
+      .filter((item: any) => item.vo2max !== null || item.fatmax !== null || item.at !== null);
+  }, [inscydReports]);
 
   // 목표 진행률 계산
   const goalProgress = useMemo(() => {
@@ -147,15 +172,16 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
           </p>
         </div>
 
-        {!latestTest ? (
+        {!latestTest && inscydReports.length === 0 ? (
           <Card className="p-12 text-center">
             <Activity className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">아직 테스트 기록이 없습니다</h3>
-            <p className="text-gray-600">첫 번째 CPET 검사를 받으시면 결과가 여기에 표시됩니다.</p>
+            <p className="text-gray-600">CPET 또는 INSCYD 리포트가 업로드되면 결과가 여기에 표시됩니다.</p>
           </Card>
         ) : (
           <>
             {/* Latest Test Results - Hero Section */}
+            {latestTest && (
             <Card className="mb-8 border-t-4 border-t-[#2563EB] bg-gradient-to-br from-blue-50 to-white">
               <CardHeader>
                 <CardTitle className="text-xl">최신 검사 결과</CardTitle>
@@ -235,6 +261,7 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
                 </div>
               </CardContent>
             </Card>
+            )}
 
             {/* Trend Chart - 테스트가 2개 이상일 때만 */}
             {trendData && trendData.length >= 2 && (
@@ -317,6 +344,123 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
                       <div className="w-3 h-3 rounded-full bg-[#10B981]"></div>
                       <span className="text-gray-600">FATMAX HR</span>
                     </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {latestInscyd && (
+              <Card className="mb-8 border-t-4 border-t-[#0F766E] bg-gradient-to-br from-emerald-50 to-white">
+                <CardHeader>
+                  <CardTitle className="text-xl">최신 INSCYD 리포트</CardTitle>
+                  <CardDescription className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
+                    {new Date(latestInscyd.report_date || latestInscyd.created_at).toLocaleDateString('ko-KR', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="bg-white rounded-lg p-6 shadow-sm">
+                      <p className="text-sm text-gray-600">VO2max</p>
+                      <p className="mt-2 text-2xl font-bold text-[#0F766E]">
+                        {latestInscyd.vo2max_rel_ml_kg_min?.toFixed(1) || '-'}
+                      </p>
+                      <p className="text-xs text-gray-500">mL/kg/min</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-6 shadow-sm">
+                      <p className="text-sm text-gray-600">VLamax</p>
+                      <p className="mt-2 text-2xl font-bold text-[#7C3AED]">
+                        {latestInscyd.vlamax_mmol_l_s?.toFixed(2) || '-'}
+                      </p>
+                      <p className="text-xs text-gray-500">mmol/L/s</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-6 shadow-sm">
+                      <p className="text-sm text-gray-600">FatMax</p>
+                      <p className="mt-2 text-2xl font-bold text-[#F59E0B]">
+                        {latestInscyd.fatmax_watt || '-'}
+                      </p>
+                      <p className="text-xs text-gray-500">W</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-6 shadow-sm">
+                      <p className="text-sm text-gray-600">AT</p>
+                      <p className="mt-2 text-2xl font-bold text-[#DC2626]">
+                        {latestInscyd.at_abs_watt || '-'}
+                      </p>
+                      <p className="text-xs text-gray-500">W</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {inscydTrendData && inscydTrendData.length >= 2 && (
+              <Card className="mb-8">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-[#0F766E]" />
+                    INSCYD 변화 추이
+                  </CardTitle>
+                  <CardDescription>
+                    정기적으로 받은 INSCYD 리포트의 주요 지표 변화를 확인하세요
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-48 md:h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={inscydTrendData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                        <XAxis
+                          dataKey="date"
+                          tick={{ fontSize: 12 }}
+                          tickLine={false}
+                          axisLine={{ stroke: '#e5e7eb' }}
+                        />
+                        <YAxis
+                          yAxisId="fitness"
+                          tick={{ fontSize: 12 }}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <YAxis
+                          yAxisId="power"
+                          orientation="right"
+                          tick={{ fontSize: 12 }}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <Tooltip />
+                        <Line
+                          yAxisId="fitness"
+                          type="monotone"
+                          dataKey="vo2max"
+                          stroke="#0F766E"
+                          strokeWidth={2}
+                          dot={{ fill: '#0F766E', strokeWidth: 2 }}
+                          connectNulls
+                        />
+                        <Line
+                          yAxisId="power"
+                          type="monotone"
+                          dataKey="fatmax"
+                          stroke="#F59E0B"
+                          strokeWidth={2}
+                          dot={{ fill: '#F59E0B', strokeWidth: 2 }}
+                          connectNulls
+                        />
+                        <Line
+                          yAxisId="power"
+                          type="monotone"
+                          dataKey="at"
+                          stroke="#DC2626"
+                          strokeWidth={2}
+                          dot={{ fill: '#DC2626', strokeWidth: 2 }}
+                          connectNulls
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
                   </div>
                 </CardContent>
               </Card>
@@ -459,7 +603,7 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
             </Card>
 
             {/* What This Means - 데이터가 있을 때만 표시 */}
-            {(latestTest.vo2_max_rel || latestTest.fat_max_hr || latestTest.hr_max) && (
+            {(latestTest?.vo2_max_rel || latestTest?.fat_max_hr || latestTest?.hr_max) && (
               <Card className="mb-8">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">

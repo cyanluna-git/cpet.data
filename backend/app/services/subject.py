@@ -8,7 +8,7 @@ from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Subject, CPETTest
+from app.models import Subject, CPETTest, InscydReport
 from app.schemas.subject import SubjectCreate, SubjectUpdate
 
 
@@ -36,7 +36,7 @@ class SubjectService:
         """피험자와 테스트 목록 함께 조회"""
         result = await self.db.execute(
             select(Subject)
-            .options(selectinload(Subject.tests))
+            .options(selectinload(Subject.tests), selectinload(Subject.inscyd_reports))
             .where(Subject.id == subject_id)
         )
         return result.scalar_one_or_none()
