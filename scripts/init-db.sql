@@ -7,6 +7,9 @@ CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
 -- Enable UUID generation
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Enable gen_random_uuid() for processed_metabolism
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
 -- ============================================================================
 -- 1. Users/Subjects Table
 -- ============================================================================
@@ -23,7 +26,11 @@ CREATE TABLE IF NOT EXISTS subjects (
     height_cm DOUBLE PRECISION,
     notes TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    updated_at TIMESTAMP DEFAULT NOW(),
+    birth_date DATE,
+    body_fat_percent DOUBLE PRECISION,
+    skeletal_muscle_mass DOUBLE PRECISION,
+    bmi DOUBLE PRECISION
 );
 
 CREATE INDEX idx_subjects_research_id ON subjects(research_id);
@@ -38,7 +45,7 @@ CREATE TABLE IF NOT EXISTS cpet_tests (
     test_date TIMESTAMP NOT NULL,
     test_time TIME,
     protocol_name VARCHAR(100),
-    protocol_type VARCHAR(10),
+    protocol_type VARCHAR(20),
     test_type VARCHAR(20) DEFAULT 'Maximal',
     maximal_effort VARCHAR(20),
     test_duration TIME,
@@ -83,14 +90,20 @@ CREATE TABLE IF NOT EXISTS cpet_tests (
     -- File tracking
     source_filename VARCHAR(255),
     file_upload_timestamp TIMESTAMP,
-    parsing_status VARCHAR(20),
+    parsing_status VARCHAR(50),
     parsing_errors JSONB,
 
     -- Other
     notes TEXT,
     data_quality_score DOUBLE PRECISION,
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    updated_at TIMESTAMP DEFAULT NOW(),
+    phase_metrics JSON,
+    age DOUBLE PRECISION,
+    height_cm DOUBLE PRECISION,
+    processing_status VARCHAR(20) DEFAULT 'none' NOT NULL,
+    last_analysis_version VARCHAR(20),
+    analysis_saved_at TIMESTAMP
 );
 
 CREATE INDEX idx_cpet_tests_subject_id ON cpet_tests(subject_id);
@@ -158,7 +171,73 @@ CREATE INDEX IF NOT EXISTS idx_breath_data_test_id ON breath_data(test_id, time 
 CREATE INDEX IF NOT EXISTS idx_breath_data_phase ON breath_data(test_id, phase);
 
 -- ============================================================================
--- 4. Cohort Statistics Table
+-- 4. Processed Metabolism Table
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS processed_metabolism (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    cpet_test_id UUID NOT NULL REFERENCES cpet_tests(test_id) ON DELETE CASCADE,
+
+    -- Processing configuration
+    bin_size INTEGER DEFAULT 10 NOT NULL,
+    aggregation_method VARCHAR(20) DEFAULT 'median' NOT NULL,
+    loess_frac DOUBLE PRECISION DEFAULT 0.25 NOT NULL,
+    smoothing_method VARCHAR(20) DEFAULT 'loess' NOT NULL,
+    exclude_rest BOOLEAN DEFAULT true,
+    exclude_warmup BOOLEAN DEFAULT true,
+    exclude_recovery BOOLEAN DEFAULT true,
+    min_power_threshold INTEGER,
+    trim_start_sec DOUBLE PRECISION,
+    trim_end_sec DOUBLE PRECISION,
+    is_manual_override BOOLEAN DEFAULT false,
+
+    -- Processed series
+    raw_series JSONB,
+    binned_series JSONB,
+    smoothed_series JSONB,
+    trend_series JSONB,
+
+    -- Metabolic markers
+    fatmax_power INTEGER,
+    fatmax_mfo DOUBLE PRECISION,
+    fatmax_zone_min INTEGER,
+    fatmax_zone_max INTEGER,
+    fatmax_zone_threshold DOUBLE PRECISION DEFAULT 0.90,
+    crossover_power INTEGER,
+    crossover_fat_value DOUBLE PRECISION,
+    crossover_cho_value DOUBLE PRECISION,
+
+    -- Summary stats
+    total_data_points INTEGER,
+    exercise_data_points INTEGER,
+    binned_data_points INTEGER,
+    processing_warnings JSONB,
+    processing_status VARCHAR(20) DEFAULT 'pending',
+    processed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    algorithm_version VARCHAR(20) DEFAULT '1.0.0' NOT NULL,
+    vo2max_start_sec DOUBLE PRECISION,
+    vo2max_end_sec DOUBLE PRECISION,
+    vo2max_value DOUBLE PRECISION,
+    vo2max_rel DOUBLE PRECISION,
+    vo2max_hr_max INTEGER,
+    vo2max_time_sec DOUBLE PRECISION
+);
+
+CREATE INDEX IF NOT EXISTS idx_processed_metabolism_cpet_test_id
+    ON processed_metabolism(cpet_test_id);
+CREATE INDEX IF NOT EXISTS idx_processed_metabolism_status
+    ON processed_metabolism(processing_status);
+
+COMMENT ON COLUMN processed_metabolism.vo2max_start_sec IS 'VO2max segment start time (seconds) for HYBRID protocol';
+COMMENT ON COLUMN processed_metabolism.vo2max_end_sec IS 'VO2max segment end time (seconds) for HYBRID protocol';
+COMMENT ON COLUMN processed_metabolism.vo2max_value IS 'VO2max from segment window (mL/min)';
+COMMENT ON COLUMN processed_metabolism.vo2max_rel IS 'VO2max relative from segment window (mL/kg/min)';
+COMMENT ON COLUMN processed_metabolism.vo2max_hr_max IS 'HR max from VO2max segment window (bpm)';
+COMMENT ON COLUMN processed_metabolism.vo2max_time_sec IS 'Time of VO2max within segment window (seconds)';
+
+-- ============================================================================
+-- 5. Cohort Statistics Table
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS cohort_stats (
     stat_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -185,7 +264,7 @@ CREATE TABLE IF NOT EXISTS cohort_stats (
 CREATE INDEX idx_cohort_stats_lookup ON cohort_stats(gender, age_group, training_level, metric_name);
 
 -- ============================================================================
--- 5. User Accounts Table
+-- 6. User Accounts Table
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS users (
     user_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

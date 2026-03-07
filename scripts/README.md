@@ -8,6 +8,7 @@
 scripts/
 ├── init-db.sql                 # DB 초기화 (필수)
 ├── insert_cpet_users.sql       # 기본 사용자/피험자 생성
+├── reset_local_dataset.sh      # 로컬 검증용 known-good dataset 재구성
 ├── verify_local_inscyd.sh      # 로컬 INSCYD 검증 (migration + pytest + build)
 ├── backups/                    # 데이터베이스 백업 파일들
 │   ├── backup_data.sql         # 전체 데이터 백업 (52.5MB)
@@ -42,7 +43,12 @@ cd scripts/fixtures
 bash -c 'for file in restore_*.sql; do psql -U postgres -d cpet_db < "$file"; done'
 ```
 
-### 4️⃣ INSCYD 로컬 검증
+### 4️⃣ 로컬 검증 데이터셋 재구성
+```bash
+./scripts/reset_local_dataset.sh
+```
+
+### 5️⃣ INSCYD 로컬 검증
 ```bash
 ./scripts/verify_local_inscyd.sh
 ```
@@ -55,7 +61,8 @@ bash -c 'for file in restore_*.sql; do psql -U postgres -d cpet_db < "$file"; do
 |------|------|----------|
 | `init-db.sql` | 테이블, 인덱스, 컬럼 생성 | DB 초기 구성 시 (1회) |
 | `insert_cpet_users.sql` | Admin 계정, 테스트 피험자 생성 | DB 초기 구성 시 |
-| `verify_local_inscyd.sh` | INSCYD migration/unit test/build/E2E 검증 | 로컬 회귀 검증 시 |
+| `reset_local_dataset.sh` | Docker PostgreSQL을 known-good fixture dataset으로 재구성 | 로컬 상태 초기화 시 |
+| `verify_local_inscyd.sh` | reset 후 INSCYD pytest/build/E2E까지 일괄 검증 | 로컬 회귀 검증 시 |
 
 ### 선택사항 (Backups)
 
@@ -69,20 +76,13 @@ bash -c 'for file in restore_*.sql; do psql -U postgres -d cpet_db < "$file"; do
 - 5명의 테스트 피험자
 - 관리자, 연구원 계정
 - 기본 CPET 테스트 기록
+- `SUB-PAR-GEU`의 breath_data/processed_metabolism/INSCYD 히스토리
 
 ## 데이터베이스 리셋
 
 완전히 깨끗한 상태로 시작하려면:
 ```bash
-# 기존 DB 삭제
-dropdb -U postgres cpet_db 2>/dev/null
-
-# 새 DB 생성
-createdb -U postgres cpet_db
-
-# 초기화 실행
-psql -U postgres -d cpet_db < scripts/init-db.sql
-psql -U postgres -d cpet_db < scripts/insert_cpet_users.sql
+./scripts/reset_local_dataset.sh
 ```
 
 ## 주의사항
@@ -90,6 +90,7 @@ psql -U postgres -d cpet_db < scripts/insert_cpet_users.sql
 ⚠️ **프로덕션 환경에서 복구 스크립트 실행 금지**
 - Fixtures의 restore_*.sql은 테스트용 데이터입니다
 - 프로덕션 DB에서 실행하면 데이터 유실 위험
+- `verify_local_inscyd.sh`는 항상 reset을 먼저 수행하므로 기존 로컬 DB 상태를 덮어씁니다
 
 ## 백업 전략
 

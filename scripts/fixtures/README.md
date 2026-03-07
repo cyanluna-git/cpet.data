@@ -23,6 +23,14 @@
    - 처리된 대사 분석 데이터
    - VO2max, FATMAX 결과
 
+5. **`restore_05_breath_data.sql`**
+   - `SUB-PAR-GEU`의 대표 CPET 4건에 대한 원본 breath-by-breath 데이터
+   - 로컬 처리/디버깅/차트 회귀 검증용
+
+6. **`restore_06_inscyd_reports.sql`**
+   - `SUB-PAR-GEU`의 사전 적재 INSCYD 히스토리 3건
+   - subject detail/dashboard 시계열 검증용
+
 ## 사용 방법
 
 ### 모든 테스트 데이터 한 번에 복구:
@@ -42,7 +50,17 @@ psql -U postgres -d cpet_db < restore_01_subjects.sql
 
 - 개발/테스트 환경에서만 사용
 - 프로덕션 데이터 유실 위험이 있으므로 프로덕션 DB에서 실행 금지
-- 새로운 테스트 데이터는 이 파일들을 수정하여 추가
+- 새로운 테스트 데이터는 이 파일들을 수정하거나 reset 스크립트 기준 fixture를 갱신하여 추가
+
+## 권장 사용 순서
+
+로컬 회귀 검증 전에는 수동 복구 대신 아래 스크립트를 사용:
+
+```bash
+./scripts/reset_local_dataset.sh
+```
+
+이 스크립트는 DB 재생성, 스키마 초기화, fixture restore, INSCYD fixture 적재까지 한 번에 수행합니다.
 
 ## 테스트 계정 정보
 
