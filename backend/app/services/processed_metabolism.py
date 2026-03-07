@@ -78,7 +78,7 @@ class ProcessedMetabolismService:
             return existing.to_dict(), True
 
         # Calculate with default config (don't save)
-        result = self._calculate_analysis(breath_data, AnalysisConfig())
+        result, _warnings = self._calculate_analysis(breath_data, AnalysisConfig())
         return result, False
 
     async def save(
@@ -104,11 +104,12 @@ class ProcessedMetabolismService:
             ValueError: If analysis fails due to insufficient data
         """
         # Calculate analysis
-        analysis_result = self._calculate_analysis(breath_data, config)
+        analysis_result, analysis_warnings = self._calculate_analysis(breath_data, config)
         if analysis_result is None:
-            await self._sync_parent_test_on_failure(test_id, "Analysis failed - insufficient data")
+            failure_reason = self._pick_failure_reason(analysis_warnings)
+            await self._sync_parent_test_on_failure(test_id, failure_reason)
             await self.db.commit()
-            raise ValueError("Analysis failed - insufficient data")
+            raise ValueError(failure_reason)
 
         # Check for existing record (upsert logic)
         existing = await self.get_by_test_id(test_id)
@@ -230,7 +231,7 @@ class ProcessedMetabolismService:
 
     def _calculate_analysis(
         self, breath_data: List[Any], config: AnalysisConfig
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Tuple[Optional[Dict[str, Any]], List[str]]:
         """
         Run metabolism analysis and return result dict.
 
@@ -239,13 +240,14 @@ class ProcessedMetabolismService:
             config: Analysis configuration
 
         Returns:
-            Analysis result as dictionary, or None if failed
+            Tuple of (analysis result, analyzer warnings)
         """
         analyzer = MetabolismAnalyzer(config=config)
         result = analyzer.analyze(breath_data)
+        warnings = list(analyzer.warnings)
 
         if result is None:
-            return None
+            return None, warnings
 
         # Convert to dict and add stats
         result_dict = result.to_dict()
@@ -261,7 +263,27 @@ class ProcessedMetabolismService:
             else 0,
         }
 
-        return result_dict
+        return result_dict, warnings
+
+    @staticmethod
+    def _pick_failure_reason(warnings: List[str]) -> str:
+        """Choose the most actionable analysis failure reason."""
+        if not warnings:
+            return "Analysis failed - insufficient data"
+
+        preferred_prefixes = (
+            "No usable metabolic rows",
+            "Insufficient binned data points",
+            "Insufficient exercise data for analysis",
+            "Insufficient raw data points after extraction",
+        )
+
+        for prefix in preferred_prefixes:
+            for warning in warnings:
+                if warning.startswith(prefix):
+                    return warning
+
+        return warnings[-1]
 
     async def _sync_parent_test_on_save(self, test_id: UUID) -> None:
         """

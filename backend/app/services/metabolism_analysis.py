@@ -420,7 +420,9 @@ class MetabolismAnalyzer:
         binned_points = self._power_binning(raw_points)
 
         if len(binned_points) < 3:
-            self.warnings.append("Insufficient binned data points")
+            self.warnings.append(
+                f"Insufficient binned data points: {len(binned_points)} (<3)"
+            )
             return None
 
         # 2.5. Binned IQR outlier removal (upper bound on fat only)
@@ -631,6 +633,7 @@ class MetabolismAnalyzer:
             )
 
         filtered = []
+        missing_required_count = 0
 
         for bd in breath_data:
             # 필수 필드 체크
@@ -639,6 +642,7 @@ class MetabolismAnalyzer:
                 or bd.fat_oxidation is None
                 or bd.cho_oxidation is None
             ):
+                missing_required_count += 1
                 continue
 
             # Initial hyperventilation filtering (RER spike at start)
@@ -689,6 +693,10 @@ class MetabolismAnalyzer:
             )
         else:
             logger.warning(f"🔍 [PHASE_TRIM] Output: 0 points (all filtered out)")
+            if missing_required_count == len(breath_data) and breath_data:
+                self.warnings.append(
+                    "No usable metabolic rows: missing VO2/VCO2 and oxidation fields"
+                )
 
         return filtered
 
@@ -700,6 +708,7 @@ class MetabolismAnalyzer:
         user-specified analysis window is not further narrowed.
         """
         filtered = []
+        missing_required_count = 0
         for bd in breath_data:
             # Required field check (same as full phase trimming)
             if (
@@ -707,6 +716,7 @@ class MetabolismAnalyzer:
                 or bd.fat_oxidation is None
                 or bd.cho_oxidation is None
             ):
+                missing_required_count += 1
                 continue
 
             # Power threshold filtering
@@ -718,6 +728,11 @@ class MetabolismAnalyzer:
                     continue
 
             filtered.append(bd)
+
+        if not filtered and missing_required_count == len(breath_data) and breath_data:
+            self.warnings.append(
+                "No usable metabolic rows: missing VO2/VCO2 and oxidation fields"
+            )
         return filtered
 
     def _check_trim_phase_mismatch(

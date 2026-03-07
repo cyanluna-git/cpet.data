@@ -294,6 +294,151 @@ class TestSparseBinMerging:
         merge_warnings = [w for w in result.warnings if "sparse" in w.lower()]
         assert len(merge_warnings) == 0
 
+    def test_insufficient_binned_warning_includes_count(self):
+        """Sparse data failure should report remaining binned count."""
+        data = [
+            FakeBreathData(
+                bike_power=100.0,
+                fat_oxidation=0.30,
+                cho_oxidation=0.40,
+                vo2=1500.0,
+                vco2=1200.0,
+                hr=120.0,
+                t_sec=60.0,
+                phase="Exercise",
+            ),
+            FakeBreathData(
+                bike_power=100.0,
+                fat_oxidation=0.31,
+                cho_oxidation=0.41,
+                vo2=1510.0,
+                vco2=1210.0,
+                hr=121.0,
+                t_sec=70.0,
+                phase="Exercise",
+            ),
+            FakeBreathData(
+                bike_power=100.0,
+                fat_oxidation=0.32,
+                cho_oxidation=0.42,
+                vo2=1520.0,
+                vco2=1220.0,
+                hr=122.0,
+                t_sec=80.0,
+                phase="Exercise",
+            ),
+            FakeBreathData(
+                bike_power=100.0,
+                fat_oxidation=0.33,
+                cho_oxidation=0.43,
+                vo2=1530.0,
+                vco2=1230.0,
+                hr=123.0,
+                t_sec=90.0,
+                phase="Exercise",
+            ),
+            FakeBreathData(
+                bike_power=100.0,
+                fat_oxidation=0.34,
+                cho_oxidation=0.44,
+                vo2=1540.0,
+                vco2=1240.0,
+                hr=124.0,
+                t_sec=100.0,
+                phase="Exercise",
+            ),
+            FakeBreathData(
+                bike_power=100.0,
+                fat_oxidation=0.35,
+                cho_oxidation=0.45,
+                vo2=1550.0,
+                vco2=1250.0,
+                hr=125.0,
+                t_sec=110.0,
+                phase="Exercise",
+            ),
+            FakeBreathData(
+                bike_power=300.0,
+                fat_oxidation=0.20,
+                cho_oxidation=0.80,
+                vo2=2200.0,
+                vco2=1800.0,
+                hr=150.0,
+                t_sec=120.0,
+                phase="Exercise",
+            ),
+            FakeBreathData(
+                bike_power=400.0,
+                fat_oxidation=0.15,
+                cho_oxidation=1.00,
+                vo2=2400.0,
+                vco2=2000.0,
+                hr=160.0,
+                t_sec=130.0,
+                phase="Exercise",
+            ),
+            FakeBreathData(
+                bike_power=500.0,
+                fat_oxidation=0.10,
+                cho_oxidation=1.20,
+                vo2=2600.0,
+                vco2=2200.0,
+                hr=170.0,
+                t_sec=140.0,
+                phase="Exercise",
+            ),
+            FakeBreathData(
+                bike_power=600.0,
+                fat_oxidation=0.08,
+                cho_oxidation=1.25,
+                vo2=2800.0,
+                vco2=2400.0,
+                hr=175.0,
+                t_sec=150.0,
+                phase="Exercise",
+            ),
+        ]
+        config = AnalysisConfig(
+            min_bin_count=3,
+            outlier_detection_enabled=False,
+            auto_trim_enabled=False,
+            exclude_initial_hyperventilation=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+        result = analyzer.analyze(data)
+
+        assert result is None
+        assert any(
+            warning.startswith("Insufficient binned data points:")
+            for warning in analyzer.warnings
+        )
+
+
+class TestFailureDiagnostics:
+    """Failure messages should explain why the analyzer cannot proceed."""
+
+    def test_missing_metabolic_rows_warning_is_specific(self):
+        data = [
+            FakeBreathData(
+                bike_power=120.0,
+                hr=130.0,
+                t_sec=60.0 + idx * 10.0,
+                phase="Exercise",
+            )
+            for idx in range(12)
+        ]
+        config = AnalysisConfig(
+            auto_trim_enabled=False,
+            exclude_initial_hyperventilation=False,
+        )
+        analyzer = MetabolismAnalyzer(config=config)
+        result = analyzer.analyze(data)
+
+        assert result is None
+        assert any(
+            "No usable metabolic rows" in warning for warning in analyzer.warnings
+        )
+
 
 class TestAdaptiveLoess:
     """3. Adaptive LOESS fraction"""
