@@ -28,4 +28,10 @@ echo "[4/4] Building frontend"
     VITE_API_URL="$VITE_API_URL" npm run build
 )
 
+echo "[5/5] Running INSCYD E2E"
+(
+    cd "$ROOT/frontend"
+    VITE_API_URL="$VITE_API_URL" npm run test:e2e -- e2e/inscyd-upload.spec.ts --project=chromium
+)
+
 echo "Local INSCYD verification passed."

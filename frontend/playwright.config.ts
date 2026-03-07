@@ -35,7 +35,7 @@ export default defineConfig({
     {
       // Backend (FastAPI)
       command:
-        '../.venv/bin/python -m uvicorn app.main:app --app-dir ../backend --host 0.0.0.0 --port 8100',
+        '../backend/.venv/bin/python -m uvicorn app.main:app --app-dir ../backend --host 0.0.0.0 --port 8100',
       url: 'http://localhost:8100/health',
       reuseExistingServer: !process.env.CI,
       stdout: 'ignore',

@@ -55,7 +55,7 @@ bash -c 'for file in restore_*.sql; do psql -U postgres -d cpet_db < "$file"; do
 |------|------|----------|
 | `init-db.sql` | 테이블, 인덱스, 컬럼 생성 | DB 초기 구성 시 (1회) |
 | `insert_cpet_users.sql` | Admin 계정, 테스트 피험자 생성 | DB 초기 구성 시 |
-| `verify_local_inscyd.sh` | INSCYD migration/test/build 검증 | 로컬 회귀 검증 시 |
+| `verify_local_inscyd.sh` | INSCYD migration/unit test/build/E2E 검증 | 로컬 회귀 검증 시 |
 
 ### 선택사항 (Backups)
 
