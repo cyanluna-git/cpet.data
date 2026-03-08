@@ -4,12 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Activity, TrendingUp, Heart, Flame, Calendar, Target, Edit2, Check, X } from 'lucide-react';
+import { Activity, TrendingUp, Heart, Flame, Calendar, Target, Edit2, Check, X, Upload } from 'lucide-react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { extractItems, getErrorMessage } from '@/utils/apiHelpers';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Input } from '@/components/ui/input';
+import { TestUploadModal } from '@/components/TestUploadModal';
 
 interface SubjectDashboardProps {
   user: any;
@@ -31,6 +32,7 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
   const [subject, setSubject] = useState<any>(null);
   const [tests, setTests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   // 목표 설정 상태
   const [goals, setGoals] = useState<Goal>(() => {
@@ -84,6 +86,10 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
       setLoading(false);
     }
   }
+
+  const handleUploadSuccess = async () => {
+    await loadData();
+  };
 
   // 트렌드 데이터 계산
   const trendData = useMemo(() => {
@@ -164,12 +170,23 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
         {/* Welcome */}
         <div className="mb-8">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
-            내 대사 프로파일
-          </h1>
-          <p className="text-gray-600">
-            최근 운동 능력 검사 결과와 코호트 비교 분석을 확인하세요.
-          </p>
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
+                내 대사 프로파일
+              </h1>
+              <p className="text-gray-600">
+                최근 운동 능력 검사 결과와 코호트 비교 분석을 확인하세요.
+              </p>
+            </div>
+            <Button
+              onClick={() => setShowUploadModal(true)}
+              className="gap-2 bg-[#0F766E] hover:bg-[#0b5f59] md:self-start"
+            >
+              <Upload className="w-4 h-4" />
+              INSCYD 리포트 업로드
+            </Button>
+          </div>
         </div>
 
         {!latestTest && inscydReports.length === 0 ? (
@@ -177,6 +194,13 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
             <Activity className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">아직 테스트 기록이 없습니다</h3>
             <p className="text-gray-600">CPET 또는 INSCYD 리포트가 업로드되면 결과가 여기에 표시됩니다.</p>
+            <Button
+              onClick={() => setShowUploadModal(true)}
+              className="mt-6 gap-2 bg-[#0F766E] hover:bg-[#0b5f59]"
+            >
+              <Upload className="w-4 h-4" />
+              첫 INSCYD 리포트 업로드
+            </Button>
           </Card>
         ) : (
           <>
@@ -732,6 +756,13 @@ export function SubjectDashboard({ user, onLogout, onNavigate }: SubjectDashboar
           </>
         )}
       </div>
+
+      <TestUploadModal
+        open={showUploadModal}
+        onClose={() => setShowUploadModal(false)}
+        onSuccess={handleUploadSuccess}
+        mode="inscyd"
+      />
     </div>
   );
 }

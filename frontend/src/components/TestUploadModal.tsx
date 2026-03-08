@@ -45,6 +45,7 @@ interface TestUploadModalProps {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  mode?: "all" | "inscyd";
 }
 
 type UploadState = "idle" | "uploading" | "success" | "error";
@@ -58,6 +59,7 @@ export function TestUploadModal({
   open,
   onClose,
   onSuccess,
+  mode = "all",
 }: TestUploadModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [uploadState, setUploadState] = useState<UploadState>("idle");
@@ -68,6 +70,7 @@ export function TestUploadModal({
   const [smoothingWindow, setSmoothingWindow] = useState(10);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isInscydOnly = mode === "inscyd";
 
   const resetState = useCallback(() => {
     setFile(null);
@@ -85,13 +88,15 @@ export function TestUploadModal({
     if (!selectedFile) return;
 
     // Validate file type
-    const validExtensions = [".xlsx", ".xls", ".pdf"];
+    const validExtensions = isInscydOnly ? [".pdf"] : [".xlsx", ".xls", ".pdf"];
     const ext = selectedFile.name
       .toLowerCase()
       .slice(selectedFile.name.lastIndexOf("."));
     if (!validExtensions.includes(ext)) {
       toast.error(
-        "지원하지 않는 파일 형식입니다. COSMED Excel(.xlsx, .xls) 또는 INSCYD PDF(.pdf)만 업로드 가능합니다.",
+        isInscydOnly
+          ? "지원하지 않는 파일 형식입니다. INSCYD PDF(.pdf)만 업로드 가능합니다."
+          : "지원하지 않는 파일 형식입니다. COSMED Excel(.xlsx, .xls) 또는 INSCYD PDF(.pdf)만 업로드 가능합니다.",
       );
       return;
     }
@@ -104,7 +109,7 @@ export function TestUploadModal({
 
     setFile(selectedFile);
     setError(null);
-  }, []);
+  }, [isInscydOnly]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
@@ -143,7 +148,7 @@ export function TestUploadModal({
 
       setResult(response);
       setUploadState("success");
-      const itemLabel = isInscydFile(file.name) ? "INSCYD 리포트" : "테스트";
+      const itemLabel = isInscydOnly || isInscydFile(file.name) ? "INSCYD 리포트" : "테스트";
 
       // Show toast with result
       if (response.subject_created) {
@@ -184,7 +189,7 @@ export function TestUploadModal({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".xlsx,.xls,.pdf"
+        accept={isInscydOnly ? ".pdf" : ".xlsx,.xls,.pdf"}
         className="hidden"
         onChange={(e) => handleFileSelect(e.target.files?.[0] || null)}
       />
@@ -222,7 +227,9 @@ export function TestUploadModal({
             파일을 드래그하거나 클릭하여 선택하세요
           </p>
           <p className="text-sm text-gray-500">
-            COSMED Excel(.xlsx, .xls) 또는 INSCYD PDF(.pdf) 지원
+            {isInscydOnly
+              ? "INSCYD PDF(.pdf)만 업로드할 수 있습니다"
+              : "COSMED Excel(.xlsx, .xls) 또는 INSCYD PDF(.pdf) 지원"}
           </p>
         </div>
       )}
@@ -373,9 +380,13 @@ export function TestUploadModal({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>테스트 데이터 업로드</DialogTitle>
+          <DialogTitle>
+            {isInscydOnly ? "INSCYD 리포트 업로드" : "테스트 데이터 업로드"}
+          </DialogTitle>
           <DialogDescription>
-            COSMED Excel 또는 INSCYD PDF를 업로드하면 피험자를 자동으로 매칭하거나 생성합니다.
+            {isInscydOnly
+              ? "본인 계정에 연결된 피험자 프로필로 INSCYD PDF 리포트를 업로드합니다."
+              : "COSMED Excel 또는 INSCYD PDF를 업로드하면 피험자를 자동으로 매칭하거나 생성합니다."}
           </DialogDescription>
         </DialogHeader>
 
@@ -383,7 +394,9 @@ export function TestUploadModal({
           {uploadState === "idle" && (
             <div className="space-y-4">
               {renderDropZone()}
-              {!file || !isInscydFile(file.name) ? renderAdvancedSettings() : null}
+              {!isInscydOnly && (!file || !isInscydFile(file.name))
+                ? renderAdvancedSettings()
+                : null}
             </div>
           )}
 
