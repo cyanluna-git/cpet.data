@@ -78,6 +78,33 @@ Frontend `.env`: `VITE_API_URL=http://localhost:8100`
 
 http://localhost:8100/docs (Swagger UI)
 
+## Dependency Direction (Must Not Violate)
+
+```
+Router (api/) → Service (services/) → Model (models/)
+Frontend (pages/) → Hooks → lib/api.ts → Backend API
+```
+
+- Routers must not write SQLAlchemy queries directly — only through Services
+- A Service must not directly manipulate another Service's Models
+- Frontend must not access DB directly (Vite proxy → FastAPI → PostgreSQL)
+
+## Forbidden Patterns
+
+- ❌ Direct INSERT into breath_data hypertable (use COSMEDParser only)
+- ❌ Using TimescaleDB functions as plain PostgreSQL queries
+- ❌ Logging patient personal information (names, birth years)
+- ❌ Writing Excel parsing logic in Routers
+- ❌ Storing JWT tokens outside localStorage on frontend
+
+## Required Patterns
+
+- ✅ New analysis metrics must be implemented in MetabolismAnalyzer + tests
+- ✅ DB schema changes require Alembic migration
+- ✅ CPET data uses UUID-based identification (no auto-increment)
+- ✅ Time-series queries must use TimescaleDB time_bucket functions
+- ✅ Medical data precision: explicitly specify decimal handling in float operations
+
 ## Memory & Rules
 
 ### Imports
