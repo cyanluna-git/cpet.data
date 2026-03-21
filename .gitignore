@@ -71,3 +71,7 @@ breath_data.csv
 cpet_tests.csv
 processed_metabolism.csv
 .codex/
+
+# Server workspace data
+data/
+published/
