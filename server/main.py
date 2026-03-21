@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -54,10 +54,10 @@ app.mount(
 # ── Page routes ──────────────────────────────────────────────────────
 
 
-@app.get("/", response_class=RedirectResponse)
-async def root() -> RedirectResponse:
-    """Redirect root to the upload page."""
-    return RedirectResponse(url="/upload")
+@app.get("/", response_class=HTMLResponse)
+async def index_page(request: Request) -> HTMLResponse:
+    """Render the landing page."""
+    return templates.TemplateResponse(request, "index.html")
 
 
 @app.get("/upload", response_class=HTMLResponse)

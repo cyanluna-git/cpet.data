@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}CPET Platform — 운동 대사 분석{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto text-center">
+
+  <!-- Hero -->
+  <div class="mt-12 mb-16">
+    <h1 class="text-4xl font-bold text-gray-900 mb-4">
+      CPET 대사 분석 플랫폼
+    </h1>
+    <p class="text-xl text-gray-600 leading-relaxed">
+      심폐운동부하검사 데이터를 업로드하면<br>
+      AI가 분석하여 상세 리포트를 생성합니다
+    </p>
+  </div>
+
+  <!-- Supported formats -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-12">
+    <div class="bg-white rounded-lg border border-gray-200 p-4">
+      <div class="text-2xl mb-2">📊</div>
+      <div class="font-semibold text-sm text-gray-800">COSMED XLSX</div>
+      <div class="text-xs text-gray-500 mt-1">호흡별 가스분석</div>
+    </div>
+    <div class="bg-white rounded-lg border border-gray-200 p-4">
+      <div class="text-2xl mb-2">🚴</div>
+      <div class="font-semibold text-sm text-gray-800">FIT</div>
+      <div class="text-xs text-gray-500 mt-1">파워/심박 데이터</div>
+    </div>
+    <div class="bg-white rounded-lg border border-gray-200 p-4">
+      <div class="text-2xl mb-2">📋</div>
+      <div class="font-semibold text-sm text-gray-800">ZWO</div>
+      <div class="text-xs text-gray-500 mt-1">프로토콜 정의</div>
+    </div>
+    <div class="bg-white rounded-lg border border-gray-200 p-4">
+      <div class="text-2xl mb-2">🩸</div>
+      <div class="font-semibold text-sm text-gray-800">Lactate</div>
+      <div class="text-xs text-gray-500 mt-1">혈중 젖산 데이터</div>
+    </div>
+  </div>
+
+  <!-- What you get -->
+  <div class="bg-white rounded-xl border border-gray-200 p-8 mb-12 text-left">
+    <h2 class="text-lg font-semibold text-gray-800 mb-4 text-center">분석 항목</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-gray-700">
+      <div class="flex items-start gap-2">
+        <span class="text-green-500 mt-0.5">&#10003;</span>
+        <span><strong>FatMax</strong> — 최대 지방 산화 파워 및 존</span>
+      </div>
+      <div class="flex items-start gap-2">
+        <span class="text-green-500 mt-0.5">&#10003;</span>
+        <span><strong>VO2max</strong> — 최대 산소 섭취량</span>
+      </div>
+      <div class="flex items-start gap-2">
+        <span class="text-green-500 mt-0.5">&#10003;</span>
+        <span><strong>젖산 역치</strong> — LT1/LT2 (D-max 방법)</span>
+      </div>
+      <div class="flex items-start gap-2">
+        <span class="text-green-500 mt-0.5">&#10003;</span>
+        <span><strong>기질 대사</strong> — 지방/탄수화물 산화 곡선</span>
+      </div>
+      <div class="flex items-start gap-2">
+        <span class="text-green-500 mt-0.5">&#10003;</span>
+        <span><strong>환기 역치</strong> — VT1/VT2 분석</span>
+      </div>
+      <div class="flex items-start gap-2">
+        <span class="text-green-500 mt-0.5">&#10003;</span>
+        <span><strong>트레이닝 존</strong> — 파워/심박 기반 구간</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTA -->
+  <a href="/upload"
+     class="inline-block bg-gray-900 text-white text-lg font-medium
+            px-8 py-4 rounded-lg hover:bg-gray-800 transition-colors
+            shadow-sm">
+    시험 데이터 업로드
+  </a>
+
+  <p class="mt-4 text-sm text-gray-500">
+    COSMED K5 XLSX 파일이 필수이며, FIT · ZWO · Lactate 데이터는 선택입니다
+  </p>
+
+</div>
+{% endblock %}

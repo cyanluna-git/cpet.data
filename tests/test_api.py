@@ -678,11 +678,12 @@ class TestConcurrentUploads:
 
 
 class TestPageRoutes:
-    def test_root_redirects_to_upload(self, client: TestClient) -> None:
-        """GET / redirects to /upload."""
-        resp = client.get("/", follow_redirects=False)
-        assert resp.status_code == 307
-        assert resp.headers["location"] == "/upload"
+    def test_root_renders_landing_page(self, client: TestClient) -> None:
+        """GET / renders the landing/intro page."""
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "시험 데이터 업로드" in resp.text
 
     def test_upload_page_renders(self, client: TestClient) -> None:
         """GET /upload returns 200 with HTML containing the upload form."""
