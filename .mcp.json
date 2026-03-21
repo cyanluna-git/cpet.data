@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "cpet-webhook": {
+      "command": "bun",
+      "args": ["channel/webhook.ts"]
+    }
+  }
+}
