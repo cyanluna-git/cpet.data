@@ -66,9 +66,15 @@ def create_submission(
     workspace_path: str,
     subject_name: str = "",
     test_date: str = "",
+    submission_id: str | None = None,
 ) -> str:
-    """Insert a new submission and return its UUID."""
-    submission_id = str(uuid.uuid4())
+    """Insert a new submission and return its UUID.
+
+    If submission_id is provided, use it; otherwise generate a new one.
+    This allows workspace creation to determine the ID first.
+    """
+    if submission_id is None:
+        submission_id = str(uuid.uuid4())
     manifest_json = json.dumps(file_manifest)
     conn = _connect(db_path)
     conn.execute(

@@ -1,0 +1,18 @@
+<div id="job-list">
+{% for job in jobs %}
+<div class="job-row" data-status="{{ job.status }}">
+  <span class="job-id">{{ job.id[:8] }}</span>
+  <span class="job-subject">{{ job.subject_name or "—" }}</span>
+  <span class="job-date">{{ job.test_date or "—" }}</span>
+  <span class="job-status">{{ job.status }}</span>
+  {% if job.report_url %}
+  <a href="{{ job.report_url }}">Report</a>
+  {% endif %}
+  {% if job.error_message %}
+  <span class="job-error">{{ job.error_message }}</span>
+  {% endif %}
+</div>
+{% else %}
+<div class="job-row empty">No jobs found.</div>
+{% endfor %}
+</div>
