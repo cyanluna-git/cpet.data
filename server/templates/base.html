@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}CPET Platform{% endblock %}</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- htmx -->
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+
+  <style>
+    /* htmx request indicator: show spinner while request is in flight */
+    .htmx-indicator {
+      display: none;
+    }
+    .htmx-request .htmx-indicator,
+    .htmx-request.htmx-indicator {
+      display: inline-block;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-gray-50 text-gray-900">
+
+  <!-- Navigation -->
+  <nav class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-14">
+        <span class="text-lg font-semibold text-gray-800">CPET Platform</span>
+        <div class="flex space-x-4">
+          <a
+            href="/upload"
+            class="px-3 py-2 rounded-md text-sm font-medium
+              {% if request.url.path == '/upload' %}
+                bg-gray-900 text-white
+              {% else %}
+                text-gray-600 hover:text-gray-900 hover:bg-gray-100
+              {% endif %}"
+          >업로드</a>
+          <a
+            href="/dashboard"
+            class="px-3 py-2 rounded-md text-sm font-medium
+              {% if request.url.path == '/dashboard' %}
+                bg-gray-900 text-white
+              {% else %}
+                text-gray-600 hover:text-gray-900 hover:bg-gray-100
+              {% endif %}"
+          >대시보드</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    {% block content %}{% endblock %}
+  </main>
+
+</body>
+</html>

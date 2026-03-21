@@ -13,7 +13,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -49,6 +50,27 @@ app.mount(
     StaticFiles(directory=str(_server_dir / "static")),
     name="static",
 )
+
+# ── Page routes ──────────────────────────────────────────────────────
+
+
+@app.get("/", response_class=RedirectResponse)
+async def root() -> RedirectResponse:
+    """Redirect root to the upload page."""
+    return RedirectResponse(url="/upload")
+
+
+@app.get("/upload", response_class=HTMLResponse)
+async def upload_page(request: Request) -> HTMLResponse:
+    """Render the file upload page."""
+    return templates.TemplateResponse(request, "upload.html")
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page(request: Request) -> HTMLResponse:
+    """Render the dashboard page."""
+    return templates.TemplateResponse(request, "dashboard.html")
+
 
 # ── API router ───────────────────────────────────────────────────────
 

@@ -294,10 +294,10 @@ class TestJobsPartialEndpoint:
     def test_partial_empty(
         self, mock_channel: AsyncMock, client: TestClient
     ) -> None:
-        """Empty job list renders the 'No jobs found' message."""
+        """Empty job list renders the Korean empty state message."""
         resp = client.get("/api/jobs/partial")
         assert resp.status_code == 200
-        assert "No jobs found" in resp.text
+        assert "아직 제출된 분석이 없습니다" in resp.text
 
     @patch("server.api.notify_channel", new_callable=AsyncMock)
     def test_partial_with_status_filter(
@@ -311,7 +311,7 @@ class TestJobsPartialEndpoint:
         )
         resp = client.get("/api/jobs/partial?status=done")
         assert resp.status_code == 200
-        assert "No jobs found" in resp.text
+        assert "아직 제출된 분석이 없습니다" in resp.text
 
 
 # ── Channel dispatch ─────────────────────────────────────────────────
@@ -546,9 +546,9 @@ class TestPartialHtmlContent:
     def test_partial_no_jobs_shows_empty_message(
         self, mock_channel: AsyncMock, client: TestClient
     ) -> None:
-        """Empty job list renders the exact 'No jobs found.' message."""
+        """Empty job list renders the Korean empty state message."""
         html = client.get("/api/jobs/partial").text
-        assert "No jobs found." in html
+        assert "아직 제출된 분석이 없습니다" in html
 
     @patch("server.api.notify_channel", new_callable=AsyncMock)
     def test_partial_job_row_has_data_status_attribute(
@@ -672,3 +672,80 @@ class TestConcurrentUploads:
 
         assert len(workspace_paths) == 4
         assert len(set(workspace_paths)) == 4, "Workspaces are not unique"
+
+
+# ── Page routes ──────────────────────────────────────────────────────
+
+
+class TestPageRoutes:
+    def test_root_redirects_to_upload(self, client: TestClient) -> None:
+        """GET / redirects to /upload."""
+        resp = client.get("/", follow_redirects=False)
+        assert resp.status_code == 307
+        assert resp.headers["location"] == "/upload"
+
+    def test_upload_page_renders(self, client: TestClient) -> None:
+        """GET /upload returns 200 with HTML containing the upload form."""
+        resp = client.get("/upload")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "업로드" in resp.text
+        assert 'hx-post="/api/submit"' in resp.text
+
+    def test_dashboard_page_renders(self, client: TestClient) -> None:
+        """GET /dashboard returns 200 with HTML containing the dashboard table."""
+        resp = client.get("/dashboard")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "대시보드" in resp.text
+        assert 'hx-get="/api/jobs/partial"' in resp.text
+
+
+# ── Security: path traversal ──────────────────────────────────────────
+
+
+class TestPathTraversalPrevention:
+    @patch("server.api.notify_channel", new_callable=AsyncMock)
+    def test_traversal_filename_written_to_raw_only(
+        self, mock_channel: AsyncMock, client: TestClient, tmp_path: Path
+    ) -> None:
+        """A filename with directory traversal components is stripped to basename."""
+        resp = client.post(
+            "/api/submit",
+            files=[_make_file("../../etc/passwd.xlsx", b"malicious")],
+            data={"description": "traversal attempt"},
+        )
+        assert resp.status_code == 201
+        db_path = app.state.db_path
+        jobs = list_jobs(db_path)
+        sub = get_submission(db_path, jobs[0]["submission_id"])
+        assert sub is not None
+        ws = Path(sub["workspace_path"])
+        raw = ws / "raw"
+        # File must be inside raw/ — traversal path resolved to basename only
+        saved = list(raw.iterdir())
+        assert len(saved) == 1
+        assert saved[0].parent == raw, "file escaped raw/ directory"
+        assert saved[0].name == "passwd.xlsx"
+
+    @patch("server.api.notify_channel", new_callable=AsyncMock)
+    def test_absolute_path_filename_written_to_raw_only(
+        self, mock_channel: AsyncMock, client: TestClient, tmp_path: Path
+    ) -> None:
+        """A filename that is an absolute path is stripped to basename."""
+        resp = client.post(
+            "/api/submit",
+            files=[_make_file("/etc/cron.d/evil.xlsx", b"evil")],
+            data={"description": "absolute path attempt"},
+        )
+        assert resp.status_code == 201
+        db_path = app.state.db_path
+        jobs = list_jobs(db_path)
+        sub = get_submission(db_path, jobs[0]["submission_id"])
+        assert sub is not None
+        ws = Path(sub["workspace_path"])
+        raw = ws / "raw"
+        saved = list(raw.iterdir())
+        assert len(saved) == 1
+        assert saved[0].parent == raw, "file escaped raw/ directory"
+        assert saved[0].name == "evil.xlsx"

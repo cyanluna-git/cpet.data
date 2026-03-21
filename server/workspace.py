@@ -32,7 +32,9 @@ def create_workspace(
     report_dir.mkdir(parents=True, exist_ok=True)
 
     for filename, content in files:
-        file_path = raw_dir / filename
+        # Strip directory components to prevent path traversal attacks
+        safe_name = Path(filename).name
+        file_path = raw_dir / safe_name
         file_path.write_bytes(content)
 
     return workspace
