@@ -3,18 +3,66 @@
 
 {% block content %}
 <div>
+  <style>
+    @keyframes cpetScan {
+      0% { transform: translateX(-140%); opacity: 0; }
+      20% { opacity: .24; }
+      100% { transform: translateX(260%); opacity: 0; }
+    }
+
+    @keyframes cpetGlow {
+      0%, 100% { box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12); }
+      50% { box-shadow: 0 16px 40px rgba(14, 165, 233, 0.22); }
+    }
+
+    .job-processing-surface {
+      position: relative;
+      overflow: hidden;
+      border-radius: 9999px;
+      background:
+        linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.94)),
+        linear-gradient(90deg, rgba(34, 211, 238, 0.12), rgba(96, 165, 250, 0.18));
+      animation: cpetGlow 2.2s ease-in-out infinite;
+    }
+
+    .job-processing-surface::after {
+      content: "";
+      position: absolute;
+      inset: -35% auto -35% -30%;
+      width: 36%;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.26),
+        transparent
+      );
+      transform: skewX(-18deg);
+      animation: cpetScan 2.5s linear infinite;
+      pointer-events: none;
+    }
+
+    .job-processing-track {
+      background-image:
+        linear-gradient(90deg, rgba(34, 211, 238, 0.26), rgba(251, 191, 36, 0.34), rgba(14, 165, 233, 0.26)),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.10) 1px, transparent 1px);
+      background-size: 200% 100%, 12px 100%;
+      animation: cpetScan 3.3s linear infinite;
+    }
+  </style>
   <h1 class="text-2xl font-bold mb-6">대시보드</h1>
 
   <div class="bg-white rounded-lg shadow overflow-x-auto">
     <table class="min-w-full divide-y divide-gray-200">
       <thead class="bg-gray-50">
         <tr>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">피험자</th>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">날짜</th>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">상태</th>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">결과</th>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">생성일</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">피험자</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">날짜</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">리포트 버전</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">생성 방식</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">상태</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">결과</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">작업</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">생성일</th>
         </tr>
       </thead>
       <!--
@@ -29,19 +77,23 @@
       >
         <!-- Loading skeleton (replaced by htmx on first response) -->
         <tr class="animate-pulse">
-          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-16"></div></td>
           <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-20"></div></td>
           <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-24"></div></td>
+          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-20"></div></td>
+          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-28"></div></td>
           <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-14"></div></td>
           <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-12"></div></td>
+          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-16"></div></td>
           <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-28"></div></td>
         </tr>
         <tr class="animate-pulse">
-          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-16"></div></td>
           <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-20"></div></td>
           <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-24"></div></td>
+          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-20"></div></td>
+          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-28"></div></td>
           <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-14"></div></td>
           <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-12"></div></td>
+          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-16"></div></td>
           <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-28"></div></td>
         </tr>
       </tbody>

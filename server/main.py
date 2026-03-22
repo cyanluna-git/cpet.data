@@ -42,6 +42,7 @@ app.state.channel_url = os.environ.get(
 # ── Templates and static files ───────────────────────────────────────
 
 _server_dir = Path(__file__).resolve().parent
+_repo_dir = _server_dir.parent
 templates = Jinja2Templates(directory=str(_server_dir / "templates"))
 app.state.templates = templates
 
@@ -50,6 +51,21 @@ app.mount(
     StaticFiles(directory=str(_server_dir / "static")),
     name="static",
 )
+
+_published_dir = _repo_dir / "published"
+app.state.published_dir = _published_dir
+if _published_dir.exists():
+    # Support both the documented /report/<slug>/ path and older /reports/<slug>/ links.
+    app.mount(
+        "/report",
+        StaticFiles(directory=str(_published_dir), html=True),
+        name="report",
+    )
+    app.mount(
+        "/reports",
+        StaticFiles(directory=str(_published_dir), html=True),
+        name="reports",
+    )
 
 # ── Page routes ──────────────────────────────────────────────────────
 

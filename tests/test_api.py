@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from server.db import get_job, get_submission, init_db, list_jobs
+from server.db import get_job, get_submission, init_db, list_jobs, update_job_status
 from server.main import app
 
 
@@ -29,6 +29,7 @@ def _setup_app_state(tmp_path: Path) -> None:
     app.state.db_path = db_path
     app.state.data_dir = data_dir
     app.state.channel_url = "http://127.0.0.1:9999"
+    app.state.published_dir = tmp_path / "published"
 
 
 @pytest.fixture()
@@ -236,6 +237,44 @@ class TestJobsListEndpoint:
         assert resp.status_code == 200
         assert len(resp.json()) == 1
 
+    @patch("server.api.notify_channel", new_callable=AsyncMock)
+    def test_list_jobs_reconciles_materialized_processing_report(
+        self, mock_channel: AsyncMock, client: TestClient
+    ) -> None:
+        """Polling upgrades a processing job to done once report artifacts exist."""
+        resp = client.post(
+            "/api/submit",
+            files=[_make_xlsx()],
+            data={
+                "description": "reconcile test",
+                "subject_name": "Park Geunyun",
+                "test_date": "2026-03-20",
+            },
+        )
+        job_id = resp.json()["job_id"]
+        job = get_job(app.state.db_path, job_id)
+        sub = get_submission(app.state.db_path, job["submission_id"])
+        assert sub is not None
+
+        workspace = Path(sub["workspace_path"])
+        report_dir = workspace / "report"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        report_html = "<html><body><script id=\"report-data\" type=\"application/json\">{\"subject\":{\"name\":\"Park Geunyun\"},\"session\":{\"test_date\":\"2026-03-20\"},\"meta\":{\"analysis_method\":\"CPET 프로토콜 보정\"}}</script></body></html>"
+        (report_dir / "index.html").write_text(report_html, encoding="utf-8")
+
+        published_dir = app.state.published_dir
+        target = Path(published_dir) / "park-geunyun-20260320"
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "index.html").write_text(report_html, encoding="utf-8")
+
+        update_job_status(app.state.db_path, job_id, "processing")
+
+        jobs = client.get("/api/jobs").json()
+        row = next(item for item in jobs if item["id"] == job_id)
+        assert row["status"] == "done"
+        assert row["report_slug"] == "park-geunyun-20260320"
+        assert row["report_url"] == "/report/park-geunyun-20260320/"
+
 
 # ── GET /api/jobs/{job_id} ───────────────────────────────────────────
 
@@ -264,6 +303,100 @@ class TestJobDetailEndpoint:
         resp = client.get("/api/jobs/nonexistent-id")
         assert resp.status_code == 404
         assert "not found" in resp.json()["error"]
+
+
+class TestManualTriggerEndpoint:
+    @patch("server.api.notify_channel", new_callable=AsyncMock)
+    @patch("server.api._channel_is_healthy", new_callable=AsyncMock)
+    def test_trigger_pending_job_routes_to_channel(
+        self,
+        mock_health: AsyncMock,
+        mock_channel: AsyncMock,
+        client: TestClient,
+    ) -> None:
+        """Pending jobs become processing and resend the webhook when channel is healthy."""
+        mock_health.return_value = True
+        resp = client.post(
+            "/api/submit",
+            files=[_make_xlsx()],
+            data={"description": "manual trigger", "subject_name": "Park"},
+        )
+        job_id = resp.json()["job_id"]
+        mock_channel.reset_mock()
+
+        trigger = client.post(f"/api/jobs/{job_id}/trigger")
+        assert trigger.status_code == 200
+        assert "분석 진행 중" in trigger.text
+        assert "호흡 데이터 정렬 중" in trigger.text
+
+        job = get_job(app.state.db_path, job_id)
+        assert job is not None
+        assert job["status"] == "processing"
+        assert job["started_at"] is not None
+        mock_channel.assert_awaited_once()
+        payload = mock_channel.call_args.args[1]
+        assert payload["job_id"] == job_id
+        assert payload["description"] == "manual trigger"
+
+    @patch("server.api._start_fallback_analysis")
+    @patch("server.api._channel_is_healthy", new_callable=AsyncMock)
+    @patch("server.api.notify_channel", new_callable=AsyncMock)
+    def test_trigger_failed_job_starts_fallback_when_channel_down(
+        self,
+        mock_channel: AsyncMock,
+        mock_health: AsyncMock,
+        mock_fallback,
+        client: TestClient,
+    ) -> None:
+        """Failed jobs can be restarted and fall back to local pipeline when channel is unavailable."""
+        mock_health.return_value = False
+        resp = client.post(
+            "/api/submit",
+            files=[_make_xlsx()],
+            data={"description": "fallback trigger"},
+        )
+        job_id = resp.json()["job_id"]
+        mock_channel.reset_mock()
+        update_job_status(
+            app.state.db_path,
+            job_id,
+            "failed",
+            error_message="old failure",
+        )
+
+        trigger = client.post(f"/api/jobs/{job_id}/trigger")
+        assert trigger.status_code == 200
+        assert "분석 진행 중" in trigger.text
+        mock_channel.assert_not_awaited()
+        mock_fallback.assert_called_once()
+
+        job = get_job(app.state.db_path, job_id)
+        assert job is not None
+        assert job["status"] == "processing"
+        assert job["error_message"] is None
+
+    @patch("server.api.notify_channel", new_callable=AsyncMock)
+    def test_trigger_done_job_rejected(
+        self, mock_channel: AsyncMock, client: TestClient
+    ) -> None:
+        """Completed jobs cannot be retriggered from the dashboard."""
+        resp = client.post(
+            "/api/submit",
+            files=[_make_xlsx()],
+            data={"description": "done trigger"},
+        )
+        job_id = resp.json()["job_id"]
+        update_job_status(
+            app.state.db_path,
+            job_id,
+            "done",
+            report_slug="done-report",
+            report_url="/report/done-report/",
+        )
+
+        trigger = client.post(f"/api/jobs/{job_id}/trigger")
+        assert trigger.status_code == 409
+        assert "cannot be retriggered" in trigger.json()["error"]
 
 
 # ── GET /api/jobs/partial ────────────────────────────────────────────
@@ -515,19 +648,18 @@ class TestMultipleXlsxFiles:
 
 class TestPartialHtmlContent:
     @patch("server.api.notify_channel", new_callable=AsyncMock)
-    def test_partial_renders_job_id_prefix(
+    def test_partial_renders_trigger_button_for_pending_jobs(
         self, mock_channel: AsyncMock, client: TestClient
     ) -> None:
-        """Job list partial renders first 8 chars of job ID."""
-        resp = client.post(
+        """Pending jobs expose the manual analysis trigger button."""
+        client.post(
             "/api/submit",
             files=[_make_xlsx()],
-            data={"description": "id prefix test"},
+            data={"description": "button test"},
         )
-        job_id = resp.json()["job_id"]
-
         html = client.get("/api/jobs/partial").text
-        assert job_id[:8] in html
+        assert "분석 시작" in html
+        assert "hx-post=\"/api/jobs/" in html
 
     @patch("server.api.notify_channel", new_callable=AsyncMock)
     def test_partial_renders_pending_status(
@@ -593,6 +725,24 @@ class TestPartialHtmlContent:
         assert "Alpha" in html
         assert "Beta" in html
         assert "Gamma" in html
+
+    @patch("server.api.notify_channel", new_callable=AsyncMock)
+    def test_partial_renders_processing_surface(
+        self, mock_channel: AsyncMock, client: TestClient
+    ) -> None:
+        """Processing jobs render the cinematic status surface and stage copy."""
+        resp = client.post(
+            "/api/submit",
+            files=[_make_xlsx()],
+            data={"description": "processing state"},
+        )
+        job_id = resp.json()["job_id"]
+        update_job_status(app.state.db_path, job_id, "processing")
+
+        html = client.get("/api/jobs/partial").text
+        assert "분석 진행 중" in html
+        assert "job-processing-track" in html
+        assert "호흡 데이터 정렬 중" in html
 
 
 # ── Concurrent uploads ────────────────────────────────────────────────

@@ -28,6 +28,7 @@ def e2e_client(tmp_path: Path) -> TestClient:
     app.state.db_path = db_path
     app.state.data_dir = data_dir
     app.state.channel_url = "http://127.0.0.1:9999"
+    app.state.published_dir = tmp_path / "published"
 
     return TestClient(app, raise_server_exceptions=False)
 
