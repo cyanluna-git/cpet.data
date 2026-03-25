@@ -26,6 +26,11 @@ from server.db import (
     get_user,
     get_user_profile,
     init_db,
+    link_submission_user,
+    list_submissions_with_users,
+    list_users,
+    unlink_submission_user,
+    update_user_role,
     upsert_user_profile,
 )
 
@@ -108,6 +113,7 @@ def _get_session_user(request: Request) -> dict | None:
         "display_name": request.session.get("display_name", ""),
         "avatar_url": request.session.get("avatar_url", ""),
         "email": request.session.get("email", ""),
+        "role": request.session.get("role", "user"),
         "onboarding_completed": request.session.get("onboarding_completed", 0),
     }
 
@@ -344,6 +350,236 @@ async def onboarding_submit(request: Request) -> HTMLResponse:
     request.session["onboarding_completed"] = 1
 
     return RedirectResponse(url="/dashboard", status_code=302)
+
+
+# ── Manage page routes ────────────────────────────────────────────────
+
+
+def _require_manage_access(request: Request) -> dict | RedirectResponse:
+    """Check that the current user has researcher or admin role.
+
+    Returns the session user dict if authorized.
+    Returns a RedirectResponse (to login) or raises an HTMLResponse (403) otherwise.
+    """
+    session_user = _get_session_user(request)
+    if session_user is None:
+        return RedirectResponse(url="/auth/google/login", status_code=302)
+
+    role = session_user.get("role", "user")
+    if role not in ("researcher", "admin"):
+        from fastapi.responses import HTMLResponse as HR
+        return HR(
+            content="<h1>403 Forbidden</h1><p>권한이 없습니다.</p>",
+            status_code=403,
+        )
+    return session_user
+
+
+def _suggest_user_for_submission(
+    subject_name: str, users: list[dict],
+) -> str | None:
+    """Return the user_id of the best matching user by display_name similarity.
+
+    Uses simple normalized containment for Korean/English name matching.
+    Returns None if no reasonable match is found.
+    """
+    if not subject_name or not subject_name.strip():
+        return None
+
+    sn = subject_name.strip().lower()
+    best_id: str | None = None
+    best_score = 0.0
+
+    for user in users:
+        dn = (user.get("display_name") or "").strip().lower()
+        if not dn:
+            continue
+
+        # Exact match
+        if sn == dn:
+            return user["id"]
+
+        # Containment match
+        score = 0.0
+        if sn in dn or dn in sn:
+            shorter = min(len(sn), len(dn))
+            longer = max(len(sn), len(dn))
+            score = shorter / longer if longer > 0 else 0.0
+
+        if score > best_score and score >= 0.5:
+            best_score = score
+            best_id = user["id"]
+
+    return best_id
+
+
+@app.get("/manage", response_class=HTMLResponse)
+async def manage_page(request: Request, tab: str = "users") -> HTMLResponse:
+    """Render the admin management page with tabs for users and submissions."""
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+
+    db_path = request.app.state.db_path
+    users = list_users(db_path)
+    submissions = list_submissions_with_users(db_path)
+
+    # Build suggestion map: submission_id -> suggested user_id
+    suggestions: dict[str, str] = {}
+    for sub in submissions:
+        if sub.get("user_id") is None:
+            suggested = _suggest_user_for_submission(
+                sub.get("subject_name", ""), users,
+            )
+            if suggested:
+                suggestions[sub["id"]] = suggested
+
+    active_tab = tab if tab in ("users", "submissions") else "users"
+
+    return _template_response(request, "manage.html", {
+        "users": users,
+        "submissions": submissions,
+        "suggestions": suggestions,
+        "active_tab": active_tab,
+        "session_user": session_user,
+    })
+
+
+@app.patch("/api/manage/users/{user_id}/role", response_class=HTMLResponse)
+async def manage_update_user_role(
+    request: Request, user_id: str,
+) -> HTMLResponse:
+    """Update a user's role. Returns the updated users partial for HTMX swap."""
+    from fastapi.responses import JSONResponse
+
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+
+    form = await request.form()
+    new_role = str(form.get("role", "")).strip()
+
+    if not new_role:
+        return JSONResponse(status_code=400, content={"error": "role is required"})
+
+    # Permission check: researcher can only toggle user<->researcher
+    actor_role = session_user.get("role", "user")
+    if actor_role == "researcher" and new_role not in ("user", "researcher"):
+        return JSONResponse(
+            status_code=403,
+            content={"error": "researchers can only assign user or researcher roles"},
+        )
+
+    db_path = request.app.state.db_path
+
+    try:
+        updated = update_user_role(db_path, user_id, new_role)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+
+    if updated is None:
+        return JSONResponse(status_code=404, content={"error": "user not found"})
+
+    # If the actor changed their own role, update the session
+    if user_id == session_user["id"]:
+        request.session["role"] = new_role
+
+    users = list_users(db_path)
+    return templates.TemplateResponse(
+        request,
+        "partials/manage_users.html",
+        {"users": users, "session_user": session_user, "current_user": session_user},
+    )
+
+
+@app.patch("/api/manage/submissions/{submission_id}/link", response_class=HTMLResponse)
+async def manage_link_submission(
+    request: Request, submission_id: str,
+) -> HTMLResponse:
+    """Link a submission to a user. Returns the updated submissions partial."""
+    from fastapi.responses import JSONResponse
+
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+
+    form = await request.form()
+    link_user_id = str(form.get("user_id", "")).strip()
+
+    if not link_user_id:
+        return JSONResponse(status_code=400, content={"error": "user_id is required"})
+
+    db_path = request.app.state.db_path
+    result = link_submission_user(db_path, submission_id, link_user_id)
+    if result is None:
+        return JSONResponse(status_code=404, content={"error": "submission not found"})
+
+    users = list_users(db_path)
+    submissions = list_submissions_with_users(db_path)
+    suggestions: dict[str, str] = {}
+    for sub in submissions:
+        if sub.get("user_id") is None:
+            suggested = _suggest_user_for_submission(
+                sub.get("subject_name", ""), users,
+            )
+            if suggested:
+                suggestions[sub["id"]] = suggested
+
+    return templates.TemplateResponse(
+        request,
+        "partials/manage_submissions.html",
+        {
+            "submissions": submissions,
+            "users": users,
+            "suggestions": suggestions,
+            "session_user": session_user,
+            "current_user": session_user,
+        },
+    )
+
+
+@app.delete("/api/manage/submissions/{submission_id}/link", response_class=HTMLResponse)
+async def manage_unlink_submission(
+    request: Request, submission_id: str,
+) -> HTMLResponse:
+    """Unlink a submission from a user. Returns the updated submissions partial."""
+    from fastapi.responses import JSONResponse
+
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+
+    db_path = request.app.state.db_path
+    result = unlink_submission_user(db_path, submission_id)
+    if result is None:
+        return JSONResponse(status_code=404, content={"error": "submission not found"})
+
+    users = list_users(db_path)
+    submissions = list_submissions_with_users(db_path)
+    suggestions: dict[str, str] = {}
+    for sub in submissions:
+        if sub.get("user_id") is None:
+            suggested = _suggest_user_for_submission(
+                sub.get("subject_name", ""), users,
+            )
+            if suggested:
+                suggestions[sub["id"]] = suggested
+
+    return templates.TemplateResponse(
+        request,
+        "partials/manage_submissions.html",
+        {
+            "submissions": submissions,
+            "users": users,
+            "suggestions": suggestions,
+            "session_user": session_user,
+            "current_user": session_user,
+        },
+    )
 
 
 # ── Auth router ──────────────────────────────────────────────────────

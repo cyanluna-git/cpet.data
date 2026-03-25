@@ -1,0 +1,91 @@
+{% for sub in submissions %}
+<tr class="border-b border-gray-100 hover:bg-gray-50">
+  <!-- 피험자명 -->
+  <td class="px-4 py-3 text-sm text-gray-800 whitespace-nowrap">
+    {{ sub.subject_name or "—" }}
+  </td>
+
+  <!-- 검사일 -->
+  <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+    {{ sub.test_date or "—" }}
+  </td>
+
+  <!-- 상태 -->
+  <td class="px-4 py-3 text-sm whitespace-nowrap">
+    {% if sub.job_status == 'done' %}
+      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">완료</span>
+    {% elif sub.job_status == 'processing' %}
+      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-800">분석중</span>
+    {% elif sub.job_status == 'pending' %}
+      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">대기</span>
+    {% elif sub.job_status == 'failed' %}
+      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">실패</span>
+    {% else %}
+      <span class="text-gray-400">—</span>
+    {% endif %}
+  </td>
+
+  <!-- 리포트 링크 -->
+  <td class="px-4 py-3 text-sm whitespace-nowrap">
+    {% if sub.report_url %}
+      <a href="{{ sub.report_url }}" class="text-blue-600 hover:underline">리포트</a>
+    {% else %}
+      <span class="text-gray-400">—</span>
+    {% endif %}
+  </td>
+
+  <!-- 연결된 유저 -->
+  <td class="px-4 py-3 text-sm whitespace-nowrap">
+    {% if sub.user_id %}
+      <div class="flex items-center gap-1">
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+          {{ sub.linked_user_name or sub.linked_user_email or sub.user_id[:8] }}
+        </span>
+      </div>
+    {% else %}
+      <span class="text-gray-400 text-xs">미연결</span>
+    {% endif %}
+  </td>
+
+  <!-- 작업: 연결/변경/해제 -->
+  <td class="px-4 py-3 text-sm whitespace-nowrap">
+    <div class="flex items-center gap-2">
+      <select
+        name="user_id"
+        id="link-select-{{ sub.id }}"
+        class="rounded border border-gray-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 max-w-[160px]"
+      >
+        <option value="">유저 선택</option>
+        {% for u in users %}
+        <option value="{{ u.id }}"
+          {% if sub.user_id and sub.user_id == u.id %}selected{% elif not sub.user_id and suggestions.get(sub.id) == u.id %}selected{% endif %}
+        >{{ u.display_name or u.email }}{% if not sub.user_id and suggestions.get(sub.id) == u.id %} (추천){% endif %}</option>
+        {% endfor %}
+      </select>
+
+      <button
+        class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-900 text-white hover:bg-gray-800 transition"
+        hx-patch="/api/manage/submissions/{{ sub.id }}/link"
+        hx-target="#manage-submissions-body"
+        hx-swap="innerHTML"
+        hx-include="#link-select-{{ sub.id }}"
+      >연결</button>
+
+      {% if sub.user_id %}
+      <button
+        class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-red-50 text-red-700 hover:bg-red-100 transition"
+        hx-delete="/api/manage/submissions/{{ sub.id }}/link"
+        hx-target="#manage-submissions-body"
+        hx-swap="innerHTML"
+      >해제</button>
+      {% endif %}
+    </div>
+  </td>
+</tr>
+{% else %}
+<tr>
+  <td colspan="6" class="px-4 py-8 text-center text-sm text-gray-500">
+    등록된 제출물이 없습니다
+  </td>
+</tr>
+{% endfor %}

@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}관리 — CPET Platform{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <h1 class="text-2xl font-bold">관리</h1>
+
+  <!-- Tab navigation -->
+  <div class="flex gap-2 border-b border-gray-200">
+    <a
+      href="/manage?tab=users"
+      class="px-4 py-2 text-sm font-medium border-b-2 transition-colors
+        {% if active_tab == 'users' %}
+          border-gray-900 text-gray-900
+        {% else %}
+          border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300
+        {% endif %}"
+    >유저 관리</a>
+    <a
+      href="/manage?tab=submissions"
+      class="px-4 py-2 text-sm font-medium border-b-2 transition-colors
+        {% if active_tab == 'submissions' %}
+          border-gray-900 text-gray-900
+        {% else %}
+          border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300
+        {% endif %}"
+    >검사 데이터 연결</a>
+  </div>
+
+  <!-- Tab content -->
+  {% if active_tab == 'users' %}
+  <div class="bg-white rounded-lg shadow overflow-x-auto" id="manage-users-container">
+    <table class="min-w-full divide-y divide-gray-200">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">이름</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">이메일</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">역할</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">성별</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">출생년도</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">가입일</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">마지막 로그인</th>
+        </tr>
+      </thead>
+      <tbody id="manage-users-body">
+        {% include "partials/manage_users.html" %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="bg-white rounded-lg shadow overflow-x-auto" id="manage-submissions-container">
+    <table class="min-w-full divide-y divide-gray-200">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">피험자명</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">검사일</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">상태</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">리포트</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">연결된 유저</th>
+          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">작업</th>
+        </tr>
+      </thead>
+      <tbody id="manage-submissions-body">
+        {% include "partials/manage_submissions.html" %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+  // Warn when a user changes their own role to 'user'
+  document.addEventListener('htmx:configRequest', function(evt) {
+    var el = evt.detail.elt;
+    if (el.name === 'role' && el.value === 'user') {
+      var row = el.closest('tr');
+      if (row && row.dataset.isSelf === 'true') {
+        if (!confirm('자신의 역할을 user로 변경하면 이 관리 페이지에 접근할 수 없게 됩니다. 계속하시겠습니까?')) {
+          evt.preventDefault();
+        }
+      }
+    }
+  });
+</script>
+{% endblock %}

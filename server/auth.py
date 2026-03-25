@@ -95,6 +95,7 @@ async def google_callback(request: Request) -> RedirectResponse:
     request.session["display_name"] = user["display_name"]
     request.session["avatar_url"] = user["avatar_url"]
     request.session["email"] = user["email"]
+    request.session["role"] = user.get("role", "user")
     request.session["onboarding_completed"] = user.get("onboarding_completed", 0)
 
     logger.info("User logged in: %s (%s)", user["id"][:8], email)

@@ -456,6 +456,110 @@ def upsert_user_profile(
     return dict(row)
 
 
+# ── Admin / Manage ──────────────────────────────────────────────────
+
+
+VALID_ROLES = {"user", "researcher", "admin"}
+
+
+def list_users(db_path: Path) -> list[dict]:
+    """List all users with their profile data (birth_year, gender), newest first."""
+    conn = _connect(db_path)
+    rows = conn.execute(
+        """SELECT u.*, p.birth_year, p.gender
+           FROM users u
+           LEFT JOIN user_profiles p ON u.id = p.user_id
+           ORDER BY u.created_at DESC"""
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def update_user_role(db_path: Path, user_id: str, new_role: str) -> dict | None:
+    """Update a user's role. Returns the updated user dict, or None if not found.
+
+    Raises ValueError if new_role is not in VALID_ROLES.
+    """
+    if new_role not in VALID_ROLES:
+        raise ValueError(f"Invalid role '{new_role}'. Must be one of: {VALID_ROLES}")
+    conn = _connect(db_path)
+    conn.execute("UPDATE users SET role = ? WHERE id = ?", (new_role, user_id))
+    conn.commit()
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def list_submissions_with_users(db_path: Path) -> list[dict]:
+    """List all submissions with linked user info and latest job status, newest first."""
+    conn = _connect(db_path)
+    rows = conn.execute(
+        """SELECT s.*,
+                  u.display_name AS linked_user_name,
+                  u.email AS linked_user_email,
+                  j.status AS job_status,
+                  j.report_url
+           FROM submissions s
+           LEFT JOIN users u ON s.user_id = u.id
+           LEFT JOIN (
+               SELECT submission_id, status, report_url,
+                      ROW_NUMBER() OVER (PARTITION BY submission_id ORDER BY rowid DESC) AS rn
+               FROM jobs
+           ) j ON s.id = j.submission_id AND j.rn = 1
+           ORDER BY s.created_at DESC"""
+    ).fetchall()
+    conn.close()
+    results = []
+    for row in rows:
+        d = dict(row)
+        if d.get("file_manifest"):
+            d["file_manifest"] = json.loads(d["file_manifest"])
+        results.append(d)
+    return results
+
+
+def link_submission_user(
+    db_path: Path, submission_id: str, user_id: str,
+) -> dict | None:
+    """Link a submission to a user. Returns the updated submission, or None."""
+    conn = _connect(db_path)
+    conn.execute(
+        "UPDATE submissions SET user_id = ? WHERE id = ?",
+        (user_id, submission_id),
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT * FROM submissions WHERE id = ?", (submission_id,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    result = dict(row)
+    result["file_manifest"] = json.loads(result["file_manifest"])
+    return result
+
+
+def unlink_submission_user(db_path: Path, submission_id: str) -> dict | None:
+    """Remove user link from a submission. Returns the updated submission, or None."""
+    conn = _connect(db_path)
+    conn.execute(
+        "UPDATE submissions SET user_id = NULL WHERE id = ?",
+        (submission_id,),
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT * FROM submissions WHERE id = ?", (submission_id,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    result = dict(row)
+    result["file_manifest"] = json.loads(result["file_manifest"])
+    return result
+
+
 # ── Submissions by User ──────────────────────────────────────────────
 
 
