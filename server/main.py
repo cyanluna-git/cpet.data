@@ -23,6 +23,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from server.db import (
     complete_onboarding,
     get_fitness_trends,
+    get_submission,
     get_user,
     get_user_profile,
     init_db,
@@ -33,6 +34,7 @@ from server.db import (
     update_user_role,
     upsert_user_profile,
 )
+from server.api import _list_dashboard_entries
 
 load_dotenv()
 
@@ -413,6 +415,45 @@ def _suggest_user_for_submission(
     return best_id
 
 
+def _get_manage_submissions(request: Request, users: list[dict]) -> tuple[list[dict], dict[str, str]]:
+    """Build the full submissions list for manage page (DB + published/ scan)."""
+    db_path = request.app.state.db_path
+    all_entries = _list_dashboard_entries(request)
+
+    submissions = []
+    for entry in all_entries:
+        if entry.get("status") != "done":
+            submissions.append(entry)
+            continue
+        # Look up user_id from submission if it has one
+        sub_id = entry.get("submission_id")
+        user_id = None
+        linked_user_name = None
+        if sub_id:
+            sub = get_submission(db_path, sub_id)
+            if sub:
+                user_id = sub.get("user_id")
+                if user_id:
+                    user = get_user(db_path, user_id)
+                    if user:
+                        linked_user_name = user.get("display_name") or user.get("email")
+        entry["user_id"] = user_id
+        entry["linked_user_name"] = linked_user_name
+        submissions.append(entry)
+
+    # Build suggestion map
+    suggestions: dict[str, str] = {}
+    for sub in submissions:
+        if sub.get("user_id") is None:
+            suggested = _suggest_user_for_submission(
+                sub.get("subject_name", ""), users,
+            )
+            if suggested:
+                suggestions[sub["id"]] = suggested
+
+    return submissions, suggestions
+
+
 @app.get("/manage", response_class=HTMLResponse)
 async def manage_page(request: Request, tab: str = "users") -> HTMLResponse:
     """Render the admin management page with tabs for users and submissions."""
@@ -423,17 +464,7 @@ async def manage_page(request: Request, tab: str = "users") -> HTMLResponse:
 
     db_path = request.app.state.db_path
     users = list_users(db_path)
-    submissions = list_submissions_with_users(db_path)
-
-    # Build suggestion map: submission_id -> suggested user_id
-    suggestions: dict[str, str] = {}
-    for sub in submissions:
-        if sub.get("user_id") is None:
-            suggested = _suggest_user_for_submission(
-                sub.get("subject_name", ""), users,
-            )
-            if suggested:
-                suggestions[sub["id"]] = suggested
+    submissions, suggestions = _get_manage_submissions(request, users)
 
     active_tab = tab if tab in ("users", "submissions") else "users"
 
@@ -518,15 +549,7 @@ async def manage_link_submission(
         return JSONResponse(status_code=404, content={"error": "submission not found"})
 
     users = list_users(db_path)
-    submissions = list_submissions_with_users(db_path)
-    suggestions: dict[str, str] = {}
-    for sub in submissions:
-        if sub.get("user_id") is None:
-            suggested = _suggest_user_for_submission(
-                sub.get("subject_name", ""), users,
-            )
-            if suggested:
-                suggestions[sub["id"]] = suggested
+    submissions, suggestions = _get_manage_submissions(request, users)
 
     return templates.TemplateResponse(
         request,
@@ -559,15 +582,7 @@ async def manage_unlink_submission(
         return JSONResponse(status_code=404, content={"error": "submission not found"})
 
     users = list_users(db_path)
-    submissions = list_submissions_with_users(db_path)
-    suggestions: dict[str, str] = {}
-    for sub in submissions:
-        if sub.get("user_id") is None:
-            suggested = _suggest_user_for_submission(
-                sub.get("subject_name", ""), users,
-            )
-            if suggested:
-                suggestions[sub["id"]] = suggested
+    submissions, suggestions = _get_manage_submissions(request, users)
 
     return templates.TemplateResponse(
         request,
