@@ -95,8 +95,14 @@ async def google_callback(request: Request) -> RedirectResponse:
     request.session["display_name"] = user["display_name"]
     request.session["avatar_url"] = user["avatar_url"]
     request.session["email"] = user["email"]
+    request.session["onboarding_completed"] = user.get("onboarding_completed", 0)
 
     logger.info("User logged in: %s (%s)", user["id"][:8], email)
+
+    # First-time users or users who haven't completed onboarding → /onboarding
+    if user.get("is_new") or not user.get("onboarding_completed"):
+        return RedirectResponse(url="/onboarding", status_code=302)
+
     return RedirectResponse(url="/dashboard", status_code=302)
 
 

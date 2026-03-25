@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 
 from server.db import (
     _connect,
+    complete_onboarding,
     get_user_profile,
     init_db,
     upsert_user,
@@ -58,7 +59,19 @@ def client() -> TestClient:
 
 
 def _login_user(client: TestClient, google_id: str = "profile-gid") -> dict:
-    """Simulate Google OAuth login and return the created user dict."""
+    """Simulate Google OAuth login with onboarding completed.
+
+    Pre-creates the user with onboarding_completed=1 so that
+    profile and other guarded pages are accessible.
+    Returns the user dict.
+    """
+    db_path = app.state.db_path
+    user = upsert_user(
+        db_path, google_id=google_id, email=f"{google_id}@example.com",
+        display_name="Profile User", avatar_url="https://example.com/avatar.jpg",
+    )
+    complete_onboarding(db_path, user["id"], "Profile User")
+
     with patch(
         "server.auth.oauth.google.authorize_access_token",
         new_callable=AsyncMock,

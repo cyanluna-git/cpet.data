@@ -15,12 +15,13 @@ from typing import AsyncIterator
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from server.db import (
+    complete_onboarding,
     get_fitness_trends,
     get_user,
     get_user_profile,
@@ -54,6 +55,7 @@ app.add_middleware(
     same_site="lax",
     https_only=False,  # set True in production behind HTTPS
 )
+
 
 # ── Configuration via environment ────────────────────────────────────
 
@@ -106,7 +108,16 @@ def _get_session_user(request: Request) -> dict | None:
         "display_name": request.session.get("display_name", ""),
         "avatar_url": request.session.get("avatar_url", ""),
         "email": request.session.get("email", ""),
+        "onboarding_completed": request.session.get("onboarding_completed", 0),
     }
+
+
+def _check_onboarding(request: Request) -> RedirectResponse | None:
+    """Return a redirect to /onboarding if the user hasn't completed it, else None."""
+    user_id = request.session.get("user_id")
+    if user_id and not request.session.get("onboarding_completed"):
+        return RedirectResponse(url="/onboarding", status_code=302)
+    return None
 
 
 def _template_response(
@@ -131,19 +142,27 @@ async def index_page(request: Request) -> HTMLResponse:
 @app.get("/upload", response_class=HTMLResponse)
 async def upload_page(request: Request) -> HTMLResponse:
     """Render the file upload page."""
+    guard = _check_onboarding(request)
+    if guard:
+        return guard
     return _template_response(request, "upload.html")
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request) -> HTMLResponse:
     """Render the dashboard page."""
+    guard = _check_onboarding(request)
+    if guard:
+        return guard
     return _template_response(request, "dashboard.html")
 
 
 @app.get("/profile", response_class=HTMLResponse)
 async def profile_page(request: Request) -> HTMLResponse:
     """Render the user profile page. Redirects to login if not authenticated."""
-    from fastapi.responses import RedirectResponse
+    guard = _check_onboarding(request)
+    if guard:
+        return guard
 
     session_user = _get_session_user(request)
     if session_user is None:
@@ -236,6 +255,95 @@ async def profile_trends(request: Request) -> HTMLResponse:
         )
 
     return JSONResponse(content={"data": trends})
+
+
+# ── Onboarding routes ─────────────────────────────────────────────────
+
+
+@app.get("/onboarding", response_class=HTMLResponse)
+async def onboarding_page(request: Request) -> HTMLResponse:
+    """Render the onboarding form. Redirects if not logged in or already completed."""
+    from fastapi.responses import RedirectResponse
+
+    session_user = _get_session_user(request)
+    if session_user is None:
+        return RedirectResponse(url="/auth/google/login", status_code=302)
+    if session_user.get("onboarding_completed"):
+        return RedirectResponse(url="/dashboard", status_code=302)
+
+    # Pre-fill with session data
+    user_id = session_user["id"]
+    db_path = request.app.state.db_path
+    profile = get_user_profile(db_path, user_id) or {}
+
+    return _template_response(request, "onboarding.html", {
+        "profile": profile,
+    })
+
+
+@app.post("/onboarding", response_class=HTMLResponse)
+async def onboarding_submit(request: Request) -> HTMLResponse:
+    """Process the onboarding form: update users + user_profiles, then redirect."""
+    from fastapi.responses import RedirectResponse
+
+    session_user = _get_session_user(request)
+    if session_user is None:
+        return RedirectResponse(url="/auth/google/login", status_code=302)
+
+    user_id = session_user["id"]
+    db_path = request.app.state.db_path
+
+    form = await request.form()
+    display_name = str(form.get("display_name", "")).strip()
+    gender = str(form.get("gender", "")).strip()
+    birth_year_raw = str(form.get("birth_year", "")).strip()
+    phone = str(form.get("phone", "")).strip()
+
+    # Validation: required fields
+    errors: list[str] = []
+    if not display_name:
+        errors.append("이름을 입력해주세요.")
+    if gender not in ("남성", "여성", "기타"):
+        errors.append("성별을 선택해주세요.")
+    birth_year = 0
+    if not birth_year_raw:
+        errors.append("출생년도를 입력해주세요.")
+    else:
+        try:
+            birth_year = int(birth_year_raw)
+            if birth_year < 1900 or birth_year > 2025:
+                errors.append("출생년도가 올바르지 않습니다.")
+        except ValueError:
+            errors.append("출생년도는 숫자로 입력해주세요.")
+
+    if errors:
+        profile = get_user_profile(db_path, user_id) or {}
+        return _template_response(request, "onboarding.html", {
+            "profile": profile,
+            "errors": errors,
+            "form_data": {
+                "display_name": display_name,
+                "gender": gender,
+                "birth_year": birth_year_raw,
+                "phone": phone,
+            },
+        })
+
+    # Update user display_name + onboarding_completed
+    complete_onboarding(db_path, user_id, display_name)
+
+    # Update user_profiles with gender + birth_year
+    profile_fields: dict[str, str | float | int | None] = {
+        "gender": gender,
+        "birth_year": birth_year,
+    }
+    upsert_user_profile(db_path, user_id, **profile_fields)
+
+    # Update session
+    request.session["display_name"] = display_name
+    request.session["onboarding_completed"] = 1
+
+    return RedirectResponse(url="/dashboard", status_code=302)
 
 
 # ── Auth router ──────────────────────────────────────────────────────

@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 
 from server.db import (
     _connect,
+    complete_onboarding,
     create_submission,
     get_submission,
     get_user,
@@ -321,7 +322,10 @@ class TestAuthRoutes:
     def test_callback_creates_user_and_sets_session(
         self, mock_token: AsyncMock, client: TestClient,
     ) -> None:
-        """Successful OAuth callback creates user and sets session."""
+        """Successful OAuth callback creates user and sets session.
+
+        New users are redirected to /onboarding (not /dashboard).
+        """
         mock_token.return_value = {
             "userinfo": {
                 "sub": "google-id-999",
@@ -332,7 +336,7 @@ class TestAuthRoutes:
         }
         resp = client.get("/auth/google/callback", follow_redirects=False)
         assert resp.status_code == 302
-        assert resp.headers["location"] == "/dashboard"
+        assert resp.headers["location"] == "/onboarding"
 
         # Verify user was created in DB
         db_path = app.state.db_path
@@ -379,8 +383,16 @@ class TestTemplateNavigation:
     def test_logged_in_sees_user_info(
         self, mock_token: AsyncMock, client: TestClient,
     ) -> None:
-        """Logged-in users see their name and logout link."""
-        # Simulate login
+        """Logged-in users (with onboarding complete) see their name and logout link."""
+        # Pre-create user with onboarding completed
+        db_path = app.state.db_path
+        user = upsert_user(
+            db_path, google_id="nav-test-gid", email="nav@example.com",
+            display_name="Nav User",
+        )
+        complete_onboarding(db_path, user["id"], "Nav User")
+
+        # Simulate login (returning user)
         mock_token.return_value = {
             "userinfo": {
                 "sub": "nav-test-gid",

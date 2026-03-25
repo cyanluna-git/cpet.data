@@ -16,6 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from server.db import (
+    complete_onboarding,
     create_job,
     create_submission,
     init_db,
@@ -68,7 +69,11 @@ def _login_user(
     email: str = "test@example.com",
     name: str = "Test User",
 ) -> None:
-    """Simulate Google OAuth login for a user."""
+    """Simulate Google OAuth login for a user with onboarding completed."""
+    db_path = app.state.db_path
+    user = upsert_user(db_path, google_id=google_id, email=email, display_name=name)
+    complete_onboarding(db_path, user["id"], name)
+
     with patch(
         "server.auth.oauth.google.authorize_access_token",
         new_callable=AsyncMock,

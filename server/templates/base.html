@@ -25,10 +25,12 @@
 <body class="min-h-screen bg-gray-50 text-gray-900">
 
   <!-- Navigation -->
+  {% set onboarding_done = (not current_user) or current_user.onboarding_completed %}
   <nav class="bg-white shadow-sm border-b border-gray-200">
     <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-14">
         <a href="/" class="text-lg font-semibold text-gray-800 hover:text-gray-600">CPET Platform</a>
+        {% if onboarding_done %}
         <div class="flex items-center space-x-4">
           <a
             href="/upload"
@@ -89,6 +91,7 @@
             >로그인</a>
           {% endif %}
         </div>
+        {% endif %}
       </div>
     </div>
   </nav>

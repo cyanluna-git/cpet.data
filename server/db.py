@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
     display_name TEXT,
     avatar_url TEXT,
     role TEXT DEFAULT 'user',
+    onboarding_completed INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now')),
     last_login_at TEXT
 );
@@ -65,6 +66,10 @@ MIGRATION_ADD_USER_ID = """
 ALTER TABLE submissions ADD COLUMN user_id TEXT REFERENCES users(id);
 """
 
+MIGRATION_ADD_ONBOARDING = """
+ALTER TABLE users ADD COLUMN onboarding_completed INTEGER DEFAULT 0;
+"""
+
 VALID_STATUSES = {"pending", "processing", "done", "failed"}
 
 
@@ -95,6 +100,10 @@ def init_db(db_path: Path) -> None:
     # Migration: add user_id to submissions if missing (backward compat)
     if not _column_exists(conn, "submissions", "user_id"):
         conn.execute(MIGRATION_ADD_USER_ID)
+        conn.commit()
+    # Migration: add onboarding_completed to users if missing
+    if not _column_exists(conn, "users", "onboarding_completed"):
+        conn.execute(MIGRATION_ADD_ONBOARDING)
         conn.commit()
     conn.close()
 
@@ -290,7 +299,8 @@ def upsert_user(
 ) -> dict:
     """Create a user on first login or update last_login_at for returning users.
 
-    Returns the user row as a dict.
+    Returns the user row as a dict. Includes an extra ``is_new`` key (not a
+    DB column) so callers can distinguish first-time vs returning users.
     """
     now = _now_utc()
     conn = _connect(db_path)
@@ -299,7 +309,9 @@ def upsert_user(
         "SELECT * FROM users WHERE google_id = ?", (google_id,)
     ).fetchone()
 
-    if row is None:
+    is_new = row is None
+
+    if is_new:
         user_id = str(uuid.uuid4())
         conn.execute(
             """INSERT INTO users
@@ -324,7 +336,9 @@ def upsert_user(
         ).fetchone()
 
     conn.close()
-    return dict(user)
+    result = dict(user)
+    result["is_new"] = is_new
+    return result
 
 
 def get_user(db_path: Path, user_id: str) -> dict | None:
@@ -349,6 +363,21 @@ def get_user_by_google_id(db_path: Path, google_id: str) -> dict | None:
     if row is None:
         return None
     return dict(row)
+
+
+def complete_onboarding(
+    db_path: Path,
+    user_id: str,
+    display_name: str,
+) -> None:
+    """Mark a user's onboarding as completed and update display_name."""
+    conn = _connect(db_path)
+    conn.execute(
+        "UPDATE users SET onboarding_completed = 1, display_name = ? WHERE id = ?",
+        (display_name, user_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 # ── User Profile CRUD ──────────────────────────────────────────────
