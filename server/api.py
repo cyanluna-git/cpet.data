@@ -28,6 +28,7 @@ from server.db import (
     get_job_by_submission,
     get_submission,
     list_jobs,
+    list_jobs_by_user,
     update_job_status,
 )
 from server.publish import publish_report
@@ -359,10 +360,19 @@ def _scan_published_reports(published_dir: Path) -> list[dict]:
     return rows
 
 
-def _list_dashboard_entries(request: Request, status: str | None = None) -> list[dict]:
-    """Merge DB jobs with standalone published reports for dashboard views."""
+def _list_dashboard_entries(
+    request: Request, status: str | None = None, user_id: str | None = None,
+) -> list[dict]:
+    """Merge DB jobs with standalone published reports for dashboard views.
+
+    When user_id is provided, only jobs whose submission belongs to that user
+    are returned (the published-directory scan is skipped).
+    """
     db_path = get_db_path(request)
-    jobs = list_jobs(db_path, status=status)
+    if user_id:
+        jobs = list_jobs_by_user(db_path, user_id, status=status)
+    else:
+        jobs = list_jobs(db_path, status=status)
 
     enriched: list[dict] = []
     job_slugs: set[str] = set()
@@ -404,12 +414,17 @@ def _list_dashboard_entries(request: Request, status: str | None = None) -> list
             "processing_stage": processing_stage,
             "processing_note": processing_note,
             "processing_seconds": processing_seconds,
+            "submission_user_id": sub.get("user_id") if sub else None,
         }
         enriched.append(enriched_job)
         if job.get("report_slug"):
             job_slugs.add(str(job["report_slug"]))
 
     if status not in (None, "done"):
+        return enriched
+
+    # Skip standalone published reports when filtering by user
+    if user_id:
         return enriched
 
     published_rows = _scan_published_reports(published_dir)
@@ -587,13 +602,29 @@ async def jobs_list(
 async def jobs_partial(
     request: Request,
     status: str | None = None,
+    filter: str | None = None,
 ) -> HTMLResponse:
-    """Return an HTML partial of the job list for HTMX polling."""
+    """Return an HTML partial of the job list for HTMX polling.
+
+    When filter=mine, restrict to jobs created by the current session user.
+    """
     templates = request.app.state.templates
-    enriched = _list_dashboard_entries(request, status=status)
+    current_user_id: str | None = None
+    if hasattr(request, "session"):
+        current_user_id = request.session.get("user_id")
+
+    filter_user_id: str | None = None
+    if filter == "mine" and current_user_id:
+        filter_user_id = current_user_id
+
+    enriched = _list_dashboard_entries(
+        request, status=status, user_id=filter_user_id,
+    )
 
     return templates.TemplateResponse(
-        request, "partials/job_list.html", {"jobs": enriched},
+        request,
+        "partials/job_list.html",
+        {"jobs": enriched, "current_user_id": current_user_id},
     )
 
 
@@ -661,9 +692,15 @@ async def trigger_job(
         )
         logger.info("Manual trigger started local fallback for job %s", job_id)
 
+    current_user_id: str | None = None
+    if hasattr(request, "session"):
+        current_user_id = request.session.get("user_id")
+
     enriched = _list_dashboard_entries(request)
     return templates.TemplateResponse(
-        request, "partials/job_list.html", {"jobs": enriched},
+        request,
+        "partials/job_list.html",
+        {"jobs": enriched, "current_user_id": current_user_id},
     )
 
 

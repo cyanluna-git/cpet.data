@@ -221,6 +221,31 @@ def list_jobs(
     return [dict(row) for row in rows]
 
 
+def list_jobs_by_user(
+    db_path: Path, user_id: str, status: str | None = None
+) -> list[dict]:
+    """List jobs whose submission belongs to user_id, newest first."""
+    conn = _connect(db_path)
+    if status is not None:
+        rows = conn.execute(
+            """SELECT j.* FROM jobs j
+               JOIN submissions s ON j.submission_id = s.id
+               WHERE s.user_id = ? AND j.status = ?
+               ORDER BY j.rowid DESC""",
+            (user_id, status),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT j.* FROM jobs j
+               JOIN submissions s ON j.submission_id = s.id
+               WHERE s.user_id = ?
+               ORDER BY j.rowid DESC""",
+            (user_id,),
+        ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
 def get_job(db_path: Path, job_id: str) -> dict | None:
     """Fetch a single job by ID, or None if not found."""
     conn = _connect(db_path)

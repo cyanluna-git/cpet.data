@@ -51,6 +51,43 @@
   </style>
   <h1 class="text-2xl font-bold mb-6">대시보드</h1>
 
+  {% if current_user %}
+  <div class="mb-4 flex gap-2" id="filter-tabs">
+    <button
+      class="filter-tab px-4 py-2 rounded-full text-sm font-medium transition
+        bg-gray-900 text-white"
+      hx-get="/api/jobs/partial"
+      hx-target="#job-list-body"
+      hx-swap="innerHTML"
+      onclick="activateTab(this)"
+      data-filter="all"
+    >All</button>
+    <button
+      class="filter-tab px-4 py-2 rounded-full text-sm font-medium transition
+        text-gray-600 bg-gray-100 hover:bg-gray-200"
+      hx-get="/api/jobs/partial?filter=mine"
+      hx-target="#job-list-body"
+      hx-swap="innerHTML"
+      onclick="activateTab(this)"
+      data-filter="mine"
+    >My Reports</button>
+  </div>
+  <script>
+    function activateTab(el) {
+      document.querySelectorAll('#filter-tabs .filter-tab').forEach(function(btn) {
+        btn.className = 'filter-tab px-4 py-2 rounded-full text-sm font-medium transition text-gray-600 bg-gray-100 hover:bg-gray-200';
+      });
+      el.className = 'filter-tab px-4 py-2 rounded-full text-sm font-medium transition bg-gray-900 text-white';
+
+      // Update the polling URL on the tbody to match the active filter
+      var tbody = document.getElementById('job-list-body');
+      var url = el.getAttribute('hx-get');
+      tbody.setAttribute('hx-get', url);
+      htmx.process(tbody);  // re-register the updated hx-get
+    }
+  </script>
+  {% endif %}
+
   <div class="bg-white rounded-lg shadow overflow-x-auto">
     <table class="min-w-full divide-y divide-gray-200">
       <thead class="bg-gray-50">
@@ -71,6 +108,7 @@
         After the response arrives, htmx swaps the tbody innerHTML.
       -->
       <tbody
+        id="job-list-body"
         hx-get="/api/jobs/partial"
         hx-trigger="load, every 3s"
         hx-swap="innerHTML"

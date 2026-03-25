@@ -1,7 +1,14 @@
 {% for job in jobs %}
 <tr class="job-row border-b border-gray-100 hover:bg-gray-50 {% if job.status == 'processing' %}bg-slate-50/80{% endif %}" data-status="{{ job.status }}">
   <!-- 피험자 -->
-  <td class="px-4 py-3 text-sm text-gray-800 whitespace-nowrap">{{ job.subject_name or "—" }}</td>
+  <td class="px-4 py-3 text-sm text-gray-800 whitespace-nowrap">
+    <div class="flex items-center gap-2">
+      <span>{{ job.subject_name or "—" }}</span>
+      {% if current_user_id and job.submission_user_id and job.submission_user_id == current_user_id %}
+        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-100 text-violet-700">내 리포트</span>
+      {% endif %}
+    </div>
+  </td>
 
   <!-- 날짜 -->
   <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{{ job.test_date or "—" }}</td>
