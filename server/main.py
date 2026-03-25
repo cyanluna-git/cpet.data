@@ -23,13 +23,16 @@ from starlette.middleware.sessions import SessionMiddleware
 from server.db import (
     complete_onboarding,
     get_fitness_trends,
+    get_report_user_links,
     get_submission,
     get_user,
     get_user_profile,
     init_db,
+    link_report_to_user,
     link_submission_user,
     list_submissions_with_users,
     list_users,
+    unlink_report_from_user,
     unlink_submission_user,
     update_user_role,
     upsert_user_profile,
@@ -419,24 +422,30 @@ def _get_manage_submissions(request: Request, users: list[dict]) -> tuple[list[d
     """Build the full submissions list for manage page (DB + published/ scan)."""
     db_path = request.app.state.db_path
     all_entries = _list_dashboard_entries(request)
+    report_links = get_report_user_links(db_path)
+    users_by_id = {u["id"]: u for u in users}
 
     submissions = []
     for entry in all_entries:
-        if entry.get("status") != "done":
-            submissions.append(entry)
-            continue
-        # Look up user_id from submission if it has one
+        # Check user_id from submission first
         sub_id = entry.get("submission_id")
         user_id = None
         linked_user_name = None
+
         if sub_id:
             sub = get_submission(db_path, sub_id)
             if sub:
                 user_id = sub.get("user_id")
-                if user_id:
-                    user = get_user(db_path, user_id)
-                    if user:
-                        linked_user_name = user.get("display_name") or user.get("email")
+
+        # Fallback: check report_user_links for standalone reports
+        report_slug = entry.get("report_slug", "")
+        if not user_id and report_slug and report_slug in report_links:
+            user_id = report_links[report_slug]
+
+        if user_id and user_id in users_by_id:
+            u = users_by_id[user_id]
+            linked_user_name = u.get("display_name") or u.get("email")
+
         entry["user_id"] = user_id
         entry["linked_user_name"] = linked_user_name
         submissions.append(entry)
@@ -525,11 +534,29 @@ async def manage_update_user_role(
     )
 
 
-@app.patch("/api/manage/submissions/{submission_id}/link", response_class=HTMLResponse)
-async def manage_link_submission(
-    request: Request, submission_id: str,
+def _render_manage_submissions(request: Request, session_user: dict) -> HTMLResponse:
+    """Helper to render the submissions partial after a link/unlink operation."""
+    db_path = request.app.state.db_path
+    users = list_users(db_path)
+    submissions, suggestions = _get_manage_submissions(request, users)
+    return templates.TemplateResponse(
+        request,
+        "partials/manage_submissions.html",
+        {
+            "submissions": submissions,
+            "users": users,
+            "suggestions": suggestions,
+            "session_user": session_user,
+            "current_user": session_user,
+        },
+    )
+
+
+@app.patch("/api/manage/link/{entry_id}", response_class=HTMLResponse)
+async def manage_link_entry(
+    request: Request, entry_id: str,
 ) -> HTMLResponse:
-    """Link a submission to a user. Returns the updated submissions partial."""
+    """Link any entry (submission or standalone report) to a user."""
     from fastapi.responses import JSONResponse
 
     auth_result = _require_manage_access(request)
@@ -539,36 +566,30 @@ async def manage_link_submission(
 
     form = await request.form()
     link_user_id = str(form.get("user_id", "")).strip()
+    report_slug = str(form.get("report_slug", "")).strip()
 
     if not link_user_id:
         return JSONResponse(status_code=400, content={"error": "user_id is required"})
 
     db_path = request.app.state.db_path
-    result = link_submission_user(db_path, submission_id, link_user_id)
-    if result is None:
-        return JSONResponse(status_code=404, content={"error": "submission not found"})
 
-    users = list_users(db_path)
-    submissions, suggestions = _get_manage_submissions(request, users)
+    # Try submission-based link first
+    sub = get_submission(db_path, entry_id)
+    if sub:
+        link_submission_user(db_path, entry_id, link_user_id)
 
-    return templates.TemplateResponse(
-        request,
-        "partials/manage_submissions.html",
-        {
-            "submissions": submissions,
-            "users": users,
-            "suggestions": suggestions,
-            "session_user": session_user,
-            "current_user": session_user,
-        },
-    )
+    # Always also link by report_slug (covers standalone reports)
+    if report_slug:
+        link_report_to_user(db_path, report_slug, link_user_id)
+
+    return _render_manage_submissions(request, session_user)
 
 
-@app.delete("/api/manage/submissions/{submission_id}/link", response_class=HTMLResponse)
-async def manage_unlink_submission(
-    request: Request, submission_id: str,
+@app.delete("/api/manage/link/{entry_id}", response_class=HTMLResponse)
+async def manage_unlink_entry(
+    request: Request, entry_id: str,
 ) -> HTMLResponse:
-    """Unlink a submission from a user. Returns the updated submissions partial."""
+    """Unlink any entry (submission or standalone report) from a user."""
     from fastapi.responses import JSONResponse
 
     auth_result = _require_manage_access(request)
@@ -576,25 +597,34 @@ async def manage_unlink_submission(
         return auth_result
     session_user = auth_result
 
+    form = await request.form()
+    report_slug = str(form.get("report_slug", "")).strip()
+
     db_path = request.app.state.db_path
-    result = unlink_submission_user(db_path, submission_id)
-    if result is None:
-        return JSONResponse(status_code=404, content={"error": "submission not found"})
 
-    users = list_users(db_path)
-    submissions, suggestions = _get_manage_submissions(request, users)
+    # Try submission unlink
+    sub = get_submission(db_path, entry_id)
+    if sub:
+        unlink_submission_user(db_path, entry_id)
 
-    return templates.TemplateResponse(
-        request,
-        "partials/manage_submissions.html",
-        {
-            "submissions": submissions,
-            "users": users,
-            "suggestions": suggestions,
-            "session_user": session_user,
-            "current_user": session_user,
-        },
-    )
+    # Also unlink by report_slug
+    if report_slug:
+        unlink_report_from_user(db_path, report_slug)
+
+    return _render_manage_submissions(request, session_user)
+
+
+# Keep old endpoints for backward compat
+@app.patch("/api/manage/submissions/{submission_id}/link", response_class=HTMLResponse)
+async def manage_link_submission(request: Request, submission_id: str) -> HTMLResponse:
+    """Legacy: link a submission to a user."""
+    return await manage_link_entry(request, submission_id)
+
+
+@app.delete("/api/manage/submissions/{submission_id}/link", response_class=HTMLResponse)
+async def manage_unlink_submission(request: Request, submission_id: str) -> HTMLResponse:
+    """Legacy: unlink a submission from a user."""
+    return await manage_unlink_entry(request, submission_id)
 
 
 # ── Auth router ──────────────────────────────────────────────────────

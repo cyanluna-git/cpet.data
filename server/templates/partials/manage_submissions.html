@@ -12,7 +12,7 @@
 
   <!-- 상태 -->
   <td class="px-4 py-3 text-sm whitespace-nowrap">
-    {% set st = sub.status or sub.get('job_status', '') %}
+    {% set st = sub.status or '' %}
     {% if st == 'done' %}
       <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">완료</span>
     {% elif st == 'processing' %}
@@ -39,19 +39,16 @@
   <!-- 연결된 유저 -->
   <td class="px-4 py-3 text-sm whitespace-nowrap">
     {% if sub.user_id %}
-      <div class="flex items-center gap-1">
-        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-          {{ sub.linked_user_name or sub.user_id[:8] }}
-        </span>
-      </div>
+      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+        {{ sub.linked_user_name or sub.user_id[:8] }}
+      </span>
     {% else %}
       <span class="text-gray-400 text-xs">미연결</span>
     {% endif %}
   </td>
 
-  <!-- 작업: 연결/변경/해제 -->
+  <!-- 작업: 연결/해제 -->
   <td class="px-4 py-3 text-sm whitespace-nowrap">
-    {% if sub.submission_id %}
     <div class="flex items-center gap-2">
       <select
         name="user_id"
@@ -66,26 +63,27 @@
         {% endfor %}
       </select>
 
+      <input type="hidden" name="report_slug" value="{{ sub.report_slug or '' }}" form="link-form-{{ sub.id }}" />
+
       <button
         class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-900 text-white hover:bg-gray-800 transition"
-        hx-patch="/api/manage/submissions/{{ sub.submission_id }}/link"
+        hx-patch="/api/manage/link/{{ sub.submission_id or sub.id }}"
         hx-target="#manage-submissions-body"
         hx-swap="innerHTML"
         hx-include="#link-select-{{ sub.id }}"
+        hx-vals='{"report_slug": "{{ sub.report_slug or '' }}"}'
       >연결</button>
 
       {% if sub.user_id %}
       <button
         class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-red-50 text-red-700 hover:bg-red-100 transition"
-        hx-delete="/api/manage/submissions/{{ sub.submission_id }}/link"
+        hx-delete="/api/manage/link/{{ sub.submission_id or sub.id }}"
         hx-target="#manage-submissions-body"
         hx-swap="innerHTML"
+        hx-vals='{"report_slug": "{{ sub.report_slug or '' }}"}'
       >해제</button>
       {% endif %}
     </div>
-    {% else %}
-    <span class="text-gray-400 text-xs">제출 기록 없음</span>
-    {% endif %}
   </td>
 </tr>
 {% else %}

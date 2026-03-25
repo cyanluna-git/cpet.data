@@ -47,6 +47,12 @@ CREATE TABLE IF NOT EXISTS jobs (
     created_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS report_user_links (
+    report_slug TEXT PRIMARY KEY,
+    user_id TEXT REFERENCES users(id),
+    linked_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS user_profiles (
     user_id TEXT PRIMARY KEY REFERENCES users(id),
     weight_kg REAL,
@@ -558,6 +564,37 @@ def unlink_submission_user(db_path: Path, submission_id: str) -> dict | None:
     result = dict(row)
     result["file_manifest"] = json.loads(result["file_manifest"])
     return result
+
+
+# ── Report-User Links (for standalone published reports) ─────────────
+
+
+def link_report_to_user(db_path: Path, report_slug: str, user_id: str) -> None:
+    """Link a published report (by slug) to a user."""
+    conn = _connect(db_path)
+    conn.execute(
+        "INSERT OR REPLACE INTO report_user_links (report_slug, user_id, linked_at) "
+        "VALUES (?, ?, datetime('now'))",
+        (report_slug, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def unlink_report_from_user(db_path: Path, report_slug: str) -> None:
+    """Remove a report-user link."""
+    conn = _connect(db_path)
+    conn.execute("DELETE FROM report_user_links WHERE report_slug = ?", (report_slug,))
+    conn.commit()
+    conn.close()
+
+
+def get_report_user_links(db_path: Path) -> dict[str, str]:
+    """Return a dict of report_slug -> user_id for all linked reports."""
+    conn = _connect(db_path)
+    rows = conn.execute("SELECT report_slug, user_id FROM report_user_links").fetchall()
+    conn.close()
+    return {row["report_slug"]: row["user_id"] for row in rows}
 
 
 # ── Submissions by User ──────────────────────────────────────────────
