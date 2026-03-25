@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from server.db import get_user, init_db
+from server.db import get_user, get_user_profile, init_db, upsert_user_profile
 
 load_dotenv()
 
@@ -132,6 +132,69 @@ async def upload_page(request: Request) -> HTMLResponse:
 async def dashboard_page(request: Request) -> HTMLResponse:
     """Render the dashboard page."""
     return _template_response(request, "dashboard.html")
+
+
+@app.get("/profile", response_class=HTMLResponse)
+async def profile_page(request: Request) -> HTMLResponse:
+    """Render the user profile page. Redirects to login if not authenticated."""
+    from fastapi.responses import RedirectResponse
+
+    session_user = _get_session_user(request)
+    if session_user is None:
+        return RedirectResponse(url="/auth/google/login", status_code=302)
+
+    user_id = session_user["id"]
+    db_path = request.app.state.db_path
+    user = get_user(db_path, user_id) or session_user
+    profile = get_user_profile(db_path, user_id) or {}
+
+    return _template_response(request, "profile.html", {
+        "user": user,
+        "profile": profile,
+    })
+
+
+@app.patch("/api/profile", response_class=HTMLResponse)
+async def update_profile(request: Request) -> HTMLResponse:
+    """Update user profile fields. Returns the body-comp partial for HTMX swap."""
+    from fastapi.responses import JSONResponse
+
+    session_user = _get_session_user(request)
+    if session_user is None:
+        return JSONResponse(status_code=401, content={"error": "not authenticated"})
+
+    user_id = session_user["id"]
+    db_path = request.app.state.db_path
+
+    form = await request.form()
+    fields: dict[str, str | float | int | None] = {}
+
+    float_fields = {"weight_kg", "height_cm", "body_fat_pct", "skeletal_muscle_mass", "bmi"}
+    int_fields = {"birth_year"}
+    text_fields = {"gender", "training_level", "measured_at"}
+
+    for key in float_fields:
+        if key in form:
+            raw = str(form[key]).strip()
+            fields[key] = float(raw) if raw else None
+
+    for key in int_fields:
+        if key in form:
+            raw = str(form[key]).strip()
+            fields[key] = int(raw) if raw else None
+
+    for key in text_fields:
+        if key in form:
+            raw = str(form[key]).strip()
+            fields[key] = raw if raw else None
+
+    profile = upsert_user_profile(db_path, user_id, **fields)
+
+    return templates.TemplateResponse(
+        request,
+        "partials/profile_body_comp.html",
+        {"profile": profile},
+    )
 
 
 # ── Auth router ──────────────────────────────────────────────────────

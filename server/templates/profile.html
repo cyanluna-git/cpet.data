@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}프로필 — CPET Platform{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto space-y-6">
+  <h1 class="text-2xl font-bold">프로필</h1>
+
+  <!-- Profile card -->
+  <div class="bg-white rounded-lg shadow p-6">
+    <div class="flex items-center gap-4">
+      {% if user.avatar_url %}
+        <img
+          src="{{ user.avatar_url }}"
+          alt="{{ user.display_name }}"
+          class="h-16 w-16 rounded-full"
+          referrerpolicy="no-referrer"
+        />
+      {% else %}
+        <div class="h-16 w-16 rounded-full bg-gray-300 flex items-center justify-center text-xl font-medium text-gray-600">
+          {{ user.display_name[:1] if user.display_name else "?" }}
+        </div>
+      {% endif %}
+      <div>
+        <h2 class="text-lg font-semibold text-gray-900">{{ user.display_name or "—" }}</h2>
+        <p class="text-sm text-gray-500">{{ user.email }}</p>
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 mt-1">
+          {{ user.role or "user" }}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Basic info -->
+  <div class="bg-white rounded-lg shadow p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-semibold text-gray-900">기본 정보</h3>
+      <span id="save-indicator" class="htmx-indicator text-xs text-gray-400">저장 중...</span>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+      <!-- 출생연도 -->
+      <div class="bg-gray-50 rounded-lg p-4">
+        <label class="block text-xs font-medium text-gray-500 mb-1">출생연도</label>
+        <input
+          type="number" name="birth_year"
+          value="{{ profile.birth_year or '' }}"
+          placeholder="예: 1990"
+          min="1920" max="2010"
+          class="w-full bg-transparent text-lg font-semibold text-gray-900
+                 border-b border-transparent focus:border-gray-400
+                 focus:outline-none transition-colors"
+          hx-patch="/api/profile"
+          hx-trigger="change"
+          hx-target="#body-comp-fields"
+          hx-swap="outerHTML"
+          hx-include="[name='birth_year']"
+          hx-indicator="#save-indicator"
+        />
+      </div>
+
+      <!-- 성별 -->
+      <div class="bg-gray-50 rounded-lg p-4">
+        <label class="block text-xs font-medium text-gray-500 mb-1">성별</label>
+        <select
+          name="gender"
+          class="w-full bg-transparent text-lg font-semibold text-gray-900
+                 border-b border-transparent focus:border-gray-400
+                 focus:outline-none transition-colors"
+          hx-patch="/api/profile"
+          hx-trigger="change"
+          hx-target="#body-comp-fields"
+          hx-swap="outerHTML"
+          hx-include="[name='gender']"
+          hx-indicator="#save-indicator"
+        >
+          <option value="" {% if not profile.gender %}selected{% endif %}>—</option>
+          <option value="male" {% if profile.gender == 'male' %}selected{% endif %}>남성</option>
+          <option value="female" {% if profile.gender == 'female' %}selected{% endif %}>여성</option>
+        </select>
+      </div>
+
+      <!-- 훈련 수준 -->
+      <div class="bg-gray-50 rounded-lg p-4 sm:col-span-2">
+        <label class="block text-xs font-medium text-gray-500 mb-1">훈련 수준</label>
+        <select
+          name="training_level"
+          class="w-full bg-transparent text-lg font-semibold text-gray-900
+                 border-b border-transparent focus:border-gray-400
+                 focus:outline-none transition-colors"
+          hx-patch="/api/profile"
+          hx-trigger="change"
+          hx-target="#body-comp-fields"
+          hx-swap="outerHTML"
+          hx-include="[name='training_level']"
+          hx-indicator="#save-indicator"
+        >
+          <option value="" {% if not profile.training_level %}selected{% endif %}>—</option>
+          <option value="beginner" {% if profile.training_level == 'beginner' %}selected{% endif %}>초보</option>
+          <option value="intermediate" {% if profile.training_level == 'intermediate' %}selected{% endif %}>중급</option>
+          <option value="advanced" {% if profile.training_level == 'advanced' %}selected{% endif %}>상급</option>
+          <option value="elite" {% if profile.training_level == 'elite' %}selected{% endif %}>엘리트</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Body composition -->
+  <div class="bg-white rounded-lg shadow p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-semibold text-gray-900">체성분</h3>
+    </div>
+
+    {% include "partials/profile_body_comp.html" %}
+  </div>
+
+</div>
+{% endblock %}

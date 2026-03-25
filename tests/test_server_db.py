@@ -76,7 +76,7 @@ class TestInitDb:
             "AND name NOT LIKE 'sqlite_%'"
         ).fetchall()
         conn.close()
-        assert len(tables) == 3
+        assert len(tables) == 4
 
 
 # ── Submissions ──────────────────────────────────────────────────────

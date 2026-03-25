@@ -1,5 +1,5 @@
 """
-server.db — Platform SQLite CRUD for submissions, jobs, and users.
+server.db — Platform SQLite CRUD for submissions, jobs, users, and profiles.
 
 Every function takes a db_path: Path parameter. No global state.
 Uses raw sqlite3, WAL mode, TEXT primary keys (UUID).
@@ -44,6 +44,20 @@ CREATE TABLE IF NOT EXISTS jobs (
     started_at TEXT,
     completed_at TEXT,
     created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS user_profiles (
+    user_id TEXT PRIMARY KEY REFERENCES users(id),
+    weight_kg REAL,
+    height_cm REAL,
+    body_fat_pct REAL,
+    skeletal_muscle_mass REAL,
+    bmi REAL,
+    birth_year INTEGER,
+    gender TEXT,
+    training_level TEXT,
+    measured_at TEXT,
+    updated_at TEXT DEFAULT (datetime('now'))
 );
 """
 
@@ -309,4 +323,80 @@ def get_user_by_google_id(db_path: Path, google_id: str) -> dict | None:
     conn.close()
     if row is None:
         return None
+    return dict(row)
+
+
+# ── User Profile CRUD ──────────────────────────────────────────────
+
+
+PROFILE_FIELDS = {
+    "weight_kg", "height_cm", "body_fat_pct", "skeletal_muscle_mass",
+    "bmi", "birth_year", "gender", "training_level", "measured_at",
+}
+
+
+def get_user_profile(db_path: Path, user_id: str) -> dict | None:
+    """Fetch a user profile by user ID, or None if not found."""
+    conn = _connect(db_path)
+    row = conn.execute(
+        "SELECT * FROM user_profiles WHERE user_id = ?", (user_id,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def upsert_user_profile(
+    db_path: Path,
+    user_id: str,
+    **fields: str | float | int | None,
+) -> dict:
+    """Create or update a user profile. Returns the updated profile dict.
+
+    Only fields in PROFILE_FIELDS are accepted; unknown keys raise ValueError.
+    """
+    for key in fields:
+        if key not in PROFILE_FIELDS:
+            raise ValueError(f"Unknown profile field '{key}'")
+
+    now = _now_utc()
+    conn = _connect(db_path)
+
+    existing = conn.execute(
+        "SELECT * FROM user_profiles WHERE user_id = ?", (user_id,)
+    ).fetchone()
+
+    if existing is None:
+        columns = ["user_id", "updated_at"]
+        values: list[str | float | int | None] = [user_id, now]
+        for key, value in fields.items():
+            columns.append(key)
+            values.append(value)
+        placeholders = ", ".join("?" for _ in columns)
+        col_names = ", ".join(columns)
+        conn.execute(
+            f"INSERT INTO user_profiles ({col_names}) VALUES ({placeholders})",
+            values,
+        )
+    else:
+        if not fields:
+            conn.close()
+            return dict(existing)
+        sets = ["updated_at = ?"]
+        params: list[str | float | int | None] = [now]
+        for key, value in fields.items():
+            sets.append(f"{key} = ?")
+            params.append(value)
+        params.append(user_id)
+        conn.execute(
+            f"UPDATE user_profiles SET {', '.join(sets)} WHERE user_id = ?",
+            params,
+        )
+
+    conn.commit()
+    row = conn.execute(
+        "SELECT * FROM user_profiles WHERE user_id = ?", (user_id,)
+    ).fetchone()
+    conn.close()
     return dict(row)
