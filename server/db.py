@@ -1,5 +1,5 @@
 """
-server.db — Platform SQLite CRUD for submissions and jobs.
+server.db — Platform SQLite CRUD for submissions, jobs, and users.
 
 Every function takes a db_path: Path parameter. No global state.
 Uses raw sqlite3, WAL mode, TEXT primary keys (UUID).
@@ -12,6 +12,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    google_id TEXT UNIQUE,
+    email TEXT UNIQUE,
+    display_name TEXT,
+    avatar_url TEXT,
+    role TEXT DEFAULT 'user',
+    created_at TEXT DEFAULT (datetime('now')),
+    last_login_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS submissions (
     id TEXT PRIMARY KEY,
     description TEXT,
@@ -19,6 +30,7 @@ CREATE TABLE IF NOT EXISTS submissions (
     workspace_path TEXT,
     subject_name TEXT,
     test_date TEXT,
+    user_id TEXT REFERENCES users(id),
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -33,6 +45,10 @@ CREATE TABLE IF NOT EXISTS jobs (
     completed_at TEXT,
     created_at TEXT DEFAULT (datetime('now'))
 );
+"""
+
+MIGRATION_ADD_USER_ID = """
+ALTER TABLE submissions ADD COLUMN user_id TEXT REFERENCES users(id);
 """
 
 VALID_STATUSES = {"pending", "processing", "done", "failed"}
@@ -51,11 +67,21 @@ def _now_utc() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    """Check whether a column exists in a table."""
+    cursor = conn.execute(f"PRAGMA table_info({table})")
+    return any(row[1] == column for row in cursor.fetchall())
+
+
 def init_db(db_path: Path) -> None:
-    """Create submissions and jobs tables if they don't exist."""
+    """Create tables if they don't exist and run migrations."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = _connect(db_path)
     conn.executescript(SCHEMA_SQL)
+    # Migration: add user_id to submissions if missing (backward compat)
+    if not _column_exists(conn, "submissions", "user_id"):
+        conn.execute(MIGRATION_ADD_USER_ID)
+        conn.commit()
     conn.close()
 
 
@@ -67,11 +93,13 @@ def create_submission(
     subject_name: str = "",
     test_date: str = "",
     submission_id: str | None = None,
+    user_id: str | None = None,
 ) -> str:
     """Insert a new submission and return its UUID.
 
     If submission_id is provided, use it; otherwise generate a new one.
     This allows workspace creation to determine the ID first.
+    user_id is optional for backward compatibility (anonymous uploads).
     """
     if submission_id is None:
         submission_id = str(uuid.uuid4())
@@ -79,10 +107,10 @@ def create_submission(
     conn = _connect(db_path)
     conn.execute(
         """INSERT INTO submissions
-           (id, description, file_manifest, workspace_path, subject_name, test_date)
-           VALUES (?, ?, ?, ?, ?, ?)""",
+           (id, description, file_manifest, workspace_path, subject_name, test_date, user_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
         (submission_id, description, manifest_json, workspace_path,
-         subject_name, test_date),
+         subject_name, test_date, user_id),
     )
     conn.commit()
     conn.close()
@@ -204,6 +232,79 @@ def get_job_by_submission(
     row = conn.execute(
         "SELECT * FROM jobs WHERE submission_id = ? ORDER BY rowid DESC",
         (submission_id,),
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return dict(row)
+
+
+# ── User CRUD ───────────────────────────────────────────────────────
+
+
+def upsert_user(
+    db_path: Path,
+    google_id: str,
+    email: str,
+    display_name: str = "",
+    avatar_url: str = "",
+) -> dict:
+    """Create a user on first login or update last_login_at for returning users.
+
+    Returns the user row as a dict.
+    """
+    now = _now_utc()
+    conn = _connect(db_path)
+
+    row = conn.execute(
+        "SELECT * FROM users WHERE google_id = ?", (google_id,)
+    ).fetchone()
+
+    if row is None:
+        user_id = str(uuid.uuid4())
+        conn.execute(
+            """INSERT INTO users
+               (id, google_id, email, display_name, avatar_url, role, created_at, last_login_at)
+               VALUES (?, ?, ?, ?, ?, 'user', ?, ?)""",
+            (user_id, google_id, email, display_name, avatar_url, now, now),
+        )
+        conn.commit()
+        user = conn.execute(
+            "SELECT * FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
+    else:
+        conn.execute(
+            """UPDATE users
+               SET email = ?, display_name = ?, avatar_url = ?, last_login_at = ?
+               WHERE google_id = ?""",
+            (email, display_name, avatar_url, now, google_id),
+        )
+        conn.commit()
+        user = conn.execute(
+            "SELECT * FROM users WHERE google_id = ?", (google_id,)
+        ).fetchone()
+
+    conn.close()
+    return dict(user)
+
+
+def get_user(db_path: Path, user_id: str) -> dict | None:
+    """Fetch a user by ID, or None if not found."""
+    conn = _connect(db_path)
+    row = conn.execute(
+        "SELECT * FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def get_user_by_google_id(db_path: Path, google_id: str) -> dict | None:
+    """Fetch a user by Google ID, or None if not found."""
+    conn = _connect(db_path)
+    row = conn.execute(
+        "SELECT * FROM users WHERE google_id = ?", (google_id,)
     ).fetchone()
     conn.close()
     if row is None:

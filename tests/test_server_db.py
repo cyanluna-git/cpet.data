@@ -57,6 +57,7 @@ class TestInitDb:
         ).fetchall()
         conn.close()
         names = [t[0] for t in tables]
+        assert "users" in names
         assert "submissions" in names
         assert "jobs" in names
 
@@ -75,7 +76,7 @@ class TestInitDb:
             "AND name NOT LIKE 'sqlite_%'"
         ).fetchall()
         conn.close()
-        assert len(tables) == 2
+        assert len(tables) == 3
 
 
 # ── Submissions ──────────────────────────────────────────────────────

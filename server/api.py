@@ -533,6 +533,9 @@ async def submit(
     # Build file manifest
     manifest = list_files(workspace)
 
+    # Extract user_id from session (None for anonymous uploads)
+    user_id = request.session.get("user_id") if hasattr(request, "session") else None
+
     # Create submission and job
     create_submission(
         db_path,
@@ -542,6 +545,7 @@ async def submit(
         subject_name=subject_name,
         test_date=test_date,
         submission_id=submission_id,
+        user_id=user_id,
     )
     job_id = create_job(db_path, submission_id)
 

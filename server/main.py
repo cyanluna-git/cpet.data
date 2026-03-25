@@ -2,7 +2,7 @@
 server.main — FastAPI application entry point.
 
 Initializes the platform database on startup, mounts Jinja2 templates
-and static files, and includes the API router.
+and static files, and includes the API and auth routers.
 
 Usage:
     uvicorn server.main:app --port 8100 --reload
@@ -13,12 +13,16 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
-from server.db import init_db
+from server.db import get_user, init_db
+
+load_dotenv()
 
 
 @asynccontextmanager
@@ -29,6 +33,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="CPET Platform", version="2.0.0", lifespan=lifespan)
+
+# ── Session middleware (cookie-based) ────────────────────────────────
+
+SESSION_SECRET = os.environ.get(
+    "SESSION_SECRET",
+    "change-me-in-production-please-use-a-real-secret-key",
+)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    session_cookie="cpet_session",
+    max_age=60 * 60 * 24 * 30,  # 30 days
+    same_site="lax",
+    https_only=False,  # set True in production behind HTTPS
+)
 
 # ── Configuration via environment ────────────────────────────────────
 
@@ -67,26 +86,59 @@ if _published_dir.exists():
         name="reports",
     )
 
+
+# ── Template context: inject current user into every response ────────
+
+
+def _get_session_user(request: Request) -> dict | None:
+    """Read user info from session. Returns None for anonymous visitors."""
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return None
+    return {
+        "id": user_id,
+        "display_name": request.session.get("display_name", ""),
+        "avatar_url": request.session.get("avatar_url", ""),
+        "email": request.session.get("email", ""),
+    }
+
+
+def _template_response(
+    request: Request, template_name: str, context: dict | None = None,
+) -> HTMLResponse:
+    """Render a template with current_user injected into context."""
+    ctx = {"current_user": _get_session_user(request)}
+    if context:
+        ctx.update(context)
+    return templates.TemplateResponse(request, template_name, ctx)
+
+
 # ── Page routes ──────────────────────────────────────────────────────
 
 
 @app.get("/", response_class=HTMLResponse)
 async def index_page(request: Request) -> HTMLResponse:
     """Render the landing page."""
-    return templates.TemplateResponse(request, "index.html")
+    return _template_response(request, "index.html")
 
 
 @app.get("/upload", response_class=HTMLResponse)
 async def upload_page(request: Request) -> HTMLResponse:
     """Render the file upload page."""
-    return templates.TemplateResponse(request, "upload.html")
+    return _template_response(request, "upload.html")
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request) -> HTMLResponse:
     """Render the dashboard page."""
-    return templates.TemplateResponse(request, "dashboard.html")
+    return _template_response(request, "dashboard.html")
 
+
+# ── Auth router ──────────────────────────────────────────────────────
+
+from server.auth import router as auth_router  # noqa: E402
+
+app.include_router(auth_router)
 
 # ── API router ───────────────────────────────────────────────────────
 
