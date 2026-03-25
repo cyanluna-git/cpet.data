@@ -425,3 +425,155 @@ def upsert_user_profile(
     ).fetchone()
     conn.close()
     return dict(row)
+
+
+# ── Submissions by User ──────────────────────────────────────────────
+
+
+def list_submissions_by_user(db_path: Path, user_id: str) -> list[dict]:
+    """List submissions for a given user, newest first."""
+    conn = _connect(db_path)
+    rows = conn.execute(
+        "SELECT * FROM submissions WHERE user_id = ? ORDER BY rowid DESC",
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    results = []
+    for row in rows:
+        d = dict(row)
+        d["file_manifest"] = json.loads(d["file_manifest"])
+        results.append(d)
+    return results
+
+
+# ── Fitness Trends (from workspace analysis.db files) ─────────────
+
+
+# Keys to extract from each analysis.db's analysis_results table.
+_TREND_METRICS: dict[str, list[tuple[str, str]]] = {
+    "vo2max": [
+        ("vo2max_ml", "vo2max_ml"),
+        ("vo2max_rel", "vo2max_rel"),
+    ],
+    "lactate": [
+        ("lt1_fixed_power_w", "lt1_power_w"),
+        ("lt1_dmax_power_w", "lt2_power_w"),
+    ],
+    "substrate": [
+        ("fatmax_power_w", "fatmax_power_w"),
+        ("fatmax_gmin", "fatmax_gmin"),
+    ],
+}
+
+
+def _read_analysis_metrics(analysis_db_path: Path) -> dict:
+    """Read key metrics from a single workspace analysis.db file.
+
+    Returns a flat dict of metric name -> numeric value, plus test_date.
+    Returns empty dict if analysis.db does not exist or has no data.
+    """
+    if not analysis_db_path.exists():
+        return {}
+
+    try:
+        conn = sqlite3.connect(str(analysis_db_path))
+        conn.row_factory = sqlite3.Row
+
+        # Get test date from test_session table
+        test_date_row = conn.execute(
+            "SELECT test_date FROM test_session LIMIT 1"
+        ).fetchone()
+        test_date = test_date_row["test_date"] if test_date_row else None
+
+        # Check if analysis_results table exists
+        table_check = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='analysis_results'"
+        ).fetchone()
+        if table_check is None:
+            conn.close()
+            return {}
+
+        # Read all relevant metrics
+        metrics: dict = {"test_date": test_date}
+        for category, keys in _TREND_METRICS.items():
+            for src_key, dest_key in keys:
+                row = conn.execute(
+                    "SELECT value FROM analysis_results WHERE category = ? AND key = ?",
+                    (category, src_key),
+                ).fetchone()
+                if row is not None and row["value"] is not None:
+                    try:
+                        val = json.loads(row["value"])
+                        if isinstance(val, (int, float)):
+                            metrics[dest_key] = val
+                    except (json.JSONDecodeError, TypeError):
+                        # Try plain float parse for simple numeric strings
+                        try:
+                            metrics[dest_key] = float(row["value"])
+                        except (ValueError, TypeError):
+                            pass
+
+        conn.close()
+        return metrics
+    except (sqlite3.Error, OSError):
+        return {}
+
+
+def get_fitness_trends(
+    db_path: Path, user_id: str, data_dir: Path | None = None,
+) -> list[dict]:
+    """Build a time-series of key fitness metrics across a user's submissions.
+
+    Each element contains test_date and available metrics extracted from
+    the corresponding workspace's analysis.db.
+
+    Args:
+        db_path: Path to the platform database.
+        user_id: User ID to look up submissions.
+        data_dir: Optional data directory root (used to resolve relative workspace paths).
+
+    Returns:
+        List of dicts sorted by test_date ascending, each containing
+        test_date and available metric values.
+    """
+    submissions = list_submissions_by_user(db_path, user_id)
+    trends: list[dict] = []
+
+    for sub in submissions:
+        workspace_path = sub.get("workspace_path")
+        if not workspace_path:
+            continue
+
+        ws = Path(workspace_path)
+        if not ws.is_absolute() and data_dir is not None:
+            ws = data_dir / ws
+
+        analysis_db = ws / "analysis.db"
+        metrics = _read_analysis_metrics(analysis_db)
+        if not metrics or not metrics.get("test_date"):
+            continue
+
+        # Include submission metadata for context
+        metrics["submission_id"] = sub["id"]
+        metrics["subject_name"] = sub.get("subject_name", "")
+        trends.append(metrics)
+
+    # Sort by test_date ascending (oldest first)
+    trends.sort(key=lambda m: m.get("test_date", ""))
+
+    # Compute deltas if 2+ entries exist
+    if len(trends) >= 2:
+        prev = trends[-2]
+        curr = trends[-1]
+        deltas: dict = {}
+        for key in ("vo2max_ml", "vo2max_rel", "lt1_power_w", "lt2_power_w",
+                     "fatmax_power_w", "fatmax_gmin"):
+            if key in curr and key in prev:
+                try:
+                    deltas[key] = round(curr[key] - prev[key], 2)
+                except (TypeError, ValueError):
+                    pass
+        if deltas:
+            trends[-1]["deltas"] = deltas
+
+    return trends

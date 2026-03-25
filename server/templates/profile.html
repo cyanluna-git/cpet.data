@@ -113,5 +113,22 @@
     {% include "partials/profile_body_comp.html" %}
   </div>
 
+  <!-- Fitness trends -->
+  <div class="bg-white rounded-lg shadow p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-semibold text-gray-900">피트니스 지표 트렌드</h3>
+      <button
+        class="text-xs text-blue-600 hover:text-blue-800 transition-colors"
+        hx-get="/api/profile/trends"
+        hx-target="#fitness-trends"
+        hx-swap="outerHTML"
+      >
+        새로고침
+      </button>
+    </div>
+
+    {% include "partials/profile_trends.html" %}
+  </div>
+
 </div>
 {% endblock %}

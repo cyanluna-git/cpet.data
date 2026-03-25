@@ -20,7 +20,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from server.db import get_user, get_user_profile, init_db, upsert_user_profile
+from server.db import (
+    get_fitness_trends,
+    get_user,
+    get_user_profile,
+    init_db,
+    upsert_user_profile,
+)
 
 load_dotenv()
 
@@ -145,12 +151,15 @@ async def profile_page(request: Request) -> HTMLResponse:
 
     user_id = session_user["id"]
     db_path = request.app.state.db_path
+    data_dir = request.app.state.data_dir
     user = get_user(db_path, user_id) or session_user
     profile = get_user_profile(db_path, user_id) or {}
+    trends = get_fitness_trends(db_path, user_id, data_dir=data_dir)
 
     return _template_response(request, "profile.html", {
         "user": user,
         "profile": profile,
+        "trends": trends,
     })
 
 
@@ -195,6 +204,38 @@ async def update_profile(request: Request) -> HTMLResponse:
         "partials/profile_body_comp.html",
         {"profile": profile},
     )
+
+
+# ── Profile Trends API ────────────────────────────────────────────────
+
+
+@app.get("/api/profile/trends")
+async def profile_trends(request: Request) -> HTMLResponse:
+    """Return fitness metric trends as JSON or HTMX partial.
+
+    If the request has HX-Request header (HTMX), returns the trends
+    partial HTML. Otherwise returns JSON.
+    """
+    from fastapi.responses import JSONResponse
+
+    session_user = _get_session_user(request)
+    if session_user is None:
+        return JSONResponse(status_code=401, content={"error": "not authenticated"})
+
+    user_id = session_user["id"]
+    db_path = request.app.state.db_path
+    data_dir = request.app.state.data_dir
+    trends = get_fitness_trends(db_path, user_id, data_dir=data_dir)
+
+    # HTMX partial response
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse(
+            request,
+            "partials/profile_trends.html",
+            {"trends": trends},
+        )
+
+    return JSONResponse(content={"data": trends})
 
 
 # ── Auth router ──────────────────────────────────────────────────────
