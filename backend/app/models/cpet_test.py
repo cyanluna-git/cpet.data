@@ -22,6 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
 if TYPE_CHECKING:
+    from app.models.blood_sample import BloodSample
     from app.models.breath_data import BreathData
     from app.models.subject import Subject
 
@@ -123,6 +124,9 @@ class CPETTest(Base):
     subject: Mapped["Subject"] = relationship("Subject", back_populates="tests")
     breath_data: Mapped[list["BreathData"]] = relationship(
         "BreathData", back_populates="test", cascade="all, delete-orphan"
+    )
+    blood_samples: Mapped[list["BloodSample"]] = relationship(
+        "BloodSample", back_populates="cpet_test", cascade="all, delete-orphan"
     )
 
     __table_args__ = (

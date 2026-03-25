@@ -106,6 +106,9 @@ class ProcessedMetabolism(Base):
     processing_status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, completed, failed
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
+    # v1.3.0: Energy system 3-pathway analysis (oxidative, glycolytic, phosphagen)
+    energy_system: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
     # Algorithm version for reproducibility and future compatibility
     algorithm_version: Mapped[str] = mapped_column(String(20), default="1.0.0", nullable=False)
     
@@ -174,6 +177,7 @@ class ProcessedMetabolism(Base):
                 "exercise_data_points": self.exercise_data_points,
                 "binned_data_points": self.binned_data_points,
             },
+            "energy_system": self.energy_system,
             "processing_warnings": self.processing_warnings,
             "processing_status": self.processing_status,
             "processed_at": self.processed_at.isoformat() if self.processed_at else None,

@@ -19,6 +19,9 @@ import {
 // Lazy load chart components to reduce initial bundle size
 const MetabolismChart = lazy(() => import('./MetabolismChart').then(module => ({ default: module.MetabolismChart })));
 const MetabolismPatternChart = lazy(() => import('./MetabolismPatternChart').then(module => ({ default: module.MetabolismPatternChart })));
+const EnergySystemTab = lazy(() => import('./EnergySystemTab').then(module => ({ default: module.EnergySystemTab })));
+
+type AnalysisTab = 'substrate' | 'energy-system';
 
 interface User {
   id: string;
@@ -108,23 +111,23 @@ function AnalysisControlPanel({
   const maxDuration = Math.max(totalDuration, trimEnd, 1800); // At least 30 minutes
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
+    <div className="report-section mb-6 border-none p-4">
       {/* Status Badge Row */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-gray-700">분석 설정</h3>
         <div className="flex items-center gap-2">
           {isDirty ? (
-            <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-amber-100 text-amber-700 rounded-full">
+            <span className="inline-flex items-center gap-1 rounded-full bg-[rgba(161,123,55,0.14)] px-2 py-1 text-xs font-medium text-[var(--editorial-gold)]">
               <AlertTriangle className="w-3 h-3" />
               저장되지 않은 변경
             </span>
           ) : isServerPersisted ? (
-            <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-full">
+            <span className="inline-flex items-center gap-1 rounded-full bg-[rgba(24,78,89,0.12)] px-2 py-1 text-xs font-medium text-[var(--editorial-teal)]">
               <Check className="w-3 h-3" />
               저장됨
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">
+            <span className="inline-flex items-center gap-1 rounded-full bg-[rgba(22,32,40,0.06)] px-2 py-1 text-xs font-medium text-gray-600">
               기본값
             </span>
           )}
@@ -133,7 +136,7 @@ function AnalysisControlPanel({
 
       {/* Validation Errors */}
       {!validation.valid && (
-        <div className="mb-4 p-2 bg-red-50 border border-red-200 rounded-md">
+        <div className="mb-4 rounded-[18px] border border-[rgba(179,72,60,0.18)] bg-[rgba(179,72,60,0.08)] p-2">
           <p className="text-xs text-red-700">{validation.errors.join(', ')}</p>
         </div>
       )}
@@ -204,7 +207,7 @@ function AnalysisControlPanel({
               aggregation_method: e.target.value as 'median' | 'mean' | 'trimmed_mean'
             })}
             disabled={!canEdit}
-            className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+            className="w-full rounded-[18px] border border-gray-300 bg-[rgba(255,255,255,0.6)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--editorial-burgundy)] disabled:bg-gray-100"
           >
             <option value="median">Median (이상치 저항)</option>
             <option value="mean">Mean (평균)</option>
@@ -214,13 +217,13 @@ function AnalysisControlPanel({
       </div>
 
       {/* Data Trimming Range */}
-      <div className="space-y-2 mb-4 p-3 bg-gray-50 rounded-md">
+      <div className="mb-4 space-y-2 rounded-[20px] bg-[rgba(22,32,40,0.04)] p-4">
         <div className="flex items-center justify-between">
           <label className="text-xs font-medium text-gray-600">
             데이터 트림 범위: {formatSecondsToMMSS(trimStart)} - {formatSecondsToMMSS(trimEnd)}
           </label>
           {trimRange?.start_sec !== undefined && localConfig.trim_start_sec === null && (
-            <span className="text-xs text-blue-600">Auto-detected</span>
+            <span className="text-xs text-[var(--editorial-burgundy)]">Auto-detected</span>
           )}
         </div>
         <Slider
@@ -244,7 +247,7 @@ function AnalysisControlPanel({
 
       {/* Action Buttons */}
       {canEdit && (
-        <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+        <div className="flex items-center gap-2 border-t border-[rgba(22,32,40,0.08)] pt-2">
           <Button
             onClick={onSave}
             disabled={!isDirty || !validation.valid || isSaving}
@@ -317,6 +320,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
     showAdvancedControls: true,
   });
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<AnalysisTab>('substrate');
 
   // Check if user can edit (researcher or admin only)
   const canEdit = user.role === 'admin' || user.role === 'researcher';
@@ -581,7 +585,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
   const selectedSubject = availableSubjects.find(s => s.id === selectedSubjectId);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="app-shell">
       <Navigation
         user={user}
         currentView="metabolism"
@@ -589,12 +593,13 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
         onLogout={onLogout}
       />
 
-      <div className="p-6">
-        <div className="max-w-7xl mx-auto">
+      <div className="report-page">
+        <div>
           {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">메타볼리즘 분석</h1>
-            <p className="text-gray-600">
+          <div className="report-hero mb-8">
+            <p className="report-kicker mb-4 bg-[rgba(255,255,255,0.08)] text-[rgba(247,241,231,0.72)]">Metabolism Explorer</p>
+            <h1 className="mb-2 text-4xl text-[#f7f1e7]">메타볼리즘 분석</h1>
+            <p className="report-hero-copy">
               {user.role === 'subject'
                 ? '귀하의 대사 프로필과 지방 연소 특성을 확인하세요.'
                 : '피험자들의 대사 프로필과 코호트 평균을 분석하세요.'}
@@ -603,7 +608,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
 
           {/* Subject Controls - 일반 유저용 간소화된 테스트 선택 */}
           {user.role === 'subject' && (
-            <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div className="report-section mb-6 border-none p-4">
               <div className="flex flex-wrap gap-4 items-center justify-between">
                 <div className="flex flex-wrap gap-4 items-center">
                   {tests.length > 0 ? (
@@ -613,7 +618,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                         <select
                           value={selectedTestId || ''}
                           onChange={(e) => setSelectedTestId(e.target.value)}
-                          className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="rounded-[18px] border border-gray-300 bg-[rgba(255,255,255,0.6)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--editorial-burgundy)]"
                         >
                           {tests.map(test => {
                             const testId = (test as any).test_id || test.id;
@@ -643,7 +648,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                 </div>
                 <Button
                   onClick={() => setShowUploadModal(true)}
-                  className="gap-2 bg-[#2563EB] hover:bg-[#1d4ed8]"
+                  className="gap-2"
                 >
                   <Upload className="w-4 h-4" />
                   테스트 업로드
@@ -654,7 +659,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
 
           {/* Researcher/Admin Controls */}
           {user.role !== 'subject' && (
-            <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div className="report-section mb-6 border-none p-4">
               <div className="flex flex-wrap gap-4 items-center">
                 <div className="flex items-center gap-2">
                   <label className="text-sm font-medium text-gray-700">피험자 선택:</label>
@@ -664,7 +669,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                       setSelectedSubjectId(e.target.value);
                       setShowCohortAverage(false);
                     }}
-                    className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="rounded-[18px] border border-gray-300 bg-[rgba(255,255,255,0.6)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--editorial-burgundy)]"
                     disabled={showCohortAverage}
                   >
                     <option value="">-- 피험자 선택 --</option>
@@ -683,7 +688,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                     <select
                       value={selectedTestId || ''}
                       onChange={(e) => setSelectedTestId(e.target.value)}
-                      className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="rounded-[18px] border border-gray-300 bg-[rgba(255,255,255,0.6)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--editorial-burgundy)]"
                       disabled={showCohortAverage || loadingTests}
                     >
                       <option value="">-- 테스트 선택 --</option>
@@ -714,7 +719,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                     id="cohortAverage"
                     checked={showCohortAverage}
                     onChange={(e) => setShowCohortAverage(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                    className="h-4 w-4 rounded text-[var(--editorial-burgundy)] focus:ring-[var(--editorial-burgundy)]"
                   />
                   <label htmlFor="cohortAverage" className="text-sm font-medium text-gray-700">
                     코호트 평균 표시
@@ -731,9 +736,9 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                           type="button"
                           onClick={() => setAnalysisSettings(prev => ({ ...prev, dataMode: 'raw' }))}
                           className={`px-4 py-2 text-sm font-medium border ${analysisSettings.dataMode === 'raw'
-                              ? 'bg-blue-600 text-white border-blue-600 z-10'
+                              ? 'bg-[var(--editorial-burgundy)] text-white border-[var(--editorial-burgundy)] z-10'
                               : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                            } rounded-l-md focus:z-10 focus:ring-2 focus:ring-blue-500`}
+                            } rounded-l-full focus:z-10 focus:ring-2 focus:ring-[var(--editorial-burgundy)]`}
                         >
                           Raw
                         </button>
@@ -741,9 +746,9 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                           type="button"
                           onClick={() => setAnalysisSettings(prev => ({ ...prev, dataMode: 'smoothed' }))}
                           className={`px-4 py-2 text-sm font-medium border-t border-b ${analysisSettings.dataMode === 'smoothed'
-                              ? 'bg-blue-600 text-white border-blue-600 z-10'
+                              ? 'bg-[var(--editorial-burgundy)] text-white border-[var(--editorial-burgundy)] z-10'
                               : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                            } focus:z-10 focus:ring-2 focus:ring-blue-500`}
+                            } focus:z-10 focus:ring-2 focus:ring-[var(--editorial-burgundy)]`}
                         >
                           Smooth
                         </button>
@@ -751,9 +756,9 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                           type="button"
                           onClick={() => setAnalysisSettings(prev => ({ ...prev, dataMode: 'trend' }))}
                           className={`px-4 py-2 text-sm font-medium border ${analysisSettings.dataMode === 'trend'
-                              ? 'bg-blue-600 text-white border-blue-600 z-10'
+                              ? 'bg-[var(--editorial-burgundy)] text-white border-[var(--editorial-burgundy)] z-10'
                               : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                            } rounded-r-md focus:z-10 focus:ring-2 focus:ring-blue-500`}
+                            } rounded-r-full focus:z-10 focus:ring-2 focus:ring-[var(--editorial-burgundy)]`}
                         >
                           Trend
                         </button>
@@ -766,7 +771,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                         id="showRawOverlay"
                         checked={analysisSettings.showRawOverlay}
                         onChange={(e) => setAnalysisSettings(prev => ({ ...prev, showRawOverlay: e.target.checked }))}
-                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                        className="h-4 w-4 rounded text-[var(--editorial-burgundy)] focus:ring-[var(--editorial-burgundy)]"
                         disabled={analysisSettings.dataMode !== 'smoothed'}
                       />
                       <label
@@ -780,7 +785,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                     {/* Advanced Controls Toggle */}
                     <button
                       onClick={() => setAnalysisSettings(prev => ({ ...prev, showAdvancedControls: !prev.showAdvancedControls }))}
-                      className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                      className="flex items-center gap-1 text-sm text-[var(--editorial-burgundy)] hover:text-[var(--editorial-teal)]"
                     >
                       <span>{analysisSettings.showAdvancedControls ? '▼' : '▶'}</span>
                       <span>분석 설정</span>
@@ -810,9 +815,53 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
             />
           )}
 
-          {/* Main Chart */}
-          <Suspense fallback={
-            <div className="mb-8 bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+          {/* Analysis Tab Navigation - only when test is selected and loaded */}
+          {!showCohortAverage && analysis && selectedTestId && (
+            <div className="mb-4 flex gap-1 rounded-[18px] bg-[rgba(22,32,40,0.04)] p-1 w-fit">
+              <button
+                onClick={() => setActiveTab('substrate')}
+                className={`rounded-[14px] px-4 py-2 text-sm font-medium transition-all ${
+                  activeTab === 'substrate'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Substrate Analysis
+              </button>
+              <button
+                onClick={() => setActiveTab('energy-system')}
+                className={`rounded-[14px] px-4 py-2 text-sm font-medium transition-all ${
+                  activeTab === 'energy-system'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Energy System
+              </button>
+            </div>
+          )}
+
+          {/* Energy System Tab Content */}
+          {!showCohortAverage && activeTab === 'energy-system' && analysis && selectedTestId && (
+            <Suspense fallback={
+              <div className="report-section mb-8 border-none p-8">
+                <div className="animate-pulse">
+                  <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
+                  <div className="h-96 bg-gray-100 rounded"></div>
+                </div>
+              </div>
+            }>
+              <EnergySystemTab
+                testId={selectedTestId}
+                canEdit={canEdit}
+                totalDurationSec={analysis.exercise_duration_sec || 1200}
+              />
+            </Suspense>
+          )}
+
+          {/* Main Chart (Substrate tab) */}
+          {activeTab === 'substrate' && <Suspense fallback={
+            <div className="report-section mb-8 border-none p-8">
               <div className="animate-pulse">
                 <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
                 <div className="h-96 bg-gray-100 rounded"></div>
@@ -821,7 +870,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
           }>
             {/* 선택 안내 메시지 - 피험자/테스트 미선택 시 (연구자/어드민용) */}
             {!showCohortAverage && !selectedSubjectId && user.role !== 'subject' ? (
-              <div className="mb-8 bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+              <div className="report-empty-state mb-8 border-none p-12 text-center">
                 <div className="text-gray-400 mb-4">
                   <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -831,7 +880,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                 <p className="text-sm text-gray-500">상단 드롭다운에서 분석할 피험자를 선택하면<br/>메타볼리즘 데이터가 표시됩니다.</p>
               </div>
             ) : !showCohortAverage && user.role === 'subject' && tests.length === 0 ? (
-              <div className="mb-8 bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+              <div className="report-empty-state mb-8 border-none p-12 text-center">
                 <div className="text-gray-400 mb-4">
                   <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -841,7 +890,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                 <p className="text-sm text-gray-500">아직 등록된 CPET 검사 결과가 없습니다.<br/>검사 완료 후 결과가 여기에 표시됩니다.</p>
               </div>
             ) : !showCohortAverage && selectedSubjectId && !selectedTestId && tests.length > 0 ? (
-              <div className="mb-8 bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+              <div className="report-empty-state mb-8 border-none p-12 text-center">
                 <div className="text-gray-400 mb-4">
                   <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -867,7 +916,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                 })()}
               </div>
             ) : loading ? (
-              <div className="mb-8 bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+              <div className="report-section mb-8 border-none p-8">
                 <div className="animate-pulse">
                   <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
                   <div className="h-96 bg-gray-100 rounded"></div>
@@ -906,7 +955,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                 })()}
 
                 {/* Analysis Summary Card */}
-                <div className="mt-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="report-section mt-6 border-none p-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">분석 요약</h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="text-center p-3 bg-orange-50 rounded-lg">
@@ -1026,7 +1075,7 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
                 })()}
               </div>
             ) : null}
-          </Suspense>
+          </Suspense>}
 
           {/* Pattern Comparison - Only for researchers/admin */}
           {user.role !== 'subject' && (
@@ -1039,11 +1088,11 @@ export function MetabolismPage({ user, onLogout, onNavigate }: MetabolismPagePro
 
               <Suspense fallback={
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 animate-pulse">
+                  <div className="report-section border-none p-6 animate-pulse">
                     <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
                     <div className="h-64 bg-gray-100 rounded"></div>
                   </div>
-                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 animate-pulse">
+                  <div className="report-section border-none p-6 animate-pulse">
                     <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
                     <div className="h-64 bg-gray-100 rounded"></div>
                   </div>

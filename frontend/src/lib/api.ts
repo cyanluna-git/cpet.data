@@ -1409,6 +1409,67 @@ export const api = {
     }
     await client.delete(`/tests/${testId}/processed-metabolism`);
   },
+
+  // =====================
+  // Blood Samples (Lactate)
+  // =====================
+  async getBloodSamples(testId: string): Promise<BloodSampleListResponse> {
+    if (isDemoMode()) {
+      return {
+        cpet_test_id: testId,
+        samples: [],
+        total: 0,
+        resting_lactate: null,
+        peak_lactate: null,
+        delta_lactate: null,
+      };
+    }
+    const response = await client.get(`/tests/${testId}/blood-samples`);
+    return response.data;
+  },
+
+  // =====================
+  // Energy System Analysis
+  // =====================
+  async getEnergySystem(testId: string): Promise<EnergySystemResponse> {
+    if (isDemoMode()) {
+      return {
+        pathways: [
+          { name: "Oxidative", energy_kj: 418.0, percentage: 85.2, color: "#3B82F6" },
+          { name: "Glycolytic", energy_kj: 43.9, percentage: 9.0, color: "#EF4444" },
+          { name: "Phosphagen", energy_kj: 28.5, percentage: 5.8, color: "#10B981" },
+        ],
+        total_kj: 490.4,
+        has_lactate: true,
+        has_phosphagen: true,
+        delta_lactate: 7.0,
+        exercise_duration_sec: 600,
+        body_weight_kg: 70,
+        mono_exp_fit: {
+          amplitude_l_min: 1.5,
+          tau_sec: 30.0,
+          baseline_l_min: 0.5,
+          r_squared: 0.95,
+          n_points: 180,
+        },
+        recovery_window: { start_sec: 600, end_sec: 780, is_manual_override: false },
+        warnings: [],
+      };
+    }
+    const response = await client.get(`/tests/${testId}/energy-system`);
+    return response.data;
+  },
+
+  async calculateEnergySystem(
+    testId: string,
+    params: EnergySystemRequest,
+  ): Promise<EnergySystemResponse> {
+    if (isDemoMode()) {
+      return this.getEnergySystem(testId);
+    }
+    const response = await client.post(`/tests/${testId}/energy-system`, params);
+    return response.data;
+  },
 };
 
 // =====================
@@ -1491,4 +1552,77 @@ export interface ProcessedMetabolismApiResponse {
   is_persisted: boolean;
   created_at: string | null;
   updated_at: string | null;
+}
+
+// =====================
+// Blood Samples Types (for API)
+// =====================
+
+export interface BloodSampleResponse {
+  id: string;
+  cpet_test_id: string;
+  block: string | null;
+  step: string | null;
+  load_w: number | null;
+  ftp_pct: string | null;
+  duration_min: number | null;
+  sample_time_kst: string | null;
+  elapsed_sec: number | null;
+  hr_bpm: number | null;
+  lactate_mmol: number | null;
+  glucose_mmol: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BloodSampleListResponse {
+  cpet_test_id: string;
+  samples: BloodSampleResponse[];
+  total: number;
+  resting_lactate: number | null;
+  peak_lactate: number | null;
+  delta_lactate: number | null;
+}
+
+// =====================
+// Energy System Types (for API)
+// =====================
+
+export interface EnergyPathway {
+  name: string;
+  energy_kj: number;
+  percentage: number | null;
+  color: string;
+}
+
+export interface EnergySystemResponse {
+  pathways: EnergyPathway[];
+  total_kj: number | null;
+  has_lactate: boolean;
+  has_phosphagen: boolean;
+  delta_lactate: number | null;
+  exercise_duration_sec: number | null;
+  body_weight_kg: number | null;
+  mono_exp_fit: {
+    amplitude_l_min: number;
+    tau_sec: number;
+    baseline_l_min: number;
+    r_squared: number;
+    n_points: number;
+  } | null;
+  recovery_window: {
+    start_sec: number;
+    end_sec: number;
+    is_manual_override: boolean;
+  } | null;
+  warnings: string[];
+}
+
+export interface EnergySystemRequest {
+  recovery_start_sec?: number | null;
+  recovery_end_sec?: number | null;
+  exercise_start_sec?: number | null;
+  exercise_end_sec?: number | null;
+  save?: boolean;
 }

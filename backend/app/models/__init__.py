@@ -7,6 +7,7 @@ from app.models.breath_data import BreathData
 from app.models.cohort_stats import CohortStats
 from app.models.inscyd_report import InscydReport
 from app.models.processed_metabolism import ProcessedMetabolism
+from app.models.blood_sample import BloodSample
 
 __all__ = [
     "Subject",
@@ -16,4 +17,5 @@ __all__ = [
     "CohortStats",
     "InscydReport",
     "ProcessedMetabolism",
+    "BloodSample",
 ]

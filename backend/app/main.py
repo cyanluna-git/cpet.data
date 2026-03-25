@@ -13,6 +13,8 @@ from app.api import (
     subject_tests_router,
     processed_metabolism_router,
     cohorts_router,
+    blood_samples_router,
+    energy_system_router,
 )
 
 app = FastAPI(
@@ -59,3 +61,5 @@ app.include_router(tests_router, prefix="/api")
 app.include_router(subject_tests_router, prefix="/api")
 app.include_router(processed_metabolism_router, prefix="/api")
 app.include_router(cohorts_router, prefix="/api")
+app.include_router(blood_samples_router, prefix="/api")
+app.include_router(energy_system_router, prefix="/api")

@@ -215,6 +215,7 @@ CREATE TABLE IF NOT EXISTS processed_metabolism (
     processed_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    energy_system JSONB,
     algorithm_version VARCHAR(20) DEFAULT '1.0.0' NOT NULL,
     vo2max_start_sec DOUBLE PRECISION,
     vo2max_end_sec DOUBLE PRECISION,
@@ -235,6 +236,42 @@ COMMENT ON COLUMN processed_metabolism.vo2max_value IS 'VO2max from segment wind
 COMMENT ON COLUMN processed_metabolism.vo2max_rel IS 'VO2max relative from segment window (mL/kg/min)';
 COMMENT ON COLUMN processed_metabolism.vo2max_hr_max IS 'HR max from VO2max segment window (bpm)';
 COMMENT ON COLUMN processed_metabolism.vo2max_time_sec IS 'Time of VO2max within segment window (seconds)';
+
+-- ============================================================================
+-- 4b. Blood Samples Table
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS blood_samples (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    cpet_test_id UUID NOT NULL REFERENCES cpet_tests(test_id) ON DELETE CASCADE,
+
+    -- Sample identification
+    block VARCHAR(20),
+    step VARCHAR(20),
+
+    -- Exercise load
+    load_w DOUBLE PRECISION,
+    ftp_pct VARCHAR(10),
+    duration_min DOUBLE PRECISION,
+
+    -- Timing
+    sample_time_kst VARCHAR(20),
+    elapsed_sec DOUBLE PRECISION,
+
+    -- Measurements
+    hr_bpm DOUBLE PRECISION,
+    lactate_mmol DOUBLE PRECISION,
+    glucose_mmol DOUBLE PRECISION,
+
+    -- Metadata
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_blood_samples_cpet_test_id
+    ON blood_samples(cpet_test_id);
+CREATE INDEX IF NOT EXISTS idx_blood_samples_block
+    ON blood_samples(cpet_test_id, block);
 
 -- ============================================================================
 -- 5. Cohort Statistics Table
