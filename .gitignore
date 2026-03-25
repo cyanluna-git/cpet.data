@@ -75,3 +75,10 @@ processed_metabolism.csv
 # Server workspace data
 data/
 published/
+
+# Playwright E2E test artifacts
+tests/e2e/.test-session-cookie
+tests/e2e/.test-user-id
+tests/e2e/node_modules/
+tests/e2e/test-results/
+tests/e2e/playwright-report/
