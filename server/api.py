@@ -164,6 +164,10 @@ def _find_published_slug_for_report(report_index: Path, published_dir: Path) -> 
     return None
 
 
+_DATE_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
+_SLUG_DATE_RE = re.compile(r"(\d{4})(\d{2})(\d{2})")
+
+
 def _extract_report_metadata(index_file: Path) -> dict[str, str]:
     """Read a published report and extract dashboard metadata."""
     subject_name = ""
@@ -178,8 +182,23 @@ def _extract_report_metadata(index_file: Path) -> dict[str, str]:
             subject_name = (payload.get("subject") or {}).get("name") or ""
             test_date = (payload.get("session") or {}).get("test_date") or ""
             analysis_method = _describe_generation_method(payload)
+
+        # Fallback: extract date from HTML content if not found in JSON payload
+        if not test_date:
+            date_match = _DATE_RE.search(html[:5000])
+            if date_match:
+                test_date = date_match.group(0)
     except Exception:
         pass
+
+    # Fallback: extract date from slug (e.g. keumhyun-kim-20260314 → 2026-03-14)
+    if not test_date:
+        slug_name = index_file.parent.name
+        slug_match = _SLUG_DATE_RE.search(slug_name)
+        if slug_match:
+            y, m, d = slug_match.groups()
+            if 2020 <= int(y) <= 2030:
+                test_date = f"{y}-{m}-{d}"
 
     return {
         "subject_name": SUBJECT_NAME_ALIASES.get(subject_name, subject_name),
