@@ -784,27 +784,30 @@ async def submit(
     submission_id = str(uuid.uuid4())
     workspace = create_workspace(data_dir, submission_id, file_pairs)
 
-    # Save protocol context to workspace metadata
-    protocol_context = {
+    # Save protocol context to workspace metadata + auto-compose description
+    from server.protocol_context import normalize_protocol_context, compose_claude_protocol_summary
+    protocol_context = normalize_protocol_context({
         "primary_goal": primary_goal, "fasting_hours": fasting_hours,
         "meal_state": meal_state, "caffeine_state": caffeine_state,
         "prior_training_state": prior_training_state,
         "protocol_outline": protocol_outline, "operator_notes": operator_notes,
         "block_intents": [], "target_outputs": [],
-    }
-    if any(v for v in protocol_context.values() if v):
-        from server.protocol_context import normalize_protocol_context, compose_claude_protocol_summary
-        protocol_context = normalize_protocol_context(protocol_context)
-        metadata_dir = workspace / "metadata"
-        metadata_dir.mkdir(parents=True, exist_ok=True)
-        summary = compose_claude_protocol_summary(protocol_context)
-        (metadata_dir / "submission_context.json").write_text(
-            json.dumps({
-                "protocol_context": protocol_context,
-                "protocol_summary": summary,
-            }, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+    })
+    protocol_summary = compose_claude_protocol_summary(protocol_context)
+
+    # Auto-compose description from protocol context if user left it empty
+    if not description.strip() and protocol_summary:
+        description = protocol_summary
+
+    metadata_dir = workspace / "metadata"
+    metadata_dir.mkdir(parents=True, exist_ok=True)
+    (metadata_dir / "submission_context.json").write_text(
+        json.dumps({
+            "protocol_context": protocol_context,
+            "protocol_summary": protocol_summary,
+        }, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
     # Build file manifest
     manifest = list_files(workspace)

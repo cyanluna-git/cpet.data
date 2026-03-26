@@ -66,14 +66,13 @@
     <!-- Description -->
     <div>
       <label for="description" class="block text-sm font-medium text-gray-700 mb-1">
-        설명 <span class="text-red-500">*</span>
+        설명 <span class="text-gray-400 text-xs">(비우면 프로토콜 컨텍스트에서 자동 생성)</span>
       </label>
       <textarea
         name="description"
         id="description"
-        required
         rows="3"
-        placeholder="{% if prefill %}추가 분석 요청 내용 (예: FIT 파일 추가, lactate 데이터 추가){% else %}분석 요청 내용을 입력하세요{% endif %}"
+        placeholder="{% if prefill %}추가 분석 요청 내용 (예: FIT 파일 추가, lactate 데이터 추가){% else %}비워두면 아래 프로토콜 컨텍스트에서 자동 생성됩니다{% endif %}"
         class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm
                focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
       >{% if prefill %}{{ prefill.description }} — 추가 분석 요청{% endif %}</textarea>
