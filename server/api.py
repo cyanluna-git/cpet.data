@@ -645,6 +645,13 @@ async def submit(
     test_date: str = Form(""),
     target_user_id: str = Form(""),
     subject_id: str = Form(""),
+    primary_goal: str = Form(""),
+    fasting_hours: str = Form(""),
+    meal_state: str = Form(""),
+    caffeine_state: str = Form(""),
+    prior_training_state: str = Form(""),
+    protocol_outline: str = Form(""),
+    operator_notes: str = Form(""),
     reanalyze: str | None = Query(default=None),
 ) -> JSONResponse:
     """Upload files, create workspace/submission/job, dispatch to channel.
@@ -776,6 +783,28 @@ async def submit(
     # Create workspace first to determine submission_id
     submission_id = str(uuid.uuid4())
     workspace = create_workspace(data_dir, submission_id, file_pairs)
+
+    # Save protocol context to workspace metadata
+    protocol_context = {
+        "primary_goal": primary_goal, "fasting_hours": fasting_hours,
+        "meal_state": meal_state, "caffeine_state": caffeine_state,
+        "prior_training_state": prior_training_state,
+        "protocol_outline": protocol_outline, "operator_notes": operator_notes,
+        "block_intents": [], "target_outputs": [],
+    }
+    if any(v for v in protocol_context.values() if v):
+        from server.protocol_context import normalize_protocol_context, compose_claude_protocol_summary
+        protocol_context = normalize_protocol_context(protocol_context)
+        metadata_dir = workspace / "metadata"
+        metadata_dir.mkdir(parents=True, exist_ok=True)
+        summary = compose_claude_protocol_summary(protocol_context)
+        (metadata_dir / "submission_context.json").write_text(
+            json.dumps({
+                "protocol_context": protocol_context,
+                "protocol_summary": summary,
+            }, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     # Build file manifest
     manifest = list_files(workspace)

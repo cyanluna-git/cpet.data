@@ -80,6 +80,90 @@
     </div>
 
     {% if not prefill %}
+    <!-- Protocol Context (collapsible) -->
+    <details class="border border-gray-200 rounded-lg" open>
+      <summary class="px-4 py-3 cursor-pointer text-sm font-medium text-gray-700 hover:bg-gray-50 select-none">
+        검사 프로토콜 컨텍스트 <span class="text-gray-400 text-xs">(분석 정확도 향상)</span>
+      </summary>
+      <div class="px-4 pb-4 space-y-4">
+
+        <!-- 검사 목적 -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">검사 주요 목적</label>
+          <select name="primary_goal" id="primary_goal" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+            <option value="">선택 안 함</option>
+            <option value="fatmax">FatMax 중심 평가</option>
+            <option value="thresholds">LT1/LT2 중심 평가</option>
+            <option value="vo2max">VO2max 중심 평가</option>
+            <option value="ftp_check">FTP/현장 강도 비교</option>
+            <option value="mixed">복합 대사 프로파일 확인</option>
+            <option value="other">기타 목적</option>
+          </select>
+        </div>
+
+        <!-- 검사 전 상태 -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">공복 시간</label>
+            <select name="fasting_hours" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+              <option value="">선택 안 함</option>
+              <option value="2">2시간 이내</option>
+              <option value="4">2-4시간</option>
+              <option value="8">4-8시간</option>
+              <option value="12">8시간 이상 (완전 공복)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">카페인 상태</label>
+            <select name="caffeine_state" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+              <option value="">선택 안 함</option>
+              <option value="none">카페인 미섭취</option>
+              <option value="light">소량 (1잔 이하)</option>
+              <option value="moderate">보통 (2-3잔)</option>
+              <option value="recent">검사 직전 섭취</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">식사 상태</label>
+            <select name="meal_state" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+              <option value="">선택 안 함</option>
+              <option value="fasted">공복</option>
+              <option value="light_meal">가벼운 식사 후</option>
+              <option value="full_meal">정상 식사 후</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">직전 운동 상태</label>
+            <select name="prior_training_state" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+              <option value="">선택 안 함</option>
+              <option value="rest">완전 휴식</option>
+              <option value="light">가벼운 활동</option>
+              <option value="trained_yesterday">전날 훈련</option>
+              <option value="trained_today">당일 훈련 후</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 프로토콜 개요 -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">프로토콜 개요 <span class="text-gray-400 text-xs">(선택)</span></label>
+          <input type="text" name="protocol_outline" placeholder="예: 3분 워밍업 → 40W씩 증가 → VO2max → 3분 클리어런스" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+        </div>
+
+        <!-- 추가 메모 -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">추가 메모 <span class="text-gray-400 text-xs">(선택)</span></label>
+          <input type="text" name="operator_notes" placeholder="특이사항이 있다면 기록해주세요" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+        </div>
+
+      </div>
+    </details>
+    {% endif %}
+
+    {% if not prefill %}
     {% if is_researcher %}
     <!-- 연구자: 대상 피험자 선택 (subjects 기반) -->
     <div>
