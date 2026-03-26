@@ -1,87 +1,94 @@
 {% extends "base.html" %}
-{% block title %}ZeLIA — CPET 대사 분석{% endblock %}
+{% block title %}ZeLIA — Zero Frailty Life AI{% endblock %}
 
 {% block content %}
-<div class="max-w-3xl mx-auto text-center">
+<style>
+  .landing-bg {
+    background:
+      radial-gradient(circle at 15% 10%, rgba(251, 191, 36, 0.12), transparent 40%),
+      radial-gradient(circle at 85% 5%, rgba(251, 146, 60, 0.08), transparent 35%);
+  }
+</style>
 
-  <!-- Hero -->
-  <div class="mt-12 mb-16">
-    <img src="/static/brand/zelia-logo-v2.webp" alt="ZeLIA" class="h-16 mx-auto mb-4" onerror="this.style.display='none'" />
-    <h1 class="text-4xl font-bold text-gray-900 mb-4">
-      ZeLIA — CPET 대사 분석 플랫폼
-    </h1>
-    <p class="text-xl text-gray-600 leading-relaxed">
-      심폐운동부하검사 데이터를 업로드하면<br>
-      AI가 분석하여 상세 리포트를 생성합니다
-    </p>
+<div class="landing-bg -mx-4 sm:-mx-6 lg:-mx-8 -mt-8 px-4 sm:px-6 lg:px-8 pt-8 pb-16">
+  <div class="max-w-5xl mx-auto">
+
+    <!-- Two-column hero -->
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
+
+      <!-- Left: Hero -->
+      <div class="lg:col-span-3">
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/80 border border-gray-200 text-xs font-medium text-gray-600 mb-6">
+          <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+          HOW IT WORKS
+        </div>
+
+        <img src="/static/brand/zelia-logo-v2.webp" alt="ZeLIA" class="h-28 mb-2" onerror="this.style.display='none'" />
+        <p class="text-2xl font-light text-gray-500 mb-8 tracking-wide">Zero Frailty Life AI</p>
+
+        <p class="text-lg text-gray-600 leading-relaxed mb-8 max-w-lg">
+          CPET 데이터를 업로드하고 검사 목적을 함께 남기면, ZeLIA가 프로토콜 맥락을 반영해 대사 리포트로 정리합니다.
+        </p>
+
+        <div class="flex flex-wrap gap-3 mb-10">
+          <a href="/upload" class="inline-flex items-center px-6 py-3 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition shadow-sm">
+            시험 데이터 업로드
+          </a>
+          <a href="/dashboard" class="inline-flex items-center px-6 py-3 bg-white text-gray-700 rounded-xl text-sm font-semibold border border-gray-200 hover:bg-gray-50 transition">
+            생성된 리포트 보기
+          </a>
+        </div>
+
+        <!-- Feature cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="bg-white/80 rounded-xl border border-gray-200 p-4">
+            <div class="text-[10px] font-bold text-gray-400 tracking-widest mb-2">PROTOCOL-AWARE</div>
+            <div class="text-sm font-semibold text-gray-900">검사 의도와 블럭 흐름까지 함께 읽기</div>
+          </div>
+          <div class="bg-white/80 rounded-xl border border-gray-200 p-4">
+            <div class="text-[10px] font-bold text-gray-400 tracking-widest mb-2">AI HANDOFF</div>
+            <div class="text-sm font-semibold text-gray-900">웹훅 기반 자동 분석 파이프라인</div>
+          </div>
+          <div class="bg-white/80 rounded-xl border border-gray-200 p-4">
+            <div class="text-[10px] font-bold text-gray-400 tracking-widest mb-2">COACH-READY</div>
+            <div class="text-sm font-semibold text-gray-900">처방 가능한 리포트와 지표 가이드</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Supported inputs + Output -->
+      <div class="lg:col-span-2 space-y-4 mt-8 lg:mt-16">
+        <!-- Supported Inputs -->
+        <div class="bg-white/90 rounded-xl border border-gray-200 p-5">
+          <div class="text-[10px] font-bold text-gray-400 tracking-widest mb-4">SUPPORTED INPUTS</div>
+
+          <div class="space-y-3">
+            <div class="bg-gray-50 rounded-lg p-3">
+              <div class="font-semibold text-sm text-gray-900">COSMED XLSX</div>
+              <div class="text-xs text-gray-500 mt-0.5">호흡별 VO2, VCO2, VE, RER 기반 주 분석</div>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-3">
+              <div class="font-semibold text-sm text-gray-900">FIT / ZWO</div>
+              <div class="text-xs text-gray-500 mt-0.5">실주행 파워 이력과 프로토콜 구조 교차 확인</div>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-3">
+              <div class="font-semibold text-sm text-gray-900">Lactate CSV / MD</div>
+              <div class="text-xs text-gray-500 mt-0.5">LT1, LT2와 대사 곡선의 해석 신뢰도 강화</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Output -->
+        <div class="bg-gray-900 text-white rounded-xl p-5">
+          <div class="text-[10px] font-bold text-gray-400 tracking-widest mb-2">OUTPUT</div>
+          <div class="text-lg font-bold mb-2">How it works + report in one loop</div>
+          <p class="text-sm text-gray-300 leading-relaxed">
+            업로드 단계에서 검사 의도를 받고, AI가 그 문맥을 분석 파이프라인에 전달한 뒤, protocol-aware 리포트로 정리합니다.
+          </p>
+        </div>
+      </div>
+
+    </div>
   </div>
-
-  <!-- Supported formats -->
-  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-12">
-    <div class="bg-white rounded-lg border border-gray-200 p-4">
-      <div class="text-2xl mb-2">📊</div>
-      <div class="font-semibold text-sm text-gray-800">COSMED XLSX</div>
-      <div class="text-xs text-gray-500 mt-1">호흡별 가스분석</div>
-    </div>
-    <div class="bg-white rounded-lg border border-gray-200 p-4">
-      <div class="text-2xl mb-2">🚴</div>
-      <div class="font-semibold text-sm text-gray-800">FIT</div>
-      <div class="text-xs text-gray-500 mt-1">파워/심박 데이터</div>
-    </div>
-    <div class="bg-white rounded-lg border border-gray-200 p-4">
-      <div class="text-2xl mb-2">📋</div>
-      <div class="font-semibold text-sm text-gray-800">ZWO</div>
-      <div class="text-xs text-gray-500 mt-1">프로토콜 정의</div>
-    </div>
-    <div class="bg-white rounded-lg border border-gray-200 p-4">
-      <div class="text-2xl mb-2">🩸</div>
-      <div class="font-semibold text-sm text-gray-800">Lactate</div>
-      <div class="text-xs text-gray-500 mt-1">혈중 젖산 데이터</div>
-    </div>
-  </div>
-
-  <!-- What you get -->
-  <div class="bg-white rounded-xl border border-gray-200 p-8 mb-12 text-left">
-    <h2 class="text-lg font-semibold text-gray-800 mb-4 text-center">분석 항목</h2>
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-gray-700">
-      <div class="flex items-start gap-2">
-        <span class="text-green-500 mt-0.5">&#10003;</span>
-        <span><strong>FatMax</strong> — 최대 지방 산화 파워 및 존</span>
-      </div>
-      <div class="flex items-start gap-2">
-        <span class="text-green-500 mt-0.5">&#10003;</span>
-        <span><strong>VO2max</strong> — 최대 산소 섭취량</span>
-      </div>
-      <div class="flex items-start gap-2">
-        <span class="text-green-500 mt-0.5">&#10003;</span>
-        <span><strong>젖산 역치</strong> — LT1/LT2 (D-max 방법)</span>
-      </div>
-      <div class="flex items-start gap-2">
-        <span class="text-green-500 mt-0.5">&#10003;</span>
-        <span><strong>기질 대사</strong> — 지방/탄수화물 산화 곡선</span>
-      </div>
-      <div class="flex items-start gap-2">
-        <span class="text-green-500 mt-0.5">&#10003;</span>
-        <span><strong>환기 역치</strong> — VT1/VT2 분석</span>
-      </div>
-      <div class="flex items-start gap-2">
-        <span class="text-green-500 mt-0.5">&#10003;</span>
-        <span><strong>트레이닝 존</strong> — 파워/심박 기반 구간</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- CTA -->
-  <a href="/upload"
-     class="inline-block bg-gray-900 text-white text-lg font-medium
-            px-8 py-4 rounded-lg hover:bg-gray-800 transition-colors
-            shadow-sm">
-    시험 데이터 업로드
-  </a>
-
-  <p class="mt-4 text-sm text-gray-500">
-    COSMED K5 XLSX 파일이 필수이며, FIT · ZWO · Lactate 데이터는 선택입니다
-  </p>
-
 </div>
 {% endblock %}
