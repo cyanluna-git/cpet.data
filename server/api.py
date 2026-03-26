@@ -783,6 +783,8 @@ async def jobs_partial(
     current_user_role = ""
     if hasattr(request, "session"):
         current_user_role = request.session.get("role", "")
+        if current_user_role == "admin" and request.session.get("preview_as_user"):
+            current_user_role = "user"
 
     return templates.TemplateResponse(
         request,
@@ -862,6 +864,8 @@ async def trigger_job(
     current_user_role = ""
     if hasattr(request, "session"):
         current_user_role = request.session.get("role", "")
+        if current_user_role == "admin" and request.session.get("preview_as_user"):
+            current_user_role = "user"
 
     enriched = _list_dashboard_entries(request)
     return templates.TemplateResponse(

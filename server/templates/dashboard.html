@@ -88,6 +88,37 @@
   </script>
   {% endif %}
 
+  {% if current_user and current_user.role == 'admin' %}
+  <div class="mb-4 flex items-center gap-2">
+    <label class="relative inline-flex items-center cursor-pointer">
+      <input
+        type="checkbox"
+        id="preview-toggle"
+        class="sr-only peer"
+        {% if preview_as_user %}checked{% endif %}
+        onchange="togglePreview(this.checked)"
+      />
+      <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-violet-500"></div>
+    </label>
+    <span class="text-xs text-gray-500">
+      {% if preview_as_user %}
+        <span class="text-violet-600 font-medium">일반 유저 뷰</span>
+      {% else %}
+        관리자 뷰
+      {% endif %}
+    </span>
+  </div>
+  <script>
+    function togglePreview(checked) {
+      fetch('/api/manage/preview-mode', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'preview=' + (checked ? '1' : '0')
+      }).then(function() { window.location.reload(); });
+    }
+  </script>
+  {% endif %}
+
   <div class="bg-white rounded-lg shadow">
     <div
       id="job-list-body"

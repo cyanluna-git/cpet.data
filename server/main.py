@@ -135,11 +135,21 @@ def _check_onboarding(request: Request) -> RedirectResponse | None:
     return None
 
 
+def _is_preview_mode(request: Request) -> bool:
+    """Check if admin is in 'preview as user' mode."""
+    return bool(request.session.get("preview_as_user"))
+
+
 def _template_response(
     request: Request, template_name: str, context: dict | None = None,
 ) -> HTMLResponse:
     """Render a template with current_user injected into context."""
-    ctx = {"current_user": _get_session_user(request)}
+    user = _get_session_user(request)
+    preview = False
+    if user and user.get("role") == "admin" and _is_preview_mode(request):
+        preview = True
+        user = {**user, "role": "user", "_actual_role": "admin"}
+    ctx = {"current_user": user, "preview_as_user": preview}
     if context:
         ctx.update(context)
     return templates.TemplateResponse(request, template_name, ctx)
@@ -642,6 +652,16 @@ async def manage_unlink_entry(
         unlink_report_from_user(db_path, report_slug)
 
     return _render_manage_submissions(request, session_user)
+
+
+@app.post("/api/manage/preview-mode")
+async def toggle_preview_mode(request: Request) -> HTMLResponse:
+    """Toggle admin preview-as-user mode."""
+    form = await request.form()
+    preview = str(form.get("preview", "0")).strip()
+    if request.session.get("role") == "admin":
+        request.session["preview_as_user"] = preview == "1"
+    return HTMLResponse("ok")
 
 
 @app.patch("/api/manage/rename-subject", response_class=HTMLResponse)
