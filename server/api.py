@@ -527,16 +527,28 @@ def _list_dashboard_entries(
                             except Exception:
                                 pass
 
-    # When filtering by user, also include reports linked via report_user_links
+    # Mark ownership via both submission.user_id and report_user_links
+    from server.db import get_report_user_links
+    report_links = get_report_user_links(db_path)
+
+    # Get current session user_id for is_mine calculation
+    session_user_id = None
+    if hasattr(request, "session"):
+        session_user_id = request.session.get("user_id")
+
+    for row in enriched:
+        is_mine = False
+        if session_user_id:
+            if row.get("submission_user_id") == session_user_id:
+                is_mine = True
+            slug = row.get("report_slug", "")
+            if slug and report_links.get(slug) == session_user_id:
+                is_mine = True
+        row["is_mine"] = is_mine
+
+    # When filtering by user, keep only mine
     if user_id:
-        from server.db import get_report_user_links
-        report_links = get_report_user_links(db_path)
-        user_slugs = {slug for slug, uid in report_links.items() if uid == user_id}
-        enriched = [
-            row for row in enriched
-            if row.get("submission_user_id") == user_id
-            or row.get("report_slug", "") in user_slugs
-        ]
+        enriched = [row for row in enriched if row.get("is_mine")]
 
     # Apply name overrides from report_name_overrides table
     from server.db import get_report_name_overrides

@@ -18,7 +18,7 @@
       <!-- 날짜 -->
       <span class="text-xs text-gray-400 whitespace-nowrap">{{ job.test_date or "" }}</span>
 
-      {% if current_user_id and job.submission_user_id and job.submission_user_id == current_user_id %}
+      {% if job.is_mine %}
         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-100 text-violet-700">내 리포트</span>
       {% endif %}
     </div>
@@ -71,7 +71,7 @@
         <span class="text-xs text-red-500 cursor-help" title="{{ job.error_message }}">오류</span>
       {% endif %}
 
-      {% if current_user_role == 'admin' or (current_user_id and job.submission_user_id and job.submission_user_id == current_user_id) %}
+      {% if current_user_role == 'admin' or job.is_mine %}
         <button
           class="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-medium text-red-600 hover:bg-red-50 transition"
           hx-delete="/api/manage/entries/{{ job.submission_id or job.id }}"
