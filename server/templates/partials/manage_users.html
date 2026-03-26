@@ -1,24 +1,17 @@
 {% for user in users %}
-<tr class="border-b border-gray-100 hover:bg-gray-50"
-    data-is-self="{{ 'true' if session_user and session_user.id == user.id else 'false' }}">
-  <!-- 이름 -->
-  <td class="px-4 py-3 text-sm text-gray-800 whitespace-nowrap">
-    <div class="flex items-center gap-2">
-      {{ user.display_name or "—" }}
+<div class="border-b border-gray-100 hover:bg-gray-50 px-4 py-3" data-is-self="{{ 'true' if session_user and session_user.id == user.id else 'false' }}">
+  <!-- Row 1: Name + email + role -->
+  <div class="flex items-center justify-between gap-2">
+    <div class="flex items-center gap-2 min-w-0">
+      <span class="font-medium text-sm text-gray-900 truncate">{{ user.display_name or "—" }}</span>
       {% if session_user and session_user.id == user.id %}
         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-100 text-violet-700">나</span>
       {% endif %}
+      <span class="text-xs text-gray-400 truncate hidden sm:inline">{{ user.email or "" }}</span>
     </div>
-  </td>
-
-  <!-- 이메일 -->
-  <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{{ user.email or "—" }}</td>
-
-  <!-- 역할 -->
-  <td class="px-4 py-3 text-sm whitespace-nowrap">
     <select
       name="role"
-      class="rounded border border-gray-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+      class="rounded border border-gray-300 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-gray-400 flex-shrink-0"
       hx-patch="/api/manage/users/{{ user.id }}/role"
       hx-target="#manage-users-body"
       hx-swap="innerHTML"
@@ -30,43 +23,18 @@
       <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>admin</option>
       {% endif %}
     </select>
-  </td>
-
-  <!-- 연결 피험자 -->
-  <td class="px-4 py-3 text-sm whitespace-nowrap">
+  </div>
+  <!-- Row 2: email (mobile) + subject + meta -->
+  <div class="flex items-center gap-2 mt-1 flex-wrap">
+    <span class="text-xs text-gray-400 sm:hidden">{{ user.email or "" }}</span>
     {% if user.subject_name %}
-      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-        {{ user.subject_name }}
-      </span>
-    {% elif user.subject_id %}
-      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-        {{ user.subject_id[:8] }}
-      </span>
-    {% else %}
-      <span class="text-gray-400 text-xs">미연결</span>
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">{{ user.subject_name }}</span>
     {% endif %}
-  </td>
-
-  <!-- 성별 -->
-  <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{{ user.gender or "—" }}</td>
-
-  <!-- 출생년도 -->
-  <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{{ user.birth_year or "—" }}</td>
-
-  <!-- 가입일 -->
-  <td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
-    {{ user.created_at[:10] if user.created_at else "—" }}
-  </td>
-
-  <!-- 마지막 로그인 -->
-  <td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
-    {{ user.last_login_at[:16].replace('T', ' ') if user.last_login_at else "—" }}
-  </td>
-</tr>
+    {% if user.gender %}<span class="text-[11px] text-gray-400">{{ user.gender }}</span>{% endif %}
+    {% if user.birth_year %}<span class="text-[11px] text-gray-400">{{ user.birth_year }}</span>{% endif %}
+    <span class="text-[11px] text-gray-300">{{ user.created_at[:10] if user.created_at else "" }}</span>
+  </div>
+</div>
 {% else %}
-<tr>
-  <td colspan="8" class="px-4 py-8 text-center text-sm text-gray-500">
-    등록된 유저가 없습니다
-  </td>
-</tr>
+<div class="px-4 py-8 text-center text-sm text-gray-500">등록된 유저가 없습니다</div>
 {% endfor %}
