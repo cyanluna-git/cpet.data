@@ -27,6 +27,7 @@ from server.db import (
     get_submission,
     get_user,
     get_user_profile,
+    delete_submission,
     init_db,
     link_report_to_user,
     link_submission_user,
@@ -671,6 +672,50 @@ async def manage_rename_subject(request: Request) -> HTMLResponse:
         set_report_name_override(db_path, report_slug, new_name)
 
     return HTMLResponse(f'<span>{new_name}</span>')
+
+
+@app.delete("/api/manage/entries/{entry_id}", response_class=HTMLResponse)
+async def manage_delete_entry(request: Request, entry_id: str) -> HTMLResponse:
+    """Delete a submission/job entry. Admin only."""
+    from fastapi.responses import JSONResponse
+    import shutil
+
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+
+    if session_user.get("role") != "admin":
+        return JSONResponse(status_code=403, content={"error": "admin only"})
+
+    db_path = request.app.state.db_path
+
+    # Try deleting as submission
+    sub = get_submission(db_path, entry_id)
+    if sub:
+        # Remove workspace directory
+        ws = sub.get("workspace_path")
+        if ws:
+            ws_path = Path(ws)
+            if ws_path.exists():
+                shutil.rmtree(ws_path, ignore_errors=True)
+        # Remove published report if exists
+        from server.db import list_jobs
+        jobs = list_jobs(db_path)
+        for job in jobs:
+            if job.get("submission_id") == entry_id and job.get("report_slug"):
+                pub_dir = Path(request.app.state.published_dir) / job["report_slug"]
+                if pub_dir.exists():
+                    shutil.rmtree(pub_dir, ignore_errors=True)
+        delete_submission(db_path, entry_id)
+    else:
+        # Standalone published report — delete by slug (entry_id = report_slug)
+        pub_dir = Path(request.app.state.published_dir) / entry_id
+        if pub_dir.exists():
+            shutil.rmtree(pub_dir, ignore_errors=True)
+
+    # Return empty to trigger HTMX refresh
+    return HTMLResponse("")
 
 
 # Keep old endpoints for backward compat

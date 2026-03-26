@@ -552,6 +552,20 @@ def get_report_name_overrides(db_path: Path) -> dict[str, str]:
     return {row["report_slug"]: row["subject_name"] for row in rows}
 
 
+def delete_submission(db_path: Path, submission_id: str) -> bool:
+    """Delete a submission and its jobs. Returns True if found and deleted."""
+    conn = _connect(db_path)
+    row = conn.execute("SELECT id FROM submissions WHERE id = ?", (submission_id,)).fetchone()
+    if row is None:
+        conn.close()
+        return False
+    conn.execute("DELETE FROM jobs WHERE submission_id = ?", (submission_id,))
+    conn.execute("DELETE FROM submissions WHERE id = ?", (submission_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+
 def update_submission_subject_name(
     db_path: Path, submission_id: str, subject_name: str,
 ) -> dict | None:
