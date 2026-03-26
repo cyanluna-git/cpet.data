@@ -55,11 +55,18 @@
           <span class="htmx-indicator h-3 w-3 animate-spin rounded-full border border-white/40 border-t-white"></span>
           {% if job.status == "failed" %}다시 분석{% else %}분석 시작{% endif %}
         </button>
-      {% elif job.status == "done" and job.submission_id %}
+      {% elif job.status == "done" %}
+        {% if job.submission_id %}
         <a
           href="/upload?reanalyze={{ job.submission_id }}"
           class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition"
         >추가 분석</a>
+        {% else %}
+        <a
+          href="/upload"
+          class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition"
+        >추가 분석</a>
+        {% endif %}
       {% elif job.status == "failed" and job.error_message %}
         <span class="text-xs text-red-500 cursor-help" title="{{ job.error_message }}">오류</span>
       {% endif %}
