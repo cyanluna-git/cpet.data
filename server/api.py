@@ -415,10 +415,8 @@ def _list_dashboard_entries(
     are returned (the published-directory scan is skipped).
     """
     db_path = get_db_path(request)
-    if user_id:
-        jobs = list_jobs_by_user(db_path, user_id, status=status)
-    else:
-        jobs = list_jobs(db_path, status=status)
+    # Always fetch all jobs; user filtering happens after merging with published
+    jobs = list_jobs(db_path, status=status)
 
     enriched: list[dict] = []
     job_slugs: set[str] = set()
@@ -470,15 +468,22 @@ def _list_dashboard_entries(
     if status not in (None, "done"):
         return enriched
 
-    # Skip standalone published reports when filtering by user
-    if user_id:
-        return enriched
-
     published_rows = _scan_published_reports(published_dir)
     for row in published_rows:
         if row["report_slug"] in job_slugs:
             continue
         enriched.append(row)
+
+    # When filtering by user, also include reports linked via report_user_links
+    if user_id:
+        from server.db import get_report_user_links
+        report_links = get_report_user_links(db_path)
+        user_slugs = {slug for slug, uid in report_links.items() if uid == user_id}
+        enriched = [
+            row for row in enriched
+            if row.get("submission_user_id") == user_id
+            or row.get("report_slug", "") in user_slugs
+        ]
 
     # Apply name overrides from report_name_overrides table
     from server.db import get_report_name_overrides
