@@ -845,6 +845,151 @@ def compute_training_zones(
 # ========================================================================
 
 
+# ========================================================================
+# Energy System 3-Pathway Analysis (교수님 공식)
+# ========================================================================
+
+CALORIC_EQUIVALENT_KJ_PER_L = 20.9
+
+_trapz = getattr(np, "trapezoid", getattr(np, "trapz", None))
+
+
+def analyze_energy_system(
+    bxb: pd.DataFrame,
+    blood: pd.DataFrame,
+    subject: pd.DataFrame,
+) -> dict[str, Any]:
+    """Compute 3-pathway energy system contributions."""
+    result: dict[str, Any] = {
+        "status": "skipped", "warnings": [],
+        "oxidative_kj": None, "glycolytic_kj": None, "phosphagen_kj": None,
+        "total_kj": None, "oxidative_pct": None, "glycolytic_pct": None,
+        "phosphagen_pct": None, "has_lactate": False, "has_phosphagen": False,
+        "delta_lactate": None, "mono_exp_fit": None,
+    }
+    if bxb.empty or "vo2_ml" not in bxb.columns or "t_s" not in bxb.columns:
+        result["warnings"].append("No breath-by-breath data available")
+        return result
+
+    valid = bxb.copy()
+    for col in ("t_s", "vo2_ml", "bike_power_w"):
+        if col in valid.columns:
+            valid[col] = pd.to_numeric(valid[col], errors="coerce")
+    valid = valid.dropna(subset=["t_s", "vo2_ml"])
+    if len(valid) < 10:
+        result["warnings"].append("Insufficient breath data (<10 points)")
+        return result
+
+    t_sec = valid["t_s"].values.astype(float)
+    vo2_ml = valid["vo2_ml"].values.astype(float)
+    power = (
+        valid["bike_power_w"].fillna(0).values.astype(float)
+        if "bike_power_w" in valid.columns else np.zeros(len(t_sec))
+    )
+
+    # Detect exercise window
+    above = np.where(power > 20)[0]
+    if len(above) == 0:
+        ex_start, ex_end = float(t_sec[0]), float(t_sec[-1])
+    else:
+        ex_start = float(t_sec[above[0]])
+        peak_idx = int(np.argmax(power))
+        peak_power = power[peak_idx]
+        if peak_power > 0:
+            post_peak = power[peak_idx:]
+            dropout = np.where(post_peak < peak_power * 0.2)[0]
+            ex_end = float(t_sec[peak_idx + dropout[0]]) if len(dropout) > 0 else float(t_sec[-1])
+        else:
+            ex_end = float(t_sec[-1])
+
+    result["status"] = "computed"
+
+    # 1. Oxidative energy: VO2 integral × 20.9
+    ex_mask = (t_sec >= ex_start) & (t_sec <= ex_end)
+    t_ex, vo2_ex = t_sec[ex_mask], vo2_ml[ex_mask]
+    if len(t_ex) >= 2:
+        vo2_l_per_s = vo2_ex / 1000.0 / 60.0
+        result["oxidative_kj"] = round(float(_trapz(vo2_l_per_s, t_ex)) * CALORIC_EQUIVALENT_KJ_PER_L, 2)
+
+    # 2. Glycolytic energy: delta_La × 3 × BW × dist_vol × 20.9
+    bw, body_fat_pct = None, None
+    if not subject.empty:
+        if "weight_kg" in subject.columns:
+            w = pd.to_numeric(subject["weight_kg"], errors="coerce").dropna()
+            if not w.empty:
+                bw = float(w.iloc[0])
+        if "body_fat_pct" in subject.columns:
+            bf = pd.to_numeric(subject["body_fat_pct"], errors="coerce").dropna()
+            if not bf.empty:
+                body_fat_pct = float(bf.iloc[0])
+
+    lactate_dist_vol = 0.73 * (1.0 - body_fat_pct / 100.0) if body_fat_pct and 0 < body_fat_pct < 100 else 0.6
+
+    if not blood.empty and "lactate_mmol" in blood.columns:
+        la_vals = pd.to_numeric(blood["lactate_mmol"], errors="coerce").dropna()
+        if len(la_vals) >= 2:
+            la_rest, la_peak = float(la_vals.iloc[0]), float(la_vals.max())
+            delta_la = la_peak - la_rest
+            result["delta_lactate"] = round(delta_la, 2)
+            result["has_lactate"] = True
+            if bw and delta_la > 0:
+                result["glycolytic_kj"] = round((delta_la * 3.0 * bw * lactate_dist_vol / 1000.0) * CALORIC_EQUIVALENT_KJ_PER_L, 2)
+            elif delta_la <= 0:
+                result["glycolytic_kj"] = 0.0
+
+    # 3. Phosphagen energy: EPOC fast component mono-exponential fit
+    post_mask = t_sec > ex_end
+    post_t, post_power, post_vo2 = t_sec[post_mask], power[post_mask], vo2_ml[post_mask]
+
+    if len(post_t) >= 10:
+        low_power = np.where(post_power < 30)[0]
+        if len(low_power) > 0:
+            rec_start = float(post_t[low_power[0]])
+            rec_end = min(float(post_t[-1]), rec_start + 300)
+            if rec_end - rec_start >= 30:
+                rec_mask = (t_sec >= rec_start) & (t_sec <= rec_end)
+                t_rec, vo2_rec_lmin = t_sec[rec_mask], vo2_ml[rec_mask] / 1000.0
+                if len(t_rec) >= 10:
+                    t_norm = t_rec - t_rec[0]
+                    try:
+                        from scipy.optimize import curve_fit
+                        def mono_exp(t, a, tau, bl):
+                            return a * np.exp(-t / tau) + bl
+                        popt, _ = curve_fit(mono_exp, t_norm, vo2_rec_lmin,
+                            p0=[float(vo2_rec_lmin[0] - vo2_rec_lmin[-1]), 30.0, float(np.min(vo2_rec_lmin))],
+                            bounds=([0, 1, 0], [10, 300, 5]), maxfev=5000)
+                        a_fit, tau_fit, bl_fit = popt
+                        vo2_pred = mono_exp(t_norm, a_fit, tau_fit, bl_fit)
+                        ss_res = float(np.sum((vo2_rec_lmin - vo2_pred) ** 2))
+                        ss_tot = float(np.sum((vo2_rec_lmin - np.mean(vo2_rec_lmin)) ** 2))
+                        r_sq = 1.0 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
+                        result["phosphagen_kj"] = round((a_fit * tau_fit / 60.0) * CALORIC_EQUIVALENT_KJ_PER_L, 2)
+                        result["has_phosphagen"] = True
+                        result["mono_exp_fit"] = {
+                            "amplitude_l_min": round(a_fit, 4), "tau_sec": round(tau_fit, 2),
+                            "baseline_l_min": round(bl_fit, 4), "r_squared": round(r_sq, 4), "n_points": len(t_rec),
+                        }
+                        if r_sq < 0.8:
+                            result["warnings"].append(f"Low mono-exponential fit quality (R²={r_sq:.3f})")
+                    except Exception as e:
+                        result["warnings"].append(f"Phosphagen fit failed: {e}")
+
+    # Percentages
+    components = []
+    if result["oxidative_kj"] is not None:
+        components.append(("oxidative", result["oxidative_kj"]))
+    if result["has_lactate"] and result["glycolytic_kj"] is not None:
+        components.append(("glycolytic", result["glycolytic_kj"]))
+    if result["has_phosphagen"] and result["phosphagen_kj"] is not None:
+        components.append(("phosphagen", result["phosphagen_kj"]))
+    total = sum(v for _, v in components)
+    result["total_kj"] = round(total, 2) if total > 0 else None
+    if total > 0:
+        for name, val in components:
+            result[f"{name}_pct"] = round(val / total * 100, 1)
+    return result
+
+
 def store_results(db_path: Path, all_results: dict[str, Any]) -> None:
     """Store analysis results in SQLite.
 
@@ -1000,6 +1145,20 @@ def run_analysis(db_path: Path) -> dict[str, Any]:
             f"   Zone {z['zone']} ({z['name']}): {z['power_range']}, {z['hr_range']}"
         )
 
+    print("\n9. Energy System 3-Pathway...")
+    energy_system_results = analyze_energy_system(
+        data["breath_by_breath"], data["blood_samples"], data["subject"],
+    )
+    if energy_system_results.get("status") == "computed":
+        print(f"   Oxidative: {energy_system_results.get('oxidative_kj')} kJ ({energy_system_results.get('oxidative_pct')}%)")
+        if energy_system_results.get("has_lactate"):
+            print(f"   Glycolytic: {energy_system_results.get('glycolytic_kj')} kJ ({energy_system_results.get('glycolytic_pct')}%)")
+        if energy_system_results.get("has_phosphagen"):
+            print(f"   Phosphagen: {energy_system_results.get('phosphagen_kj')} kJ ({energy_system_results.get('phosphagen_pct')}%)")
+        print(f"   Total: {energy_system_results.get('total_kj')} kJ")
+    else:
+        print(f"   Skipped ({', '.join(energy_system_results.get('warnings', []))})")
+
     all_results = {
         "lactate": lactate_results,
         "clearance": clearance_results,
@@ -1009,6 +1168,7 @@ def run_analysis(db_path: Path) -> dict[str, Any]:
         "efficiency": efficiency_results,
         "hr": hr_results,
         "training_zones": zone_results,
+        "energy_system": energy_system_results,
     }
 
     print("\nStoring results...")

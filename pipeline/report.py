@@ -662,6 +662,42 @@ def render_html(context: dict[str, Any]) -> str:
     chart_json = json.dumps(context["chart_data"], ensure_ascii=False).replace("</", "<\\/")
     data_json = json.dumps(context, ensure_ascii=False).replace("</", "<\\/")
 
+    # Energy system section
+    es = analysis.get("energy_system", {})
+    energy_system_section = ""
+    if es.get("status") == "computed" and es.get("total_kj"):
+        colors = {"oxidative": "#3B82F6", "glycolytic": "#EF4444", "phosphagen": "#10B981"}
+        labels = {"oxidative": "Oxidative (산화적)", "glycolytic": "Glycolytic (해당과정)", "phosphagen": "Phosphagen (인원질)"}
+        pathways = []
+        for key in ("oxidative", "glycolytic", "phosphagen"):
+            kj, pct = es.get(f"{key}_kj"), es.get(f"{key}_pct")
+            if kj is not None and pct is not None:
+                pathways.append({"key": key, "label": labels[key], "kj": kj, "pct": pct, "color": colors[key]})
+        if pathways:
+            bar_segs = "".join(f'<div style="width:{p["pct"]:.1f}%;background:{p["color"]};height:100%;display:inline-block;" title="{html_text(p["label"])}: {p["pct"]:.1f}%"></div>' for p in pathways)
+            rows_html = "".join(f'<tr><td><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:{p["color"]};margin-right:8px;vertical-align:middle;"></span>{html_text(p["label"])}</td><td style="text-align:right;font-weight:600;">{p["kj"]:.1f} kJ</td><td style="text-align:right;font-weight:600;">{p["pct"]:.1f}%</td></tr>' for p in pathways)
+            delta_la_html = f'<span style="color:var(--muted);font-size:0.85rem;margin-left:16px;">ΔLa: {es["delta_lactate"]:.2f} mmol/L</span>' if es.get("has_lactate") and es.get("delta_lactate") is not None else ""
+            fit = es.get("mono_exp_fit")
+            fit_html = ""
+            if fit:
+                r_sq = fit.get("r_squared", 0)
+                r_label = f'{r_sq:.3f}' + (' ⚠️' if r_sq < 0.8 else ' ✓')
+                fit_html = f'<div style="margin-top:16px;padding:16px;background:var(--paper-strong,#f9fafb);border-radius:12px;"><strong style="font-size:0.85rem;color:var(--muted,#6b7280);">Mono-exponential Fit (EPOC Fast Component)</strong><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:8px;"><div><span style="color:var(--muted,#6b7280);font-size:0.8rem;">Amplitude</span><br><strong>{fit.get("amplitude_l_min",0):.3f} L/min</strong></div><div><span style="color:var(--muted,#6b7280);font-size:0.8rem;">Tau (τ)</span><br><strong>{fit.get("tau_sec",0):.1f} sec</strong></div><div><span style="color:var(--muted,#6b7280);font-size:0.8rem;">Baseline</span><br><strong>{fit.get("baseline_l_min",0):.3f} L/min</strong></div><div><span style="color:var(--muted,#6b7280);font-size:0.8rem;">R²</span><br><strong>{r_label}</strong></div></div></div>'
+            warnings_html = ""
+            ws = es.get("warnings", [])
+            if ws:
+                w_items = "".join(f"<li>{html_text(w)}</li>" for w in ws)
+                warnings_html = f'<div style="margin-top:12px;padding:12px;background:#fef3c7;border-radius:8px;font-size:0.85rem;"><strong>⚠ Notes:</strong><ul style="margin:4px 0 0 16px;padding:0;">{w_items}</ul></div>'
+            energy_system_section = f"""
+    <section class="section" id="energy-system">
+      <div class="section-header"><div><span class="section-tag">Energy System</span><h2>에너지 시스템 기여도 (3-Pathway)</h2><p>산화적(Oxidative), 해당과정(Glycolytic), 인원질(Phosphagen) 에너지 시스템의 기여 비율을 정량 분석합니다.</p></div></div>
+      <div style="background:white;border-radius:var(--radius,12px);padding:24px;box-shadow:var(--shadow,0 1px 3px rgba(0,0,0,0.1));">
+        <div style="height:32px;border-radius:8px;overflow:hidden;background:#e5e7eb;display:flex;">{bar_segs}</div>
+        <table style="width:100%;margin-top:16px;border-collapse:collapse;"><thead><tr style="border-bottom:2px solid var(--line,#e5e7eb);"><th style="text-align:left;padding:8px 0;">Pathway</th><th style="text-align:right;padding:8px 0;">Energy</th><th style="text-align:right;padding:8px 0;">Contribution</th></tr></thead><tbody>{rows_html}<tr style="border-top:2px solid var(--line,#e5e7eb);font-weight:700;"><td style="padding:8px 0;">Total{delta_la_html}</td><td style="text-align:right;padding:8px 0;">{es["total_kj"]:.1f} kJ</td><td style="text-align:right;padding:8px 0;">100%</td></tr></tbody></table>
+        {fit_html}{warnings_html}
+      </div>
+    </section>"""
+
     blood_table = render_table(
         ["Block", "Step", "Load", "%FTP", "Duration", "HR", "Lactate", "Glucose", "Notes"],
         [
@@ -1518,6 +1554,8 @@ def render_html(context: dict[str, Any]) -> str:
         </article>
       </div>
     </section>
+
+    {energy_system_section}
 
     <section class="section" id="tables">
       <div class="section-header">
