@@ -313,6 +313,50 @@ def _start_fallback_analysis(
     return thread
 
 
+def _extract_file_tags(sub: dict | None) -> list[str]:
+    """Extract file type tags from a submission's file_manifest."""
+    if not sub:
+        return []
+    manifest = sub.get("file_manifest")
+    if not manifest:
+        return []
+    if isinstance(manifest, str):
+        try:
+            manifest = json.loads(manifest)
+        except (json.JSONDecodeError, TypeError):
+            return []
+    if not isinstance(manifest, list):
+        return []
+
+    tag_map = {
+        "fit": "FIT",
+        "zwo": "ZWO",
+        "xlsx": "CPET",
+        "md": "Lactate",
+        "csv": "Lactate",
+        "pdf": "INSCYD",
+    }
+    seen: set[str] = set()
+    tags: list[str] = []
+    for f in manifest:
+        ext = str(f.get("extension", "") or f.get("name", "").rsplit(".", 1)[-1]).lower()
+        tag = tag_map.get(ext)
+        if tag and tag not in seen:
+            seen.add(tag)
+            tags.append(tag)
+    return tags
+
+
+def _infer_file_tags_from_slug(slug: str, analysis_method: str) -> list[str]:
+    """Infer file type tags from report slug and analysis method."""
+    tags = []
+    if "inscyd" in slug.lower() or "inscyd" in analysis_method.lower():
+        tags.append("INSCYD")
+    else:
+        tags.append("CPET")
+    return tags
+
+
 def _scan_published_reports(published_dir: Path) -> list[dict]:
     """Scan published/ and build dashboard-like rows for standalone reports."""
     if not published_dir.exists():
@@ -354,6 +398,7 @@ def _scan_published_reports(published_dir: Path) -> list[dict]:
                 "analysis_method": metadata["analysis_method"],
                 "report_version": _describe_report_version(report_dir.name),
                 "is_latest": False,
+                "file_tags": _infer_file_tags_from_slug(report_dir.name, metadata["analysis_method"]),
             }
         )
 
@@ -415,6 +460,7 @@ def _list_dashboard_entries(
             "processing_note": processing_note,
             "processing_seconds": processing_seconds,
             "submission_user_id": sub.get("user_id") if sub else None,
+            "file_tags": _extract_file_tags(sub) if sub else [],
         }
         enriched.append(enriched_job)
         if job.get("report_slug"):

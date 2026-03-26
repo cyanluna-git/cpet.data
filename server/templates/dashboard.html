@@ -88,54 +88,24 @@
   </script>
   {% endif %}
 
-  <div class="bg-white rounded-lg shadow overflow-x-auto">
-    <table class="min-w-full divide-y divide-gray-200">
-      <thead class="bg-gray-50">
-        <tr>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">피험자</th>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">날짜</th>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">리포트 버전</th>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">생성 방식</th>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">상태</th>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">결과</th>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">작업</th>
-          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">생성일</th>
-        </tr>
-      </thead>
-      <!--
-        htmx: poll /api/jobs/partial every 3 seconds.
-        On first load ("load" trigger), display a skeleton placeholder.
-        After the response arrives, htmx swaps the tbody innerHTML.
-      -->
-      <tbody
-        id="job-list-body"
-        hx-get="/api/jobs/partial"
-        hx-trigger="load, every 3s"
-        hx-swap="innerHTML"
-      >
-        <!-- Loading skeleton (replaced by htmx on first response) -->
-        <tr class="animate-pulse">
-          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-20"></div></td>
-          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-24"></div></td>
-          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-20"></div></td>
-          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-28"></div></td>
-          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-14"></div></td>
-          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-12"></div></td>
-          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-16"></div></td>
-          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-28"></div></td>
-        </tr>
-        <tr class="animate-pulse">
-          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-20"></div></td>
-          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-24"></div></td>
-          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-20"></div></td>
-          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-28"></div></td>
-          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-14"></div></td>
-          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-12"></div></td>
-          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-16"></div></td>
-          <td class="px-4 py-3"><div class="h-4 bg-gray-200 rounded w-28"></div></td>
-        </tr>
-      </tbody>
-    </table>
+  <div class="bg-white rounded-lg shadow">
+    <div
+      id="job-list-body"
+      hx-get="/api/jobs/partial"
+      hx-trigger="load, every 3s"
+      hx-swap="innerHTML"
+      class="divide-y divide-gray-100"
+    >
+      <!-- Loading skeleton -->
+      <div class="px-4 py-3 animate-pulse">
+        <div class="flex items-center gap-3"><div class="h-4 bg-gray-200 rounded w-24"></div><div class="h-4 bg-gray-200 rounded w-20"></div><div class="ml-auto h-5 bg-gray-200 rounded w-12"></div></div>
+        <div class="flex items-center gap-2 mt-2"><div class="h-3 bg-gray-100 rounded w-10"></div><div class="h-3 bg-gray-100 rounded w-32"></div></div>
+      </div>
+      <div class="px-4 py-3 animate-pulse">
+        <div class="flex items-center gap-3"><div class="h-4 bg-gray-200 rounded w-20"></div><div class="h-4 bg-gray-200 rounded w-20"></div><div class="ml-auto h-5 bg-gray-200 rounded w-12"></div></div>
+        <div class="flex items-center gap-2 mt-2"><div class="h-3 bg-gray-100 rounded w-10"></div><div class="h-3 bg-gray-100 rounded w-28"></div></div>
+      </div>
+    </div>
   </div>
 </div>
 

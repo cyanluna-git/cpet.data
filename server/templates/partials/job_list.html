@@ -1,141 +1,116 @@
 {% for job in jobs %}
-<tr class="job-row border-b border-gray-100 hover:bg-gray-50 {% if job.status == 'processing' %}bg-slate-50/80{% endif %}" data-status="{{ job.status }}">
-  <!-- 피험자 -->
-  <td class="px-4 py-3 text-sm text-gray-800 whitespace-nowrap">
-    <div class="flex items-center gap-2">
-      {% if current_user_role in ('researcher', 'admin') %}
-        <span
-          class="cursor-pointer hover:text-blue-600 hover:underline"
-          onclick="openRenameModal('{{ job.submission_id or '' }}', '{{ job.report_slug or '' }}', '{{ (job.subject_name or '')|e }}')"
-        >{{ job.subject_name or "—" }}</span>
-      {% else %}
-        <span>{{ job.subject_name or "—" }}</span>
-      {% endif %}
+<div class="job-row border-b border-gray-100 hover:bg-gray-50 px-4 py-3 {% if job.status == 'processing' %}bg-slate-50/80{% endif %}" data-status="{{ job.status }}">
+  <!-- Row 1: Name + Date + Status + Report link -->
+  <div class="flex items-center justify-between gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+      <!-- 피험자명 -->
+      <div class="font-medium text-sm text-gray-900 truncate">
+        {% if current_user_role in ('researcher', 'admin') %}
+          <span
+            class="cursor-pointer hover:text-blue-600 hover:underline"
+            onclick="openRenameModal('{{ job.submission_id or '' }}', '{{ job.report_slug or '' }}', '{{ (job.subject_name or '')|e }}')"
+          >{{ job.subject_name or "—" }}</span>
+        {% else %}
+          {{ job.subject_name or "—" }}
+        {% endif %}
+      </div>
+
+      <!-- 날짜 -->
+      <span class="text-xs text-gray-400 whitespace-nowrap">{{ job.test_date or "" }}</span>
+
       {% if current_user_id and job.submission_user_id and job.submission_user_id == current_user_id %}
         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-100 text-violet-700">내 리포트</span>
       {% endif %}
     </div>
-  </td>
 
-  <!-- 날짜 -->
-  <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{{ job.test_date or "—" }}</td>
+    <div class="flex items-center gap-2 flex-shrink-0">
+      <!-- 상태 -->
+      {% if job.status == "pending" %}
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-yellow-100 text-yellow-800">대기</span>
+      {% elif job.status == "processing" %}
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-800">
+          <span class="relative flex h-2 w-2"><span class="absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75 animate-ping"></span><span class="relative inline-flex h-2 w-2 rounded-full bg-sky-500"></span></span>
+          분석중
+        </span>
+      {% elif job.status == "done" %}
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-800">완료</span>
+      {% elif job.status == "failed" %}
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-800">실패</span>
+      {% endif %}
 
-  <!-- 리포트 버전 -->
-  <td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
-    <div class="flex items-center gap-2 whitespace-nowrap">
-      <span class="font-medium whitespace-nowrap">{{ job.report_version or "—" }}</span>
-      {% if job.is_latest %}
-        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 whitespace-nowrap">최신</span>
+      <!-- 결과 -->
+      {% if job.status == "done" and job.report_url %}
+        <a href="{{ job.report_url }}" class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 transition">리포트</a>
+      {% elif job.can_trigger %}
+        <button
+          class="inline-flex items-center gap-1 rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+          hx-post="/api/jobs/{{ job.id }}/trigger"
+          hx-target="#job-list-body"
+          hx-swap="innerHTML"
+          hx-disabled-elt="this"
+        >
+          <span class="htmx-indicator h-3 w-3 animate-spin rounded-full border border-white/40 border-t-white"></span>
+          {% if job.status == "failed" %}다시 분석{% else %}분석 시작{% endif %}
+        </button>
+      {% elif job.status == "failed" and job.error_message %}
+        <span class="text-xs text-red-500 cursor-help" title="{{ job.error_message }}">오류</span>
       {% endif %}
     </div>
+  </div>
+
+  <!-- Row 2: File tags + slug + version -->
+  <div class="flex items-center gap-2 mt-1.5">
+    <!-- 파일 타입 태그 -->
+    {% for tag in job.file_tags or [] %}
+      {% if tag == 'INSCYD' %}
+        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-700">{{ tag }}</span>
+      {% elif tag == 'CPET' %}
+        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-100 text-sky-700">{{ tag }}</span>
+      {% elif tag == 'FIT' %}
+        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-100 text-orange-700">{{ tag }}</span>
+      {% elif tag == 'ZWO' %}
+        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-700">{{ tag }}</span>
+      {% elif tag == 'Lactate' %}
+        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700">{{ tag }}</span>
+      {% else %}
+        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-600">{{ tag }}</span>
+      {% endif %}
+    {% endfor %}
+
+    {% if job.is_latest %}
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-800">최신</span>
+    {% endif %}
+
     {% if job.report_slug %}
-      <div class="max-w-[140px] truncate text-xs text-gray-400" title="{{ job.report_slug }}">{{ job.report_slug }}</div>
+      <span class="text-[11px] text-gray-400 truncate max-w-[200px]" title="{{ job.report_slug }}">{{ job.report_slug }}</span>
     {% endif %}
-  </td>
+  </div>
+</div>
 
-  <!-- 생성 방식 -->
-  <td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
-    {% if job.status == "processing" %}
-      <div class="inline-flex items-center gap-2 whitespace-nowrap font-medium text-slate-800">
-        <span class="inline-flex h-2.5 w-2.5 rounded-full bg-cyan-400 shadow-[0_0_14px_rgba(34,211,238,0.65)]"></span>
-        <span>수동 재분석</span>
-      </div>
-    {% else %}
-      {{ job.analysis_method or "—" }}
-    {% endif %}
-  </td>
-
-  <!-- 상태 badge -->
-  <td class="px-4 py-3 text-sm whitespace-nowrap">
-    {% if job.status == "pending" %}
-      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 whitespace-nowrap">대기</span>
-    {% elif job.status == "processing" %}
-      <span class="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1.5 text-xs font-semibold text-sky-800 whitespace-nowrap">
-        <span class="relative flex h-2.5 w-2.5">
-          <span class="absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75 animate-ping"></span>
-          <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-sky-500"></span>
-        </span>
-        분석중
-      </span>
-    {% elif job.status == "done" %}
-      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 whitespace-nowrap">완료</span>
-    {% elif job.status == "failed" %}
-      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 whitespace-nowrap">실패</span>
-    {% else %}
-      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 whitespace-nowrap">{{ job.status }}</span>
-    {% endif %}
-  </td>
-
-  <!-- 결과: report link or error tooltip -->
-  <td class="px-4 py-3 text-sm whitespace-nowrap">
-    {% if job.status == "done" and job.report_url %}
-      <a href="{{ job.report_url }}" class="text-blue-600 hover:underline whitespace-nowrap">리포트</a>
-    {% elif job.status == "processing" %}
-      <span class="text-slate-600 whitespace-nowrap">{{ job.processing_stage }}</span>
-    {% elif job.status == "failed" and job.error_message %}
-      <span class="text-red-500 cursor-help whitespace-nowrap" title="{{ job.error_message }}">오류 보기</span>
-    {% else %}
-      <span class="text-gray-400 whitespace-nowrap">—</span>
-    {% endif %}
-  </td>
-
-  <!-- 작업 -->
-  <td class="px-4 py-3 text-sm whitespace-nowrap">
-    {% if job.can_trigger %}
-      <button
-        class="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
-        hx-post="/api/jobs/{{ job.id }}/trigger"
-        hx-target="closest tbody"
-        hx-swap="innerHTML"
-        hx-disabled-elt="this"
-      >
-        <span class="htmx-indicator h-3 w-3 animate-spin rounded-full border border-white/40 border-t-white"></span>
-        {% if job.status == "failed" %}
-          다시 분석
-        {% else %}
-          분석 시작
-        {% endif %}
-      </button>
-    {% elif job.status == "processing" %}
-      <span class="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800 whitespace-nowrap">
-        자동 진행
-      </span>
-    {% else %}
-      <span class="text-gray-400 whitespace-nowrap">—</span>
-    {% endif %}
-  </td>
-
-  <!-- 생성일 -->
-  <td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{{ job.created_at_display or (job.created_at[:16] if job.created_at else "—") }}</td>
-</tr>
 {% if job.status == "processing" %}
-<tr class="job-row border-b border-gray-100 bg-slate-50/60" data-status="{{ job.status }}-detail">
-  <td colspan="8" class="px-4 pb-4 pt-0">
-    <div class="rounded-2xl border border-sky-100 bg-white px-4 py-4 shadow-sm">
-      <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div class="min-w-0">
-          <div class="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
-            <span class="inline-flex h-2.5 w-2.5 rounded-full bg-sky-500 shadow-[0_0_14px_rgba(14,165,233,0.35)]"></span>
-            <span>분석 진행 중</span>
-            <span class="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700">{{ job.processing_seconds }}s</span>
-          </div>
-          <div class="mt-2 text-base font-semibold text-slate-900 break-keep">{{ job.processing_stage }}</div>
-          <div class="mt-1 text-sm text-slate-500 break-keep">{{ job.processing_note }}</div>
+<div class="job-row border-b border-gray-100 bg-slate-50/60 px-4 pb-4 pt-0" data-status="{{ job.status }}-detail">
+  <div class="rounded-xl border border-sky-100 bg-white px-4 py-3 shadow-sm">
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div class="min-w-0">
+        <div class="flex items-center gap-2 text-sm font-semibold text-slate-900">
+          <span class="inline-flex h-2 w-2 rounded-full bg-sky-500 shadow-[0_0_10px_rgba(14,165,233,0.35)]"></span>
+          {{ job.processing_stage }}
+          <span class="text-xs font-normal text-sky-600">{{ job.processing_seconds }}s</span>
         </div>
-        <div class="w-full lg:max-w-md">
-          <div class="h-2 overflow-hidden rounded-full bg-slate-200">
-            <div class="job-processing-track h-full rounded-full"></div>
-          </div>
+        <div class="mt-1 text-xs text-slate-500">{{ job.processing_note }}</div>
+      </div>
+      <div class="w-full sm:max-w-xs">
+        <div class="h-1.5 overflow-hidden rounded-full bg-slate-200">
+          <div class="job-processing-track h-full rounded-full"></div>
         </div>
       </div>
     </div>
-  </td>
-</tr>
+  </div>
+</div>
 {% endif %}
+
 {% else %}
-<tr class="job-row empty">
-  <td colspan="8" class="px-4 py-8 text-center text-sm text-gray-500">
-    아직 제출된 분석이 없습니다
-  </td>
-</tr>
+<div class="job-row empty px-4 py-8 text-center text-sm text-gray-500">
+  아직 제출된 분석이 없습니다
+</div>
 {% endfor %}
