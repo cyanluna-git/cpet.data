@@ -630,6 +630,7 @@ async def submit(
     description: str = Form(""),
     subject_name: str = Form(""),
     test_date: str = Form(""),
+    target_user_id: str = Form(""),
     reanalyze: str | None = Query(default=None),
 ) -> JSONResponse:
     """Upload files, create workspace/submission/job, dispatch to channel.
@@ -673,8 +674,19 @@ async def submit(
 
         file_pairs.append((filename, content))
 
-    # Extract user_id from session (None for anonymous uploads)
+    # Login required for uploads
     user_id = request.session.get("user_id") if hasattr(request, "session") else None
+    if not user_id:
+        return JSONResponse(
+            status_code=401,
+            content={"error": "로그인이 필요합니다"},
+        )
+
+    # Determine target user: researcher can upload for others
+    effective_user_id = user_id  # default: self
+    session_role = request.session.get("role", "user") if hasattr(request, "session") else "user"
+    if target_user_id and target_user_id != "__new__" and session_role in ("researcher", "admin"):
+        effective_user_id = target_user_id
 
     # Re-analysis mode: add files to existing workspace
     if reanalyze:
@@ -750,7 +762,7 @@ async def submit(
         subject_name=subject_name,
         test_date=test_date,
         submission_id=submission_id,
-        user_id=user_id,
+        user_id=effective_user_id,
     )
     job_id = create_job(db_path, submission_id)
 

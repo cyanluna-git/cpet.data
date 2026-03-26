@@ -166,10 +166,21 @@ async def index_page(request: Request) -> HTMLResponse:
 
 @app.get("/upload", response_class=HTMLResponse)
 async def upload_page(request: Request, reanalyze: str = "") -> HTMLResponse:
-    """Render the file upload page. If reanalyze=<submission_id>, pre-fill with existing data."""
+    """Render the file upload page. Login required."""
+    # Login required for upload
+    user = _get_session_user(request)
+    if not user:
+        return RedirectResponse(url="/auth/google/login", status_code=302)
     guard = _check_onboarding(request)
     if guard:
         return guard
+
+    # For researcher/admin: load user list for target selection
+    db_path = request.app.state.db_path
+    actual_role = request.session.get("role", "user")
+    target_users = []
+    if actual_role in ("researcher", "admin"):
+        target_users = list_users(db_path)
 
     prefill = {}
     existing_files = []
@@ -196,6 +207,8 @@ async def upload_page(request: Request, reanalyze: str = "") -> HTMLResponse:
     return _template_response(request, "upload.html", {
         "prefill": prefill,
         "existing_files": existing_files,
+        "target_users": target_users,
+        "is_researcher": actual_role in ("researcher", "admin"),
     })
 
 
