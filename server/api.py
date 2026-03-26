@@ -10,6 +10,7 @@ Endpoints:
 
 import logging
 import json
+import sqlite3
 import uuid
 from datetime import datetime, timezone
 import hashlib
@@ -492,26 +493,19 @@ def _list_dashboard_entries(
         reverse=True,
     )
 
-    newest_by_subject: dict[tuple[str, str], str] = {}
-    for row in enriched:
-        subject_name = str(row.get("subject_name") or "")
-        test_date = str(row.get("test_date") or "")
-        created_at = str(row.get("created_at") or "")
-        if not subject_name or not test_date or not created_at:
+    # Deduplicate: for same subject+date+report_slug, keep only the newest
+    seen_slugs: dict[str, int] = {}
+    deduped: list[dict] = []
+    for i, row in enumerate(enriched):
+        slug = row.get("report_slug", "")
+        if slug and slug in seen_slugs:
+            # Skip older duplicate with same slug
             continue
-        key = (subject_name, test_date)
-        current = newest_by_subject.get(key)
-        if current is None or created_at > current:
-            newest_by_subject[key] = created_at
+        if slug:
+            seen_slugs[slug] = i
+        deduped.append(row)
 
-    for row in enriched:
-        key = (str(row.get("subject_name") or ""), str(row.get("test_date") or ""))
-        row["is_latest"] = bool(
-            key in newest_by_subject
-            and str(row.get("created_at") or "") == newest_by_subject[key]
-        )
-
-    return enriched
+    return deduped
 
 
 # ── Channel dispatch ─────────────────────────────────────────────────
@@ -709,10 +703,16 @@ async def trigger_job(
         )
 
     if str(job.get("status") or "") == "done":
-        return JSONResponse(
-            status_code=409,
-            content={"error": "completed jobs cannot be retriggered"},
+        # Allow re-analysis: reset job to pending
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "UPDATE jobs SET status = 'pending', error_message = NULL, "
+            "started_at = NULL, completed_at = NULL WHERE id = ?",
+            (job_id,),
         )
+        conn.commit()
+        conn.close()
+        job["status"] = "pending"
 
     if str(job.get("status") or "") == "processing":
         return JSONResponse(

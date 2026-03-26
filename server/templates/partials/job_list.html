@@ -1,6 +1,6 @@
 {% for job in jobs %}
 <div class="job-row border-b border-gray-100 hover:bg-gray-50 px-4 py-3 {% if job.status == 'processing' %}bg-slate-50/80{% endif %}" data-status="{{ job.status }}">
-  <!-- Row 1: Name + Date + Status + Report link -->
+  <!-- Row 1: Name + Date + Status + Actions -->
   <div class="flex items-center justify-between gap-3">
     <div class="flex items-center gap-3 min-w-0">
       <!-- 피험자명 -->
@@ -38,10 +38,13 @@
         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-800">실패</span>
       {% endif %}
 
-      <!-- 결과 -->
+      <!-- 리포트 보기 -->
       {% if job.status == "done" and job.report_url %}
         <a href="{{ job.report_url }}" class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 transition">리포트</a>
-      {% elif job.can_trigger %}
+      {% endif %}
+
+      <!-- 재분석 / 분석 시작 -->
+      {% if job.can_trigger %}
         <button
           class="inline-flex items-center gap-1 rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-60"
           hx-post="/api/jobs/{{ job.id }}/trigger"
@@ -52,15 +55,23 @@
           <span class="htmx-indicator h-3 w-3 animate-spin rounded-full border border-white/40 border-t-white"></span>
           {% if job.status == "failed" %}다시 분석{% else %}분석 시작{% endif %}
         </button>
+      {% elif job.status == "done" and job.submission_id and current_user_role in ('researcher', 'admin') %}
+        <button
+          class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition"
+          hx-post="/api/jobs/{{ job.id }}/trigger"
+          hx-target="#job-list-body"
+          hx-swap="innerHTML"
+          hx-confirm="기존 리포트를 덮어쓰고 재분석합니다. 계속하시겠습니까?"
+          hx-disabled-elt="this"
+        >재분석</button>
       {% elif job.status == "failed" and job.error_message %}
         <span class="text-xs text-red-500 cursor-help" title="{{ job.error_message }}">오류</span>
       {% endif %}
     </div>
   </div>
 
-  <!-- Row 2: File tags + slug + version -->
+  <!-- Row 2: File tags + slug -->
   <div class="flex items-center gap-2 mt-1.5">
-    <!-- 파일 타입 태그 -->
     {% for tag in job.file_tags or [] %}
       {% if tag == 'INSCYD' %}
         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-700">{{ tag }}</span>
@@ -76,10 +87,6 @@
         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-600">{{ tag }}</span>
       {% endif %}
     {% endfor %}
-
-    {% if job.is_latest %}
-      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-800">최신</span>
-    {% endif %}
 
     {% if job.report_slug %}
       <span class="text-[11px] text-gray-400 truncate max-w-[200px]" title="{{ job.report_slug }}">{{ job.report_slug }}</span>
