@@ -160,6 +160,58 @@
 
       </div>
     </details>
+    <script>
+    (function() {
+      var goalLabels = {
+        "fatmax": "FatMax 중심 평가", "thresholds": "LT1/LT2 중심 평가",
+        "vo2max": "VO2max 중심 평가", "ftp_check": "FTP/현장 강도 비교",
+        "mixed": "복합 대사 프로파일 확인", "other": "기타 목적"
+      };
+      var fields = ['primary_goal','fasting_hours','caffeine_state','meal_state','prior_training_state','protocol_outline','operator_notes'];
+
+      function compose() {
+        var desc = document.getElementById('description');
+        // Don't overwrite if user manually typed something
+        if (desc.dataset.manualEdit === 'true') return;
+
+        var parts = [];
+        var goal = document.querySelector('[name=primary_goal]').value;
+        if (goal && goalLabels[goal]) parts.push('주요 검사 목적은 ' + goalLabels[goal] + '입니다.');
+
+        var pretest = [];
+        var fasting = document.querySelector('[name=fasting_hours]').value;
+        if (fasting) pretest.push('공복 ' + fasting + '시간');
+        var meal = document.querySelector('[name=meal_state]').value;
+        if (meal) pretest.push('식사 상태: ' + meal);
+        var caffeine = document.querySelector('[name=caffeine_state]').value;
+        if (caffeine) pretest.push('카페인: ' + caffeine);
+        var training = document.querySelector('[name=prior_training_state]').value;
+        if (training) pretest.push('직전 운동: ' + training);
+        if (pretest.length) parts.push('검사 전 상태는 ' + pretest.join(', ') + '.');
+
+        var outline = document.querySelector('[name=protocol_outline]').value.trim();
+        if (outline) parts.push('프로토콜: ' + outline);
+
+        var notes = document.querySelector('[name=operator_notes]').value.trim();
+        if (notes) parts.push('메모: ' + notes);
+
+        desc.value = parts.join(' ');
+      }
+
+      // Track manual edits
+      var desc = document.getElementById('description');
+      desc.addEventListener('input', function() {
+        desc.dataset.manualEdit = desc.value.trim() ? 'true' : 'false';
+      });
+
+      // Listen for changes on all protocol fields
+      fields.forEach(function(name) {
+        var el = document.querySelector('[name=' + name + ']');
+        if (el) el.addEventListener('change', compose);
+        if (el && el.tagName === 'INPUT') el.addEventListener('input', compose);
+      });
+    })();
+    </script>
     {% endif %}
 
     {% if not prefill %}
