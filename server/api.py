@@ -314,8 +314,39 @@ def _start_fallback_analysis(
     return thread
 
 
-def _extract_file_tags(sub: dict | None) -> list[str]:
-    """Extract file type tags from a submission's file_manifest."""
+_FILE_TAG_MAP = {
+    ".fit": "FIT",
+    ".zwo": "ZWO",
+    ".xlsx": "CPET",
+    ".md": "Lactate",
+    ".csv": "Lactate",
+    ".pdf": "INSCYD",
+}
+
+
+def _extract_file_tags_from_workspace(workspace_path: str | None) -> list[str]:
+    """Extract file type tags from actual files in workspace/raw/ directory."""
+    if not workspace_path:
+        return []
+    raw_dir = Path(workspace_path) / "raw"
+    if not raw_dir.is_dir():
+        return []
+
+    seen: set[str] = set()
+    tags: list[str] = []
+    for f in sorted(raw_dir.iterdir()):
+        if not f.is_file():
+            continue
+        ext = f.suffix.lower()
+        tag = _FILE_TAG_MAP.get(ext)
+        if tag and tag not in seen:
+            seen.add(tag)
+            tags.append(tag)
+    return tags
+
+
+def _extract_file_tags_from_manifest(sub: dict | None) -> list[str]:
+    """Fallback: extract tags from submission file_manifest JSON."""
     if not sub:
         return []
     manifest = sub.get("file_manifest")
@@ -329,33 +360,23 @@ def _extract_file_tags(sub: dict | None) -> list[str]:
     if not isinstance(manifest, list):
         return []
 
-    tag_map = {
-        "fit": "FIT",
-        "zwo": "ZWO",
-        "xlsx": "CPET",
-        "md": "Lactate",
-        "csv": "Lactate",
-        "pdf": "INSCYD",
-    }
     seen: set[str] = set()
     tags: list[str] = []
     for f in manifest:
-        ext = str(f.get("extension", "") or f.get("name", "").rsplit(".", 1)[-1]).lower()
-        tag = tag_map.get(ext)
+        ext = "." + str(f.get("extension", "") or f.get("name", "").rsplit(".", 1)[-1]).lower()
+        tag = _FILE_TAG_MAP.get(ext)
         if tag and tag not in seen:
             seen.add(tag)
             tags.append(tag)
     return tags
 
 
-def _infer_file_tags_from_slug(slug: str, analysis_method: str) -> list[str]:
-    """Infer file type tags from report slug and analysis method."""
-    tags = []
-    if "inscyd" in slug.lower() or "inscyd" in analysis_method.lower():
-        tags.append("INSCYD")
-    else:
-        tags.append("CPET")
-    return tags
+def _get_file_tags(sub: dict | None, workspace_path: str | None) -> list[str]:
+    """Get file tags: prefer workspace scan, fall back to manifest."""
+    tags = _extract_file_tags_from_workspace(workspace_path)
+    if tags:
+        return tags
+    return _extract_file_tags_from_manifest(sub)
 
 
 def _scan_published_reports(published_dir: Path) -> list[dict]:
@@ -399,7 +420,7 @@ def _scan_published_reports(published_dir: Path) -> list[dict]:
                 "analysis_method": metadata["analysis_method"],
                 "report_version": _describe_report_version(report_dir.name),
                 "is_latest": False,
-                "file_tags": _infer_file_tags_from_slug(report_dir.name, metadata["analysis_method"]),
+                "file_tags": [],  # filled later from workspace scan
             }
         )
 
@@ -459,7 +480,7 @@ def _list_dashboard_entries(
             "processing_note": processing_note,
             "processing_seconds": processing_seconds,
             "submission_user_id": sub.get("user_id") if sub else None,
-            "file_tags": _extract_file_tags(sub) if sub else [],
+            "file_tags": _get_file_tags(sub, sub.get("workspace_path") if sub else None),
         }
         enriched.append(enriched_job)
         if job.get("report_slug"):
@@ -473,6 +494,38 @@ def _list_dashboard_entries(
         if row["report_slug"] in job_slugs:
             continue
         enriched.append(row)
+
+    # Fill missing file_tags by scanning workspace raw/ directories
+    data_dir = get_data_dir(request)
+    if data_dir:
+        workspaces_dir = Path(data_dir) / "workspaces"
+        if workspaces_dir.is_dir():
+            for row in enriched:
+                if row.get("file_tags"):
+                    continue
+                # Try submission workspace_path
+                sub_id = row.get("submission_id")
+                if sub_id:
+                    sub = get_submission(db_path, sub_id)
+                    if sub and sub.get("workspace_path"):
+                        row["file_tags"] = _extract_file_tags_from_workspace(sub["workspace_path"])
+                        continue
+                # Try matching workspace by ID patterns
+                slug = row.get("report_slug", "")
+                for ws in workspaces_dir.iterdir():
+                    if not ws.is_dir():
+                        continue
+                    ws_report = ws / "report" / "index.html"
+                    if ws_report.is_file():
+                        tags = _extract_file_tags_from_workspace(str(ws))
+                        if tags:
+                            try:
+                                pub_index = published_dir / slug / "index.html"
+                                if pub_index.is_file() and _report_identity(pub_index) == _report_identity(ws_report):
+                                    row["file_tags"] = tags
+                                    break
+                            except Exception:
+                                pass
 
     # When filtering by user, also include reports linked via report_user_links
     if user_id:
