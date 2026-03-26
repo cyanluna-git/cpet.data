@@ -77,6 +77,12 @@ CREATE TABLE IF NOT EXISTS report_name_overrides (
     updated_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS report_notes (
+    report_slug TEXT PRIMARY KEY,
+    note TEXT NOT NULL DEFAULT '',
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS user_profiles (
     user_id TEXT PRIMARY KEY REFERENCES users(id),
     weight_kg REAL,
@@ -824,6 +830,26 @@ def set_report_name_override(db_path: Path, report_slug: str, subject_name: str)
     )
     conn.commit()
     conn.close()
+
+
+def set_report_note(db_path: Path, report_slug: str, note: str) -> None:
+    """Set a note for a report slug."""
+    conn = _connect(db_path)
+    conn.execute(
+        "INSERT OR REPLACE INTO report_notes (report_slug, note, updated_at) "
+        "VALUES (?, ?, datetime('now'))",
+        (report_slug, note.strip()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_report_notes(db_path: Path) -> dict[str, str]:
+    """Return dict of report_slug -> note."""
+    conn = _connect(db_path)
+    rows = conn.execute("SELECT report_slug, note FROM report_notes WHERE note != ''").fetchall()
+    conn.close()
+    return {row["report_slug"]: row["note"] for row in rows}
 
 
 def get_report_name_overrides(db_path: Path) -> dict[str, str]:

@@ -102,7 +102,18 @@
     {% endfor %}
 
     {% if job.report_slug %}
-      <span class="text-[11px] text-gray-400 truncate max-w-[200px]" title="{{ job.report_slug }}">{{ job.report_slug }}</span>
+      <span class="text-[11px] text-gray-300 truncate max-w-[160px]" title="{{ job.report_slug }}">{{ job.report_slug }}</span>
+    {% endif %}
+
+    <!-- Note (inline edit) -->
+    {% if job.report_slug and current_user_id %}
+    <span class="ml-auto">
+      <span
+        class="text-[11px] {% if job.note %}text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded{% else %}text-gray-300{% endif %} cursor-pointer hover:text-amber-600"
+        onclick="openNoteEdit(this, '{{ job.report_slug }}', '{{ (job.note or '')|e }}')"
+        title="메모 편집"
+      >{% if job.note %}{{ job.note }}{% else %}+ 메모{% endif %}</span>
+    </span>
     {% endif %}
   </div>
 </div>

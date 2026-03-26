@@ -582,16 +582,18 @@ def _list_dashboard_entries(
     if user_id:
         enriched = [row for row in enriched if row.get("is_mine")]
 
-    # Apply name overrides from report_name_overrides table
-    from server.db import get_report_name_overrides
+    # Apply name overrides + notes
+    from server.db import get_report_name_overrides, get_report_notes
     name_overrides = get_report_name_overrides(db_path)
+    report_notes = get_report_notes(db_path)
     for row in enriched:
         slug = row.get("report_slug", "")
         if slug and slug in name_overrides:
             row["subject_name"] = name_overrides[slug]
+        row["note"] = report_notes.get(slug, "") if slug else ""
 
     enriched.sort(
-        key=lambda row: str(row.get("created_at") or ""),
+        key=lambda row: str(row.get("test_date") or row.get("created_at") or ""),
         reverse=True,
     )
 

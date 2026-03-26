@@ -36,6 +36,7 @@ from server.db import (
     link_submission_subject,
     link_user_to_subject,
     get_report_name_overrides,
+    set_report_note,
     list_subjects,
     set_report_name_override,
     update_subject,
@@ -738,6 +739,25 @@ async def manage_rename_subject(request: Request) -> HTMLResponse:
         set_report_name_override(db_path, report_slug, new_name)
 
     return HTMLResponse(f'<span>{new_name}</span>')
+
+
+@app.patch("/api/report-note", response_class=HTMLResponse)
+async def update_report_note(request: Request) -> HTMLResponse:
+    """Update a report note. Any logged-in user."""
+    user_id = request.session.get("user_id") if hasattr(request, "session") else None
+    if not user_id:
+        return HTMLResponse("", status_code=401)
+
+    form = await request.form()
+    report_slug = str(form.get("report_slug", "")).strip()
+    note = str(form.get("note", "")).strip()
+
+    if not report_slug:
+        return HTMLResponse("", status_code=400)
+
+    db_path = request.app.state.db_path
+    set_report_note(db_path, report_slug, note)
+    return HTMLResponse(note or '<span class="text-gray-300 text-[11px] cursor-pointer">+ 메모</span>')
 
 
 @app.delete("/api/manage/entries/{entry_id}", response_class=HTMLResponse)

@@ -180,5 +180,32 @@ document.addEventListener('keydown', function(e) {
   }
   if (e.key === 'Escape') closeRenameModal();
 });
+
+function openNoteEdit(el, slug, currentNote) {
+  var input = document.createElement('input');
+  input.type = 'text';
+  input.value = currentNote;
+  input.placeholder = '메모 입력 (예: 존2 훈련 후)';
+  input.className = 'text-[11px] border border-amber-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-amber-400 w-40';
+  input.onblur = function() { saveNote(el, slug, input.value); };
+  input.onkeydown = function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); saveNote(el, slug, input.value); }
+    if (e.key === 'Escape') { el.style.display = ''; input.remove(); }
+  };
+  el.style.display = 'none';
+  el.parentNode.insertBefore(input, el.nextSibling);
+  input.focus();
+  input.select();
+}
+
+function saveNote(el, slug, note) {
+  fetch('/api/report-note', {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'report_slug=' + encodeURIComponent(slug) + '&note=' + encodeURIComponent(note)
+  }).then(function() {
+    htmx.trigger(document.getElementById('job-list-body'), 'load');
+  });
+}
 </script>
 {% endblock %}
