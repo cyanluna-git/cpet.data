@@ -55,15 +55,11 @@
           <span class="htmx-indicator h-3 w-3 animate-spin rounded-full border border-white/40 border-t-white"></span>
           {% if job.status == "failed" %}다시 분석{% else %}분석 시작{% endif %}
         </button>
-      {% elif job.status == "done" and job.submission_id and current_user_role in ('researcher', 'admin') %}
-        <button
+      {% elif job.status == "done" and job.submission_id %}
+        <a
+          href="/upload?reanalyze={{ job.submission_id }}"
           class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition"
-          hx-post="/api/jobs/{{ job.id }}/trigger"
-          hx-target="#job-list-body"
-          hx-swap="innerHTML"
-          hx-confirm="기존 리포트를 덮어쓰고 재분석합니다. 계속하시겠습니까?"
-          hx-disabled-elt="this"
-        >재분석</button>
+        >추가 분석</a>
       {% elif job.status == "failed" and job.error_message %}
         <span class="text-xs text-red-500 cursor-help" title="{{ job.error_message }}">오류</span>
       {% endif %}

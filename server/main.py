@@ -154,12 +154,38 @@ async def index_page(request: Request) -> HTMLResponse:
 
 
 @app.get("/upload", response_class=HTMLResponse)
-async def upload_page(request: Request) -> HTMLResponse:
-    """Render the file upload page."""
+async def upload_page(request: Request, reanalyze: str = "") -> HTMLResponse:
+    """Render the file upload page. If reanalyze=<submission_id>, pre-fill with existing data."""
     guard = _check_onboarding(request)
     if guard:
         return guard
-    return _template_response(request, "upload.html")
+
+    prefill = {}
+    existing_files = []
+    if reanalyze:
+        db_path = request.app.state.db_path
+        sub = get_submission(db_path, reanalyze)
+        if sub:
+            prefill = {
+                "submission_id": sub["id"],
+                "subject_name": sub.get("subject_name", ""),
+                "test_date": sub.get("test_date", ""),
+                "description": sub.get("description", ""),
+            }
+            # List existing files in workspace
+            import json as _json
+            manifest = sub.get("file_manifest", [])
+            if isinstance(manifest, str):
+                try:
+                    manifest = _json.loads(manifest)
+                except Exception:
+                    manifest = []
+            existing_files = [f.get("name", "") for f in manifest if isinstance(f, dict)]
+
+    return _template_response(request, "upload.html", {
+        "prefill": prefill,
+        "existing_files": existing_files,
+    })
 
 
 @app.get("/dashboard", response_class=HTMLResponse)

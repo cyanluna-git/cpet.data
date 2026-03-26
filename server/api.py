@@ -19,7 +19,7 @@ import re
 import threading
 
 import httpx
-from fastapi import APIRouter, Form, Request, UploadFile
+from fastapi import APIRouter, Form, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from server.db import (
@@ -541,8 +541,13 @@ async def submit(
     description: str = Form(""),
     subject_name: str = Form(""),
     test_date: str = Form(""),
+    reanalyze: str | None = Query(default=None),
 ) -> JSONResponse:
-    """Upload files, create workspace/submission/job, dispatch to channel."""
+    """Upload files, create workspace/submission/job, dispatch to channel.
+
+    If reanalyze=<submission_id>, adds files to the existing workspace
+    and creates a new job for re-analysis.
+    """
     db_path = get_db_path(request)
     data_dir = get_data_dir(request)
     channel_url = get_channel_url(request)
@@ -555,7 +560,6 @@ async def submit(
 
     # Read file contents and validate
     file_pairs: list[tuple[str, bytes]] = []
-    has_xlsx = False
 
     for f in files:
         filename = f.filename or "unnamed"
@@ -578,11 +582,63 @@ async def submit(
                 },
             )
 
-        if ext == ".xlsx":
-            has_xlsx = True
-
         file_pairs.append((filename, content))
 
+    # Extract user_id from session (None for anonymous uploads)
+    user_id = request.session.get("user_id") if hasattr(request, "session") else None
+
+    # Re-analysis mode: add files to existing workspace
+    if reanalyze:
+        from server.db import get_submission
+        existing_sub = get_submission(db_path, reanalyze)
+        if existing_sub and existing_sub.get("workspace_path"):
+            workspace = Path(existing_sub["workspace_path"])
+            raw_dir = workspace / "raw"
+            raw_dir.mkdir(parents=True, exist_ok=True)
+
+            # Write new files into existing workspace
+            for filename, content in file_pairs:
+                (raw_dir / filename).write_bytes(content)
+
+            # Remove old analysis.db and report to force fresh analysis
+            for cleanup in [workspace / "analysis.db", workspace / "report"]:
+                if cleanup.is_file():
+                    cleanup.unlink()
+                elif cleanup.is_dir():
+                    import shutil
+                    shutil.rmtree(cleanup, ignore_errors=True)
+
+            # Update submission manifest + description
+            manifest = list_files(workspace)
+            conn = sqlite3.connect(str(db_path))
+            conn.execute(
+                "UPDATE submissions SET file_manifest = ?, description = ? WHERE id = ?",
+                (json.dumps(manifest), description, reanalyze),
+            )
+            conn.commit()
+            conn.close()
+
+            # Create new job for re-analysis
+            job_id = create_job(db_path, reanalyze)
+
+            await notify_channel(
+                channel_url,
+                {
+                    "submission_id": reanalyze,
+                    "job_id": job_id,
+                    "workspace_path": str(workspace),
+                    "description": description,
+                    "files": manifest,
+                },
+            )
+
+            return JSONResponse(
+                status_code=201,
+                content={"job_id": job_id, "status": "pending"},
+            )
+
+    # Normal submission: require xlsx
+    has_xlsx = any(Path(fn).suffix.lower() == ".xlsx" for fn, _ in file_pairs)
     if not has_xlsx:
         return JSONResponse(
             status_code=400,
@@ -595,9 +651,6 @@ async def submit(
 
     # Build file manifest
     manifest = list_files(workspace)
-
-    # Extract user_id from session (None for anonymous uploads)
-    user_id = request.session.get("user_id") if hasattr(request, "session") else None
 
     # Create submission and job
     create_submission(
@@ -703,16 +756,10 @@ async def trigger_job(
         )
 
     if str(job.get("status") or "") == "done":
-        # Allow re-analysis: reset job to pending
-        conn = sqlite3.connect(str(db_path))
-        conn.execute(
-            "UPDATE jobs SET status = 'pending', error_message = NULL, "
-            "started_at = NULL, completed_at = NULL WHERE id = ?",
-            (job_id,),
+        return JSONResponse(
+            status_code=409,
+            content={"error": "completed jobs cannot be retriggered — use 추가 분석"},
         )
-        conn.commit()
-        conn.close()
-        job["status"] = "pending"
 
     if str(job.get("status") or "") == "processing":
         return JSONResponse(
