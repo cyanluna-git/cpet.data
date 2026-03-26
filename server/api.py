@@ -179,10 +179,12 @@ def _extract_report_metadata(index_file: Path) -> dict[str, str]:
     analysis_method = "알 수 없음"
 
     try:
+        import html as html_mod
         html = index_file.read_text(encoding="utf-8")
         match = REPORT_DATA_RE.search(html)
         if match:
-            payload = json.loads(match.group(1))
+            raw_json = html_mod.unescape(match.group(1))
+            payload = json.loads(raw_json)
             subject_name = (payload.get("subject") or {}).get("name") or ""
             test_date = (payload.get("session") or {}).get("test_date") or ""
             analysis_method = _describe_generation_method(payload)
