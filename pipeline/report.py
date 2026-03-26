@@ -915,9 +915,8 @@ def render_html(context: dict[str, Any]) -> str:
     }}
     h1 {{
       margin-top: 18px;
-      font-size: clamp(2.6rem, 4.7vw, 4.6rem);
-      line-height: 0.96;
-      max-width: 10ch;
+      font-size: clamp(2.2rem, 3.5vw, 3.4rem);
+      line-height: 1.05;
     }}
     .hero-grid {{
       display: grid;
@@ -934,18 +933,23 @@ def render_html(context: dict[str, Any]) -> str:
       font-size: 1.05rem;
     }}
     .info-card {{
-      display: grid;
-      gap: 14px;
-      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0;
+      padding: 28px 26px;
       border-radius: 24px;
       background: rgba(22, 32, 40, 0.92);
       color: #f5efe7;
     }}
+    .info-card h2 {{
+      margin-bottom: 18px;
+    }}
     .info-grid {{
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px 18px;
-      font-size: 0.96rem;
+      gap: 16px 20px;
+      font-size: 1rem;
     }}
     .info-grid span {{
       display: block;
