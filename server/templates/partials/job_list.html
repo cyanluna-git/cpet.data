@@ -3,7 +3,14 @@
   <!-- 피험자 -->
   <td class="px-4 py-3 text-sm text-gray-800 whitespace-nowrap">
     <div class="flex items-center gap-2">
-      <span>{{ job.subject_name or "—" }}</span>
+      {% if current_user_role in ('researcher', 'admin') and job.submission_id %}
+        <span
+          class="cursor-pointer hover:text-blue-600 hover:underline"
+          onclick="openRenameModal('{{ job.submission_id }}', '{{ (job.subject_name or '')|e }}')"
+        >{{ job.subject_name or "—" }}</span>
+      {% else %}
+        <span>{{ job.subject_name or "—" }}</span>
+      {% endif %}
       {% if current_user_id and job.submission_user_id and job.submission_user_id == current_user_id %}
         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-100 text-violet-700">내 리포트</span>
       {% endif %}

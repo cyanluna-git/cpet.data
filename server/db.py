@@ -526,6 +526,27 @@ def list_submissions_with_users(db_path: Path) -> list[dict]:
     return results
 
 
+def update_submission_subject_name(
+    db_path: Path, submission_id: str, subject_name: str,
+) -> dict | None:
+    """Update a submission's subject_name. Returns updated submission, or None."""
+    conn = _connect(db_path)
+    conn.execute(
+        "UPDATE submissions SET subject_name = ? WHERE id = ?",
+        (subject_name.strip(), submission_id),
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT * FROM submissions WHERE id = ?", (submission_id,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    result = dict(row)
+    result["file_manifest"] = json.loads(result["file_manifest"])
+    return result
+
+
 def link_submission_user(
     db_path: Path, submission_id: str, user_id: str,
 ) -> dict | None:

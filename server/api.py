@@ -621,10 +621,14 @@ async def jobs_partial(
         request, status=status, user_id=filter_user_id,
     )
 
+    current_user_role = ""
+    if hasattr(request, "session"):
+        current_user_role = request.session.get("role", "")
+
     return templates.TemplateResponse(
         request,
         "partials/job_list.html",
-        {"jobs": enriched, "current_user_id": current_user_id},
+        {"jobs": enriched, "current_user_id": current_user_id, "current_user_role": current_user_role},
     )
 
 
@@ -696,11 +700,15 @@ async def trigger_job(
     if hasattr(request, "session"):
         current_user_id = request.session.get("user_id")
 
+    current_user_role = ""
+    if hasattr(request, "session"):
+        current_user_role = request.session.get("role", "")
+
     enriched = _list_dashboard_entries(request)
     return templates.TemplateResponse(
         request,
         "partials/job_list.html",
-        {"jobs": enriched, "current_user_id": current_user_id},
+        {"jobs": enriched, "current_user_id": current_user_id, "current_user_role": current_user_role},
     )
 
 

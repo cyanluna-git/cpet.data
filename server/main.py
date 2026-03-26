@@ -30,6 +30,7 @@ from server.db import (
     init_db,
     link_report_to_user,
     link_submission_user,
+    update_submission_subject_name,
     list_submissions_with_users,
     list_users,
     unlink_report_from_user,
@@ -612,6 +613,31 @@ async def manage_unlink_entry(
         unlink_report_from_user(db_path, report_slug)
 
     return _render_manage_submissions(request, session_user)
+
+
+@app.patch("/api/manage/submissions/{submission_id}/subject-name", response_class=HTMLResponse)
+async def manage_update_subject_name(
+    request: Request, submission_id: str,
+) -> HTMLResponse:
+    """Update a submission's subject_name. Researcher/admin only."""
+    from fastapi.responses import JSONResponse
+
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+
+    form = await request.form()
+    new_name = str(form.get("subject_name", "")).strip()
+    if not new_name:
+        return JSONResponse(status_code=400, content={"error": "subject_name is required"})
+
+    db_path = request.app.state.db_path
+    result = update_submission_subject_name(db_path, submission_id, new_name)
+    if result is None:
+        return JSONResponse(status_code=404, content={"error": "submission not found"})
+
+    # Return just the updated name span for HTMX swap
+    return HTMLResponse(f'<span>{new_name}</span>')
 
 
 # Keep old endpoints for backward compat

@@ -138,4 +138,68 @@
     </table>
   </div>
 </div>
+
+<!-- 피험자명 수정 모달 -->
+<div id="rename-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50" onclick="if(event.target===this)closeRenameModal()">
+  <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md mx-4" onclick="event.stopPropagation()">
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">피험자명 수정</h3>
+    <input
+      id="rename-input"
+      type="text"
+      class="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+      placeholder="피험자 이름"
+    />
+    <input id="rename-submission-id" type="hidden" />
+    <div class="flex justify-end gap-3 mt-4">
+      <button
+        onclick="closeRenameModal()"
+        class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+      >취소</button>
+      <button
+        onclick="submitRename()"
+        class="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800"
+      >저장</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function openRenameModal(submissionId, currentName) {
+  document.getElementById('rename-submission-id').value = submissionId;
+  document.getElementById('rename-input').value = currentName;
+  const modal = document.getElementById('rename-modal');
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+  document.getElementById('rename-input').focus();
+}
+
+function closeRenameModal() {
+  const modal = document.getElementById('rename-modal');
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+}
+
+function submitRename() {
+  const id = document.getElementById('rename-submission-id').value;
+  const name = document.getElementById('rename-input').value.trim();
+  if (!name) return;
+  fetch(`/api/manage/submissions/${id}/subject-name`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: `subject_name=${encodeURIComponent(name)}`
+  }).then(r => {
+    if (r.ok) {
+      closeRenameModal();
+      htmx.trigger(document.getElementById('job-list-body'), 'load');
+    }
+  });
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !document.getElementById('rename-modal').classList.contains('hidden')) {
+    submitRename();
+  }
+  if (e.key === 'Escape') closeRenameModal();
+});
+</script>
 {% endblock %}
