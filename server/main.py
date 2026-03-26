@@ -696,24 +696,34 @@ async def manage_rename_subject(request: Request) -> HTMLResponse:
 
 @app.delete("/api/manage/entries/{entry_id}", response_class=HTMLResponse)
 async def manage_delete_entry(request: Request, entry_id: str) -> HTMLResponse:
-    """Delete a submission/job entry. Admin only."""
+    """Delete a submission/job entry. Admin or owner of the submission."""
     from fastapi.responses import JSONResponse
     import shutil
 
-    auth_result = _require_manage_access(request)
-    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
-        return auth_result
-    session_user = auth_result
+    user_id = request.session.get("user_id") if hasattr(request, "session") else None
+    if not user_id:
+        return JSONResponse(status_code=401, content={"error": "login required"})
 
-    if session_user.get("role") != "admin":
-        return JSONResponse(status_code=403, content={"error": "admin only"})
+    actual_role = request.session.get("role", "user")
+    is_admin = actual_role == "admin"
 
     db_path = request.app.state.db_path
 
-    # Try deleting as submission
+    # Check ownership: admin can delete anything, users can delete their own
     sub = get_submission(db_path, entry_id)
+    if sub and not is_admin:
+        if sub.get("user_id") != user_id:
+            return JSONResponse(status_code=403, content={"error": "자신의 리포트만 삭제할 수 있습니다"})
+
+    if not sub and not is_admin:
+        # Standalone published report — only admin can delete
+        from server.db import get_report_user_links
+        links = get_report_user_links(db_path)
+        if links.get(entry_id) != user_id:
+            return JSONResponse(status_code=403, content={"error": "자신의 리포트만 삭제할 수 있습니다"})
+
+    # Proceed with deletion
     if sub:
-        # Remove workspace directory
         ws = sub.get("workspace_path")
         if ws:
             ws_path = Path(ws)
