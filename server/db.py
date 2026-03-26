@@ -53,6 +53,12 @@ CREATE TABLE IF NOT EXISTS report_user_links (
     linked_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS report_name_overrides (
+    report_slug TEXT PRIMARY KEY,
+    subject_name TEXT NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS user_profiles (
     user_id TEXT PRIMARY KEY REFERENCES users(id),
     weight_kg REAL,
@@ -524,6 +530,26 @@ def list_submissions_with_users(db_path: Path) -> list[dict]:
             d["file_manifest"] = json.loads(d["file_manifest"])
         results.append(d)
     return results
+
+
+def set_report_name_override(db_path: Path, report_slug: str, subject_name: str) -> None:
+    """Set or update a subject_name override for a report slug."""
+    conn = _connect(db_path)
+    conn.execute(
+        "INSERT OR REPLACE INTO report_name_overrides (report_slug, subject_name, updated_at) "
+        "VALUES (?, ?, datetime('now'))",
+        (report_slug, subject_name.strip()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_report_name_overrides(db_path: Path) -> dict[str, str]:
+    """Return dict of report_slug -> overridden subject_name."""
+    conn = _connect(db_path)
+    rows = conn.execute("SELECT report_slug, subject_name FROM report_name_overrides").fetchall()
+    conn.close()
+    return {row["report_slug"]: row["subject_name"] for row in rows}
 
 
 def update_submission_subject_name(

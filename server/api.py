@@ -433,6 +433,14 @@ def _list_dashboard_entries(
             continue
         enriched.append(row)
 
+    # Apply name overrides from report_name_overrides table
+    from server.db import get_report_name_overrides
+    name_overrides = get_report_name_overrides(db_path)
+    for row in enriched:
+        slug = row.get("report_slug", "")
+        if slug and slug in name_overrides:
+            row["subject_name"] = name_overrides[slug]
+
     enriched.sort(
         key=lambda row: str(row.get("created_at") or ""),
         reverse=True,

@@ -150,6 +150,7 @@
       placeholder="피험자 이름"
     />
     <input id="rename-submission-id" type="hidden" />
+    <input id="rename-report-slug" type="hidden" />
     <div class="flex justify-end gap-3 mt-4">
       <button
         onclick="closeRenameModal()"
@@ -164,8 +165,9 @@
 </div>
 
 <script>
-function openRenameModal(submissionId, currentName) {
+function openRenameModal(submissionId, reportSlug, currentName) {
   document.getElementById('rename-submission-id').value = submissionId;
+  document.getElementById('rename-report-slug').value = reportSlug;
   document.getElementById('rename-input').value = currentName;
   const modal = document.getElementById('rename-modal');
   modal.classList.remove('hidden');
@@ -180,13 +182,15 @@ function closeRenameModal() {
 }
 
 function submitRename() {
-  const id = document.getElementById('rename-submission-id').value;
+  const subId = document.getElementById('rename-submission-id').value;
+  const slug = document.getElementById('rename-report-slug').value;
   const name = document.getElementById('rename-input').value.trim();
   if (!name) return;
-  fetch(`/api/manage/submissions/${id}/subject-name`, {
+  const body = `subject_name=${encodeURIComponent(name)}&submission_id=${encodeURIComponent(subId)}&report_slug=${encodeURIComponent(slug)}`;
+  fetch('/api/manage/rename-subject', {
     method: 'PATCH',
     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-    body: `subject_name=${encodeURIComponent(name)}`
+    body: body
   }).then(r => {
     if (r.ok) {
       closeRenameModal();

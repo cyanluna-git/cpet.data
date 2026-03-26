@@ -30,6 +30,8 @@ from server.db import (
     init_db,
     link_report_to_user,
     link_submission_user,
+    get_report_name_overrides,
+    set_report_name_override,
     update_submission_subject_name,
     list_submissions_with_users,
     list_users,
@@ -615,11 +617,9 @@ async def manage_unlink_entry(
     return _render_manage_submissions(request, session_user)
 
 
-@app.patch("/api/manage/submissions/{submission_id}/subject-name", response_class=HTMLResponse)
-async def manage_update_subject_name(
-    request: Request, submission_id: str,
-) -> HTMLResponse:
-    """Update a submission's subject_name. Researcher/admin only."""
+@app.patch("/api/manage/rename-subject", response_class=HTMLResponse)
+async def manage_rename_subject(request: Request) -> HTMLResponse:
+    """Update subject_name for any entry. Researcher/admin only."""
     from fastapi.responses import JSONResponse
 
     auth_result = _require_manage_access(request)
@@ -628,15 +628,22 @@ async def manage_update_subject_name(
 
     form = await request.form()
     new_name = str(form.get("subject_name", "")).strip()
+    submission_id = str(form.get("submission_id", "")).strip()
+    report_slug = str(form.get("report_slug", "")).strip()
+
     if not new_name:
         return JSONResponse(status_code=400, content={"error": "subject_name is required"})
 
     db_path = request.app.state.db_path
-    result = update_submission_subject_name(db_path, submission_id, new_name)
-    if result is None:
-        return JSONResponse(status_code=404, content={"error": "submission not found"})
 
-    # Return just the updated name span for HTMX swap
+    # Update submission if exists
+    if submission_id:
+        update_submission_subject_name(db_path, submission_id, new_name)
+
+    # Always store as report_slug override (covers standalone published)
+    if report_slug:
+        set_report_name_override(db_path, report_slug, new_name)
+
     return HTMLResponse(f'<span>{new_name}</span>')
 
 
