@@ -32,6 +32,21 @@
     </select>
   </td>
 
+  <!-- 연결 피험자 -->
+  <td class="px-4 py-3 text-sm whitespace-nowrap">
+    {% if user.subject_name %}
+      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+        {{ user.subject_name }}
+      </span>
+    {% elif user.subject_id %}
+      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+        {{ user.subject_id[:8] }}
+      </span>
+    {% else %}
+      <span class="text-gray-400 text-xs">미연결</span>
+    {% endif %}
+  </td>
+
   <!-- 성별 -->
   <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{{ user.gender or "—" }}</td>
 
@@ -50,7 +65,7 @@
 </tr>
 {% else %}
 <tr>
-  <td colspan="7" class="px-4 py-8 text-center text-sm text-gray-500">
+  <td colspan="8" class="px-4 py-8 text-center text-sm text-gray-500">
     등록된 유저가 없습니다
   </td>
 </tr>

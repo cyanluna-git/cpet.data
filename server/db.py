@@ -1,5 +1,5 @@
 """
-server.db — Platform SQLite CRUD for submissions, jobs, users, and profiles.
+server.db — Platform SQLite CRUD for submissions, jobs, users, subjects, and profiles.
 
 Every function takes a db_path: Path parameter. No global state.
 Uses raw sqlite3, WAL mode, TEXT primary keys (UUID).
@@ -12,6 +12,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS subjects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    gender TEXT,
+    birth_year INTEGER,
+    height_cm REAL,
+    weight_kg REAL,
+    body_fat_pct REAL,
+    skeletal_muscle_mass REAL,
+    bmi REAL,
+    training_level TEXT,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     google_id TEXT UNIQUE,
@@ -20,6 +35,7 @@ CREATE TABLE IF NOT EXISTS users (
     avatar_url TEXT,
     role TEXT DEFAULT 'user',
     onboarding_completed INTEGER DEFAULT 0,
+    subject_id TEXT REFERENCES subjects(id),
     created_at TEXT DEFAULT (datetime('now')),
     last_login_at TEXT
 );
@@ -31,6 +47,8 @@ CREATE TABLE IF NOT EXISTS submissions (
     workspace_path TEXT,
     subject_name TEXT,
     test_date TEXT,
+    subject_id TEXT REFERENCES subjects(id),
+    uploaded_by_user_id TEXT REFERENCES users(id),
     user_id TEXT REFERENCES users(id),
     created_at TEXT DEFAULT (datetime('now'))
 );
@@ -104,6 +122,15 @@ def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
     return any(row[1] == column for row in cursor.fetchall())
 
 
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    """Check whether a table exists in the database."""
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        (table,),
+    ).fetchone()
+    return row is not None
+
+
 def init_db(db_path: Path) -> None:
     """Create tables if they don't exist and run migrations."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -117,7 +144,221 @@ def init_db(db_path: Path) -> None:
     if not _column_exists(conn, "users", "onboarding_completed"):
         conn.execute(MIGRATION_ADD_ONBOARDING)
         conn.commit()
+    # Migration: add subject_id to users if missing
+    if not _column_exists(conn, "users", "subject_id"):
+        conn.execute(
+            "ALTER TABLE users ADD COLUMN subject_id TEXT REFERENCES subjects(id)"
+        )
+        conn.commit()
+    # Migration: add subject_id + uploaded_by_user_id to submissions if missing
+    if not _column_exists(conn, "submissions", "subject_id"):
+        conn.execute(
+            "ALTER TABLE submissions ADD COLUMN subject_id TEXT REFERENCES subjects(id)"
+        )
+        conn.commit()
+    if not _column_exists(conn, "submissions", "uploaded_by_user_id"):
+        conn.execute(
+            "ALTER TABLE submissions ADD COLUMN uploaded_by_user_id TEXT REFERENCES users(id)"
+        )
+        conn.commit()
+    # Migration: migrate user_profiles data into subjects for users that have profiles
+    # but no linked subject yet
+    _migrate_user_profiles_to_subjects(conn)
     conn.close()
+
+
+def _migrate_user_profiles_to_subjects(conn: sqlite3.Connection) -> None:
+    """One-time migration: create subjects from user_profiles and link users.
+
+    Only runs for users who have a user_profile row but no subject_id set.
+    This preserves existing data while transitioning to the subjects model.
+    """
+    if not _table_exists(conn, "user_profiles"):
+        return
+
+    rows = conn.execute(
+        """SELECT u.id AS user_id, u.display_name,
+                  p.gender, p.birth_year, p.height_cm, p.weight_kg,
+                  p.body_fat_pct, p.skeletal_muscle_mass, p.bmi, p.training_level
+           FROM users u
+           JOIN user_profiles p ON u.id = p.user_id
+           WHERE u.subject_id IS NULL
+             AND (p.gender IS NOT NULL OR p.birth_year IS NOT NULL)"""
+    ).fetchall()
+
+    for row in rows:
+        subject_id = str(uuid.uuid4())
+        name = row["display_name"] or ""
+        conn.execute(
+            """INSERT INTO subjects
+               (id, name, gender, birth_year, height_cm, weight_kg,
+                body_fat_pct, skeletal_muscle_mass, bmi, training_level)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                subject_id,
+                name,
+                row["gender"],
+                row["birth_year"],
+                row["height_cm"],
+                row["weight_kg"],
+                row["body_fat_pct"],
+                row["skeletal_muscle_mass"],
+                row["bmi"],
+                row["training_level"],
+            ),
+        )
+        conn.execute(
+            "UPDATE users SET subject_id = ? WHERE id = ?",
+            (subject_id, row["user_id"]),
+        )
+        # Also update any submissions by this user to have subject_id
+        conn.execute(
+            "UPDATE submissions SET subject_id = ? WHERE user_id = ? AND subject_id IS NULL",
+            (subject_id, row["user_id"]),
+        )
+
+    if rows:
+        conn.commit()
+
+
+# ── Subject CRUD ──────────────────────────────────────────────────
+
+
+SUBJECT_FIELDS = {
+    "name", "gender", "birth_year", "height_cm", "weight_kg",
+    "body_fat_pct", "skeletal_muscle_mass", "bmi", "training_level", "notes",
+}
+
+
+def create_subject(
+    db_path: Path,
+    name: str,
+    gender: str = "",
+    birth_year: int | None = None,
+    height_cm: float | None = None,
+    weight_kg: float | None = None,
+    body_fat_pct: float | None = None,
+    skeletal_muscle_mass: float | None = None,
+    bmi: float | None = None,
+    training_level: str = "",
+    notes: str = "",
+) -> dict:
+    """Create a new subject and return the row dict."""
+    subject_id = str(uuid.uuid4())
+    conn = _connect(db_path)
+    conn.execute(
+        """INSERT INTO subjects
+           (id, name, gender, birth_year, height_cm, weight_kg,
+            body_fat_pct, skeletal_muscle_mass, bmi, training_level, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            subject_id, name, gender or None, birth_year,
+            height_cm, weight_kg, body_fat_pct, skeletal_muscle_mass,
+            bmi, training_level or None, notes or None,
+        ),
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT * FROM subjects WHERE id = ?", (subject_id,)
+    ).fetchone()
+    conn.close()
+    return dict(row)
+
+
+def get_subject(db_path: Path, subject_id: str) -> dict | None:
+    """Fetch a subject by ID, or None if not found."""
+    conn = _connect(db_path)
+    row = conn.execute(
+        "SELECT * FROM subjects WHERE id = ?", (subject_id,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def list_subjects(db_path: Path) -> list[dict]:
+    """List all subjects, newest first."""
+    conn = _connect(db_path)
+    rows = conn.execute(
+        "SELECT * FROM subjects ORDER BY created_at DESC"
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def update_subject(
+    db_path: Path,
+    subject_id: str,
+    **fields: str | float | int | None,
+) -> dict | None:
+    """Update a subject's fields. Returns updated subject dict, or None."""
+    for key in fields:
+        if key not in SUBJECT_FIELDS:
+            raise ValueError(f"Unknown subject field '{key}'")
+
+    if not fields:
+        return get_subject(db_path, subject_id)
+
+    sets = []
+    params: list[str | float | int | None] = []
+    for key, value in fields.items():
+        sets.append(f"{key} = ?")
+        params.append(value)
+    params.append(subject_id)
+
+    conn = _connect(db_path)
+    conn.execute(
+        f"UPDATE subjects SET {', '.join(sets)} WHERE id = ?",
+        params,
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT * FROM subjects WHERE id = ?", (subject_id,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def link_user_to_subject(
+    db_path: Path, user_id: str, subject_id: str,
+) -> dict | None:
+    """Set user.subject_id. Returns the updated user dict, or None."""
+    conn = _connect(db_path)
+    conn.execute(
+        "UPDATE users SET subject_id = ? WHERE id = ?",
+        (subject_id, user_id),
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT * FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def unlink_user_from_subject(db_path: Path, user_id: str) -> dict | None:
+    """Clear user.subject_id. Returns the updated user dict, or None."""
+    conn = _connect(db_path)
+    conn.execute(
+        "UPDATE users SET subject_id = NULL WHERE id = ?",
+        (user_id,),
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT * FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return dict(row)
+
+
+# ── Submission CRUD ──────────────────────────────────────────────────
 
 
 def create_submission(
@@ -129,12 +370,14 @@ def create_submission(
     test_date: str = "",
     submission_id: str | None = None,
     user_id: str | None = None,
+    subject_id: str | None = None,
+    uploaded_by_user_id: str | None = None,
 ) -> str:
     """Insert a new submission and return its UUID.
 
     If submission_id is provided, use it; otherwise generate a new one.
-    This allows workspace creation to determine the ID first.
-    user_id is optional for backward compatibility (anonymous uploads).
+    user_id is kept for backward compatibility; subject_id is the new FK.
+    uploaded_by_user_id tracks who performed the upload.
     """
     if submission_id is None:
         submission_id = str(uuid.uuid4())
@@ -142,10 +385,11 @@ def create_submission(
     conn = _connect(db_path)
     conn.execute(
         """INSERT INTO submissions
-           (id, description, file_manifest, workspace_path, subject_name, test_date, user_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+           (id, description, file_manifest, workspace_path, subject_name,
+            test_date, user_id, subject_id, uploaded_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (submission_id, description, manifest_json, workspace_path,
-         subject_name, test_date, user_id),
+         subject_name, test_date, user_id, subject_id, uploaded_by_user_id),
     )
     conn.commit()
     conn.close()
@@ -421,6 +665,7 @@ def upsert_user_profile(
     """Create or update a user profile. Returns the updated profile dict.
 
     Only fields in PROFILE_FIELDS are accepted; unknown keys raise ValueError.
+    Also syncs body-comp fields to the linked subject (if any).
     """
     for key in fields:
         if key not in PROFILE_FIELDS:
@@ -461,11 +706,45 @@ def upsert_user_profile(
         )
 
     conn.commit()
+
+    # Sync body-comp fields to linked subject
+    _sync_profile_to_subject(conn, user_id, fields)
+
     row = conn.execute(
         "SELECT * FROM user_profiles WHERE user_id = ?", (user_id,)
     ).fetchone()
     conn.close()
     return dict(row)
+
+
+def _sync_profile_to_subject(
+    conn: sqlite3.Connection,
+    user_id: str,
+    fields: dict[str, str | float | int | None],
+) -> None:
+    """Sync profile fields that overlap with subject columns."""
+    user_row = conn.execute(
+        "SELECT subject_id FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    if not user_row or not user_row["subject_id"]:
+        return
+
+    subject_id = user_row["subject_id"]
+    subject_fields = SUBJECT_FIELDS & set(fields.keys())
+    if not subject_fields:
+        return
+
+    sets = []
+    params: list[str | float | int | None] = []
+    for key in subject_fields:
+        sets.append(f"{key} = ?")
+        params.append(fields[key])
+    params.append(subject_id)
+    conn.execute(
+        f"UPDATE subjects SET {', '.join(sets)} WHERE id = ?",
+        params,
+    )
+    conn.commit()
 
 
 # ── Admin / Manage ──────────────────────────────────────────────────
@@ -475,12 +754,13 @@ VALID_ROLES = {"user", "researcher", "admin"}
 
 
 def list_users(db_path: Path) -> list[dict]:
-    """List all users with their profile data (birth_year, gender), newest first."""
+    """List all users with their profile data and linked subject, newest first."""
     conn = _connect(db_path)
     rows = conn.execute(
-        """SELECT u.*, p.birth_year, p.gender
+        """SELECT u.*, p.birth_year, p.gender, s.name AS subject_name
            FROM users u
            LEFT JOIN user_profiles p ON u.id = p.user_id
+           LEFT JOIN subjects s ON u.subject_id = s.id
            ORDER BY u.created_at DESC"""
     ).fetchall()
     conn.close()
@@ -505,16 +785,18 @@ def update_user_role(db_path: Path, user_id: str, new_role: str) -> dict | None:
 
 
 def list_submissions_with_users(db_path: Path) -> list[dict]:
-    """List all submissions with linked user info and latest job status, newest first."""
+    """List all submissions with linked user/subject info and latest job status."""
     conn = _connect(db_path)
     rows = conn.execute(
         """SELECT s.*,
                   u.display_name AS linked_user_name,
                   u.email AS linked_user_email,
+                  sub.name AS linked_subject_name,
                   j.status AS job_status,
                   j.report_url
            FROM submissions s
            LEFT JOIN users u ON s.user_id = u.id
+           LEFT JOIN subjects sub ON s.subject_id = sub.id
            LEFT JOIN (
                SELECT submission_id, status, report_url,
                       ROW_NUMBER() OVER (PARTITION BY submission_id ORDER BY rowid DESC) AS rn
@@ -608,6 +890,37 @@ def link_submission_user(
     return result
 
 
+def link_submission_subject(
+    db_path: Path, submission_id: str, subject_id: str,
+) -> dict | None:
+    """Link a submission to a subject. Returns the updated submission, or None."""
+    conn = _connect(db_path)
+    # Also update subject_name from subject.name for display purposes
+    subject_row = conn.execute(
+        "SELECT name FROM subjects WHERE id = ?", (subject_id,)
+    ).fetchone()
+    if subject_row:
+        conn.execute(
+            "UPDATE submissions SET subject_id = ?, subject_name = ? WHERE id = ?",
+            (subject_id, subject_row["name"], submission_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE submissions SET subject_id = ? WHERE id = ?",
+            (subject_id, submission_id),
+        )
+    conn.commit()
+    row = conn.execute(
+        "SELECT * FROM submissions WHERE id = ?", (submission_id,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    result = dict(row)
+    result["file_manifest"] = json.loads(result["file_manifest"])
+    return result
+
+
 def unlink_submission_user(db_path: Path, submission_id: str) -> dict | None:
     """Remove user link from a submission. Returns the updated submission, or None."""
     conn = _connect(db_path)
@@ -662,12 +975,30 @@ def get_report_user_links(db_path: Path) -> dict[str, str]:
 
 
 def list_submissions_by_user(db_path: Path, user_id: str) -> list[dict]:
-    """List submissions for a given user, newest first."""
+    """List submissions for a given user, newest first.
+
+    Looks up the user's subject_id and returns submissions matching
+    either user_id or subject_id (for the new subject-based model).
+    """
     conn = _connect(db_path)
-    rows = conn.execute(
-        "SELECT * FROM submissions WHERE user_id = ? ORDER BY rowid DESC",
-        (user_id,),
-    ).fetchall()
+    # Get user's subject_id
+    user_row = conn.execute(
+        "SELECT subject_id FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    subject_id = user_row["subject_id"] if user_row else None
+
+    if subject_id:
+        rows = conn.execute(
+            """SELECT * FROM submissions
+               WHERE user_id = ? OR subject_id = ?
+               ORDER BY rowid DESC""",
+            (user_id, subject_id),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM submissions WHERE user_id = ? ORDER BY rowid DESC",
+            (user_id,),
+        ).fetchall()
     conn.close()
     results = []
     for row in rows:

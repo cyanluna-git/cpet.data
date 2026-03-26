@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Geunyun Park — INSCYD Interpretation Report</title>
+  <style>
+    :root {
+      --bg: #f6f1e8;
+      --paper: rgba(255,255,255,0.9);
+      --ink: #1f2937;
+      --muted: #6b7280;
+      --accent-a: #d97706;
+      --accent-b: #0f766e;
+      --line: rgba(15, 23, 42, 0.08);
+      --shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "SUIT", "Pretendard", -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top right, rgba(245, 158, 11, 0.18), transparent 22%),
+        radial-gradient(circle at top left, rgba(13, 148, 136, 0.12), transparent 18%),
+        var(--bg);
+    }
+    .page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 40px 24px 72px;
+    }
+    .hero {
+      padding: 28px 32px;
+      border-radius: 32px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.78));
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+    .eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      font-size: 12px;
+      color: #9a3412;
+      font-weight: 700;
+    }
+    h1 {
+      margin: 14px 0 12px;
+      font-size: clamp(34px, 6vw, 64px);
+      line-height: 0.96;
+      font-family: "Iowan Old Style", "Times New Roman", serif;
+    }
+    .hero-grid {
+      display: grid;
+      gap: 20px;
+      grid-template-columns: 2fr 1fr;
+      align-items: end;
+    }
+    .hero-note, .meta-list, .lead-note, .stacked-notes p, .fit-card-meta, .warning-list li {
+      color: var(--muted);
+      line-height: 1.7;
+    }
+    .meta-panel {
+      padding: 18px 20px;
+      border-radius: 24px;
+      background: rgba(255,255,255,0.74);
+      border: 1px solid var(--line);
+    }
+    .meta-list {
+      display: grid;
+      gap: 8px;
+      font-size: 14px;
+    }
+    .layout {
+      display: grid;
+      gap: 18px;
+      margin-top: 20px;
+    }
+    .widget-card {
+      border-radius: 28px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      padding: 24px;
+    }
+    .widget-eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: #9a3412;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    h2 {
+      margin: 0 0 14px;
+      font-family: "Iowan Old Style", "Times New Roman", serif;
+      font-size: clamp(26px, 4vw, 38px);
+    }
+    .metric-grid, .fit-grid, .microcycle-grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .coach-grid, .direction-grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+    .metric-card, .fit-card {
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+      padding: 18px;
+    }
+    .coach-card, .direction-card, .commentary-card {
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+      padding: 18px;
+    }
+    .coaching-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: start;
+      margin-bottom: 16px;
+    }
+    .coaching-summary {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+    .overview-hero {
+      margin-bottom: 16px;
+      padding: 16px 18px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, rgba(15,118,110,0.10), rgba(217,119,6,0.12));
+      border: 1px solid var(--line);
+    }
+    .overview-title {
+      font-size: clamp(24px, 3vw, 34px);
+      font-family: "Iowan Old Style", "Times New Roman", serif;
+      font-weight: 700;
+    }
+    .overview-brief {
+      margin: 10px 0 0;
+      color: var(--muted);
+      line-height: 1.75;
+      max-width: 60ch;
+    }
+    .coach-card-title, .commentary-title {
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #9a3412;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .coach-list, .commentary-list {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+    .commentary-card {
+      margin: 0 0 18px;
+      background: rgba(248,250,252,0.84);
+    }
+    .commentary-headline {
+      margin: 0 0 10px;
+      font-weight: 700;
+      line-height: 1.6;
+    }
+    .direction-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .direction-priority, .confidence-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .direction-primary, .confidence-high {
+      background: rgba(15,118,110,0.14);
+      color: #0f766e;
+    }
+    .direction-secondary, .confidence-medium {
+      background: rgba(217,119,6,0.14);
+      color: #b45309;
+    }
+    .direction-support, .direction-review, .confidence-low {
+      background: rgba(148,163,184,0.18);
+      color: #475569;
+    }
+    .direction-why {
+      margin: 0 0 12px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+    .direction-session {
+      font-weight: 700;
+      line-height: 1.6;
+    }
+    .microcycle-card {
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+      padding: 18px;
+    }
+    .microcycle-day {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #9a3412;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .microcycle-title {
+      font-size: 20px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .microcycle-intent {
+      color: #0f766e;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .microcycle-session {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+    .metric-label {
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #9a3412;
+      font-weight: 700;
+    }
+    .metric-value {
+      margin-top: 10px;
+      font-size: clamp(28px, 4vw, 42px);
+      font-weight: 800;
+      line-height: 1;
+    }
+    .metric-note {
+      margin: 12px 0 0;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+    .power-bar-chart {
+      display: grid;
+      gap: 12px;
+      margin: 0 0 18px;
+    }
+    .zone-range-grid {
+      display: grid;
+      gap: 14px;
+      margin: 0 0 22px;
+    }
+    .zone-range-card {
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+      padding: 16px 18px;
+    }
+    .zone-range-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: baseline;
+      margin-bottom: 12px;
+    }
+    .zone-range-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .zone-range-values, .zone-range-target {
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .zone-range-track {
+      position: relative;
+      height: 14px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(15,118,110,0.10), rgba(217,119,6,0.12));
+      margin-bottom: 12px;
+    }
+    .zone-range-band {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      border-radius: inherit;
+      background: linear-gradient(90deg, rgba(15,118,110,0.9), rgba(45,212,191,0.82));
+      box-shadow: 0 8px 18px rgba(15,118,110,0.18);
+    }
+    .zone-mix-track {
+      display: flex;
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(148,163,184,0.14);
+    }
+    .zone-mix-fat {
+      background: linear-gradient(90deg, rgba(217,119,6,0.95), rgba(251,191,36,0.82));
+    }
+    .zone-mix-cho {
+      background: linear-gradient(90deg, rgba(15,118,110,0.95), rgba(45,212,191,0.8));
+    }
+    .zone-mix-labels {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .zone-mix-empty {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .power-bar-row {
+      display: grid;
+      gap: 8px;
+    }
+    .power-bar-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .power-bar-meta strong {
+      color: var(--ink);
+      font-size: 15px;
+    }
+    .power-track {
+      height: 12px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.18);
+    }
+    .power-fill {
+      height: 100%;
+      border-radius: inherit;
+    }
+    .compare-grid {
+      display: grid;
+      gap: 14px;
+      margin: 0 0 18px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+    .compare-card {
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+      padding: 16px;
+    }
+    .compare-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      font-size: 14px;
+    }
+    .effort-dot-card {
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+      padding: 16px;
+    }
+    .effort-dot-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      font-size: 14px;
+    }
+    .dumbbell-row {
+      display: grid;
+      gap: 10px;
+    }
+    .dumbbell-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .dumbbell-track {
+      position: relative;
+      height: 28px;
+    }
+    .dumbbell-line {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      right: 0;
+      height: 4px;
+      transform: translateY(-50%);
+      border-radius: 999px;
+      background: rgba(148,163,184,0.24);
+    }
+    .dumbbell-dot {
+      position: absolute;
+      top: 50%;
+      width: 14px;
+      height: 14px;
+      margin-left: -7px;
+      transform: translateY(-50%);
+      border-radius: 999px;
+      box-shadow: 0 6px 16px rgba(15,23,42,0.18);
+    }
+    .dumbbell-dot-left {
+      background: linear-gradient(180deg, rgba(217,119,6,0.98), rgba(251,191,36,0.86));
+    }
+    .dumbbell-dot-right {
+      background: linear-gradient(180deg, rgba(15,118,110,0.98), rgba(45,212,191,0.84));
+    }
+    .dumbbell-delta {
+      font-size: 13px;
+      color: var(--muted);
+      text-align: right;
+    }
+    .compare-source {
+      font-size: 12px;
+      color: var(--muted);
+      text-align: right;
+    }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    .data-table th,
+    .data-table td {
+      padding: 12px 10px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    .data-table thead th {
+      color: #92400e;
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .warning-card {
+      background: rgba(255, 251, 235, 0.9);
+    }
+    .warning-list {
+      margin: 0;
+      padding-left: 18px;
+    }
+    .artifact-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 18px;
+    }
+    .artifact-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 18px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.84);
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 700;
+    }
+    .artifact-button-primary {
+      background: linear-gradient(180deg, rgba(15,118,110,0.98), rgba(45,212,191,0.86));
+      color: white;
+      border-color: rgba(15,118,110,0.3);
+    }
+    .artifact-grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    }
+    .artifact-card {
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+      padding: 16px;
+    }
+    .artifact-card-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .artifact-card-head a {
+      color: var(--accent-b);
+      text-decoration: none;
+      font-weight: 700;
+    }
+    .artifact-card img {
+      width: 100%;
+      display: block;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+    @media (max-width: 860px) {
+      .hero-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="eyebrow">INSCYD Interpretation</div>
+      <div class="hero-grid">
+        <div>
+          <h1>Geunyun Park</h1>
+          <div class="hero-note">INSCYD 결과와 함께 제출된 수행 파일을 기준으로 핵심 수치와 테스트 evidence를 정리했습니다.</div>
+          
+        <div class="artifact-actions">
+          <a class="artifact-button artifact-button-primary" href="./original-inscyd-report.pdf" target="_blank" rel="noreferrer">원본 PDF 열기</a>
+          <a class="artifact-button" href="./original-inscyd-report.pdf" download="KY Park_2026.pdf">PDF 다운로드</a>
+        </div>
+        
+        </div>
+        <aside class="meta-panel">
+          <div class="meta-list">
+            <div><strong>Method</strong> INSCYD 해설 리포트</div>
+            <div><strong>Sport</strong> Cycling</div>
+            <div><strong>Type</strong> PPD</div>
+            <div><strong>Date</strong> 2026-01-06</div>
+            <div><strong>Source PDF</strong> KY Park_2026.pdf</div>
+          </div>
+        </aside>
+      </div>
+    </section>
+    <div class="layout">
+      
+    <section class="widget-card">
+      <div class="widget-eyebrow">Reported Metrics</div>
+      <h2>INSCYD가 제시한 핵심 지표</h2>
+      <div class="metric-grid">
+        <article class="metric-card">
+          <div class="metric-label">VO2max</div>
+          <div class="metric-value">51.7 mL/kg/min</div>
+          <p class="metric-note">INSCYD 리포트에 기재된 최대 유산소 능력입니다. 고강도 ceiling과 회복 여지를 읽는 기준으로 사용합니다.</p>
+        </article>
+        
+        <article class="metric-card">
+          <div class="metric-label">VLamax</div>
+          <div class="metric-value">0.53 mmol/L/s</div>
+          <p class="metric-note">해당 수치는 무산소 해당계 기여도를 요약합니다. 높을수록 스프린트/가속 쪽 강점이 있지만 장시간 경제성은 별도로 봐야 합니다.</p>
+        </article>
+        
+        <article class="metric-card">
+          <div class="metric-label">FatMax</div>
+          <div class="metric-value">150.0W</div>
+          <p class="metric-note">리포트가 제시한 지방산화 효율 중심 강도입니다. 장시간 지구력 세션 anchor로 가장 먼저 참고할 수 있습니다.</p>
+        </article>
+        
+        <article class="metric-card">
+          <div class="metric-label">AT</div>
+          <div class="metric-value">230.0W</div>
+          <p class="metric-note">INSCYD가 제시한 threshold anchor입니다. 실전 FTP나 훈련 중 지속 가능 강도와 반드시 같이 해석해야 합니다.</p>
+        </article>
+        </div>
+    </section>
+    
+
+    <section class="widget-card">
+      <div class="widget-eyebrow">Coaching Overview</div>
+      <div class="coaching-header">
+        <div>
+          <h2>현재 상태</h2>
+          <p class="coaching-summary">여러 에너지 시스템이 함께 보이며 우선순위를 두고 다듬을 여지가 있습니다.</p>
+        </div>
+        <span class="confidence-badge confidence-medium">MEDIUM</span>
+      </div>
+      <div class="overview-hero">
+        <div class="overview-title">균형 개발형</div>
+        <p class="overview-brief">균형 개발형 기준으로 보면, 지금 프로파일은 한쪽만 과하게 밀기보다 endurance와 threshold를 함께 정리하는 올라운드 블록이 어울립니다. uploaded FIT 비교 근거도 있어 추천 신뢰도는 비교적 괜찮습니다.</p>
+      </div>
+      <div class="coach-grid">
+        <article class="coach-card">
+          <div class="coach-card-title">강점</div>
+          <ul class="coach-list"><li>무산소 punch가 분명한 올라운더 쪽입니다.</li></ul>
+        </article>
+        <article class="coach-card">
+          <div class="coach-card-title">보완 포인트</div>
+          <ul class="coach-list"><li>유산소 ceiling은 중간 이상입니다.</li><li>FatMax는 실전 지구력 anchor로 쓸 수 있지만 더 올릴 여지가 있습니다.</li></ul>
+        </article>
+        <article class="coach-card">
+          <div class="coach-card-title">근거 anchor</div>
+          <ul class="coach-list"><li>VO2max 51.7 mL/kg/min</li><li>VLamax 0.53 mmol/L/s</li><li>FatMax/AT ratio 0.65</li></ul>
+        </article>
+      </div>
+    </section>
+    
+
+    <section class="widget-card">
+      <div class="widget-eyebrow">Training Direction</div>
+      <h2>향후 훈련 방향</h2>
+      <div class="direction-grid">
+        <article class="direction-card">
+          <div class="direction-head">
+            <span class="direction-priority direction-primary">primary</span>
+            <strong>FatMax / base economy 확장</strong>
+          </div>
+          <p class="direction-why">FatMax anchor를 더 안정적으로 쓰기 위해 zone 2 전후의 지방 대사 기반을 키우는 편이 좋습니다.</p>
+          <div class="direction-session">150.0W 전후로 60-120분 steady ride, 후반부 cadence와 nutrition 반응까지 같이 점검합니다.</div>
+        </article>
+        
+        <article class="direction-card">
+          <div class="direction-head">
+            <span class="direction-priority direction-secondary">secondary</span>
+            <strong>Threshold support 정리</strong>
+          </div>
+          <p class="direction-why">AT 근처 지속 능력은 실전 페이스와 직접 연결되므로 주간 기준 anchor로 유지할 가치가 큽니다.</p>
+          <div class="direction-session">220.0W - 230.0W 범위에서 2 x 16-20min 또는 3 x 10-12min.</div>
+        </article>
+        
+        <article class="direction-card">
+          <div class="direction-head">
+            <span class="direction-priority direction-support">support</span>
+            <strong>무산소 punch는 유지, 과잉 비중은 제한</strong>
+          </div>
+          <p class="direction-why">VLamax가 이미 분명해 짧은 강점은 살리되, 전체 블록의 대부분을 여기에 쓰는 것은 비효율적일 수 있습니다.</p>
+          <div class="direction-session">주 1회 8-12초 sprint 4-6회 정도로 sharpness만 유지하고, 나머지 고강도는 threshold 또는 VO2 쪽으로 배분합니다.</div>
+        </article>
+        
+        <article class="direction-card">
+          <div class="direction-head">
+            <span class="direction-priority direction-review">review</span>
+            <strong>reported endurance와 실제 수행 재현 차이 점검</strong>
+          </div>
+          <p class="direction-why">3-8분 구간 FIT가 reported보다 낮으면 이번 업로드만으로는 long effort 재현도가 충분하지 않을 수 있습니다.</p>
+          <div class="direction-session">컨디션이 비슷한 날 3분/8분 effort를 다시 수집해 reported metric과의 차이를 재확인합니다.</div>
+        </article>
+        </div>
+    </section>
+    
+
+    <section class="widget-card">
+      <div class="widget-eyebrow">Example Week</div>
+      <h2>예시 주간 구성</h2>
+      <p class="coaching-summary">지금 리포트의 training direction을 실제 훈련 블록으로 옮길 때 참고할 수 있는 간단한 microcycle 예시입니다.</p>
+      <div class="microcycle-grid">
+        <article class="microcycle-card">
+          <div class="microcycle-day">Day 1</div>
+          <div class="microcycle-title">Endurance Main</div>
+          <div class="microcycle-intent">기반 체력 유지/확장</div>
+          <p class="microcycle-session">150.0W 전후로 2-3시간 long endurance</p>
+        </article>
+        
+        <article class="microcycle-card">
+          <div class="microcycle-day">Day 2</div>
+          <div class="microcycle-title">Threshold Main</div>
+          <div class="microcycle-intent">지속 강도 정리</div>
+          <p class="microcycle-session">220.0W - 230.0W 범위 2 x 16-20min</p>
+        </article>
+        
+        <article class="microcycle-card">
+          <div class="microcycle-day">Day 3</div>
+          <div class="microcycle-title">Recovery / Easy</div>
+          <div class="microcycle-intent">회복과 다음 질세션 준비</div>
+          <p class="microcycle-session">아주 가볍게 45-60분 또는 완전 휴식</p>
+        </article>
+        
+        <article class="microcycle-card">
+          <div class="microcycle-day">Day 4</div>
+          <div class="microcycle-title">Top-end Maintenance</div>
+          <div class="microcycle-intent">짧은 반응성 유지</div>
+          <p class="microcycle-session">8-12초 all-out sprint 4-6회, 완전 회복</p>
+        </article>
+        </div>
+    </section>
+    
+
+    <section class="widget-card">
+      <div class="widget-eyebrow">Zones</div>
+      <h2>훈련 강도 구간 해석</h2>
+      
+    <div class="commentary-card">
+      <div class="commentary-title">Zone Coach Note</div>
+      <p class="commentary-headline">FatMax는 usable하지만 threshold 대비 간격이 커서 base economy를 더 다듬을 여지가 있습니다.</p>
+      <ul class="commentary-list"><li>FatMax anchor는 150.0W이고 AT는 230.0W입니다.</li><li>medio 이후 CHO 비중이 빠르게 높아지면 threshold 전후 훈련의 연료 의존도 관리가 중요합니다.</li><li>가장 낮은 zone의 지방 기여는 67% 수준으로 시작합니다.</li></ul>
+    </div>
+    
+      <div class="zone-range-grid">
+        <article class="zone-range-card">
+          <div class="zone-range-head">
+            <div>
+              <div class="zone-range-name">Zone 1 · recovery</div>
+              <div class="zone-range-values">97.0W - 137.0W</div>
+            </div>
+            <div class="zone-range-target">target 113.0W</div>
+          </div>
+          <div class="zone-range-track">
+            <div class="zone-range-band" style="left:0.0%; width:15.9%"></div>
+          </div>
+          
+            <div class="zone-mix-track">
+              <div class="zone-mix-fat" style="width:67.0%"></div>
+              <div class="zone-mix-cho" style="width:33.0%"></div>
+            </div>
+            <div class="zone-mix-labels">
+              <span>Fat 67.0%</span>
+              <span>CHO 33.0%</span>
+            </div>
+            
+        </article>
+        
+        <article class="zone-range-card">
+          <div class="zone-range-head">
+            <div>
+              <div class="zone-range-name">Zone 2 · base</div>
+              <div class="zone-range-values">137.0W - 178.0W</div>
+            </div>
+            <div class="zone-range-target">target 162.0W</div>
+          </div>
+          <div class="zone-range-track">
+            <div class="zone-range-band" style="left:15.9%; width:16.3%"></div>
+          </div>
+          
+            <div class="zone-mix-track">
+              <div class="zone-mix-fat" style="width:52.0%"></div>
+              <div class="zone-mix-cho" style="width:48.0%"></div>
+            </div>
+            <div class="zone-mix-labels">
+              <span>Fat 52.0%</span>
+              <span>CHO 48.0%</span>
+            </div>
+            
+        </article>
+        
+        <article class="zone-range-card">
+          <div class="zone-range-head">
+            <div>
+              <div class="zone-range-name">Zone 3 · medio</div>
+              <div class="zone-range-values">166.0W - 214.0W</div>
+            </div>
+            <div class="zone-range-target">target 190.0W</div>
+          </div>
+          <div class="zone-range-track">
+            <div class="zone-range-band" style="left:27.4%; width:19.0%"></div>
+          </div>
+          
+            <div class="zone-mix-track">
+              <div class="zone-mix-fat" style="width:36.0%"></div>
+              <div class="zone-mix-cho" style="width:64.0%"></div>
+            </div>
+            <div class="zone-mix-labels">
+              <span>Fat 36.0%</span>
+              <span>CHO 64.0%</span>
+            </div>
+            
+        </article>
+        
+        <article class="zone-range-card">
+          <div class="zone-range-head">
+            <div>
+              <div class="zone-range-name">Zone 4 · FATmax</div>
+              <div class="zone-range-values">135.0W - 165.0W</div>
+            </div>
+            <div class="zone-range-target">target 150.0W</div>
+          </div>
+          <div class="zone-range-track">
+            <div class="zone-range-band" style="left:15.1%; width:11.9%"></div>
+          </div>
+          
+            <div class="zone-mix-track">
+              <div class="zone-mix-fat" style="width:57.0%"></div>
+              <div class="zone-mix-cho" style="width:43.0%"></div>
+            </div>
+            <div class="zone-mix-labels">
+              <span>Fat 57.0%</span>
+              <span>CHO 43.0%</span>
+            </div>
+            
+        </article>
+        
+        <article class="zone-range-card">
+          <div class="zone-range-head">
+            <div>
+              <div class="zone-range-name">Zone 5 · anaerobic threshold</div>
+              <div class="zone-range-values">214.0W - 246.0W</div>
+            </div>
+            <div class="zone-range-target">target 230.0W</div>
+          </div>
+          <div class="zone-range-track">
+            <div class="zone-range-band" style="left:46.4%; width:12.7%"></div>
+          </div>
+          
+            <div class="zone-mix-track">
+              <div class="zone-mix-fat" style="width:0.0%"></div>
+              <div class="zone-mix-cho" style="width:100.0%"></div>
+            </div>
+            <div class="zone-mix-labels">
+              <span>Fat 0.0%</span>
+              <span>CHO 100.0%</span>
+            </div>
+            
+        </article>
+        
+        <article class="zone-range-card">
+          <div class="zone-range-head">
+            <div>
+              <div class="zone-range-name">Zone 6 · aerobic maximum</div>
+              <div class="zone-range-values">308.0W - 338.0W</div>
+            </div>
+            <div class="zone-range-target">target 323.0W</div>
+          </div>
+          <div class="zone-range-track">
+            <div class="zone-range-band" style="left:83.7%; width:11.9%"></div>
+          </div>
+          <div class="zone-mix-empty">fuel mix unavailable</div>
+        </article>
+        
+        <article class="zone-range-card">
+          <div class="zone-range-head">
+            <div>
+              <div class="zone-range-name">Zone 7 · high anaerobic</div>
+              <div class="zone-range-values">304.0W - 349.0W</div>
+            </div>
+            <div class="zone-range-target">target 327.0W</div>
+          </div>
+          <div class="zone-range-track">
+            <div class="zone-range-band" style="left:82.1%; width:17.9%"></div>
+          </div>
+          <div class="zone-mix-empty">fuel mix unavailable</div>
+        </article>
+        
+        <article class="zone-range-card">
+          <div class="zone-range-head">
+            <div>
+              <div class="zone-range-name">Zone 8 · lactate shuttling</div>
+              <div class="zone-range-values">150.0W - 257.0W</div>
+            </div>
+            <div class="zone-range-target">target 257.0W</div>
+          </div>
+          <div class="zone-range-track">
+            <div class="zone-range-band" style="left:21.0%; width:42.5%"></div>
+          </div>
+          <div class="zone-mix-empty">fuel mix unavailable</div>
+        </article>
+        </div>
+      <table class="data-table">
+        <thead><tr><th>Zone</th><th>Name</th><th>Power</th><th>Fat %</th><th>CHO %</th></tr></thead>
+        <tbody>
+        <tr>
+          <td>1</td>
+          <td>recovery</td>
+          <td>97.0W - 137.0W</td>
+          <td>67.0%</td>
+          <td>33.0%</td>
+        </tr>
+        
+        <tr>
+          <td>2</td>
+          <td>base</td>
+          <td>137.0W - 178.0W</td>
+          <td>52.0%</td>
+          <td>48.0%</td>
+        </tr>
+        
+        <tr>
+          <td>3</td>
+          <td>medio</td>
+          <td>166.0W - 214.0W</td>
+          <td>36.0%</td>
+          <td>64.0%</td>
+        </tr>
+        
+        <tr>
+          <td>4</td>
+          <td>FATmax</td>
+          <td>135.0W - 165.0W</td>
+          <td>57.0%</td>
+          <td>43.0%</td>
+        </tr>
+        
+        <tr>
+          <td>5</td>
+          <td>anaerobic threshold</td>
+          <td>214.0W - 246.0W</td>
+          <td>0.0%</td>
+          <td>100.0%</td>
+        </tr>
+        
+        <tr>
+          <td>6</td>
+          <td>aerobic maximum</td>
+          <td>308.0W - 338.0W</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+        
+        <tr>
+          <td>7</td>
+          <td>high anaerobic</td>
+          <td>304.0W - 349.0W</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+        
+        <tr>
+          <td>8</td>
+          <td>lactate shuttling</td>
+          <td>150.0W - 257.0W</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+        </tbody>
+      </table>
+    </section>
+    
+
+    <section class="widget-card">
+      <div class="widget-eyebrow">Protocol Evidence</div>
+      <h2>Reported vs FIT best effort</h2>
+      
+    <div class="commentary-card">
+      <div class="commentary-title">Effort Coach Note</div>
+      <p class="commentary-headline">업로드된 FIT 근거는 비교적 충분합니다.</p>
+      <ul class="commentary-list"><li>짧은 sprint power는 reported 값 대비 FIT 근거가 낮습니다.</li><li>3-8분 구간은 uploaded FIT에서 reported 수치보다 낮게 나타납니다.</li><li>짧은 effort와 3-8분 effort를 같이 보면, punch와 sustained power가 같은 방향으로 움직이는지 확인할 수 있습니다.</li></ul>
+    </div>
+    
+      <div class="compare-grid">
+        <div class="compare-card">
+          <div class="compare-head">
+            <span>Power Duration · 2m 59s</span>
+            <strong>2 uploaded FIT files</strong>
+          </div>
+          <div class="dumbbell-row">
+            <div class="dumbbell-meta">
+              <span>Reported 353.0W</span>
+              <span>FIT best 248.0W</span>
+            </div>
+            <div class="dumbbell-track">
+              <div class="dumbbell-line"></div>
+              <div class="dumbbell-dot dumbbell-dot-left" style="left:46.1%"></div>
+              <div class="dumbbell-dot dumbbell-dot-right" style="left:32.4%"></div>
+            </div>
+            <div class="dumbbell-delta">Δ -105.0W</div>
+            <div class="compare-source">best source 2026-01-06-10-29-23.fit</div>
+          </div>
+        </div>
+        
+        <div class="compare-card">
+          <div class="compare-head">
+            <span>Power Duration · 7m 58s</span>
+            <strong>2 uploaded FIT files</strong>
+          </div>
+          <div class="dumbbell-row">
+            <div class="dumbbell-meta">
+              <span>Reported 306.0W</span>
+              <span>FIT best 149.2W</span>
+            </div>
+            <div class="dumbbell-track">
+              <div class="dumbbell-line"></div>
+              <div class="dumbbell-dot dumbbell-dot-left" style="left:40.0%"></div>
+              <div class="dumbbell-dot dumbbell-dot-right" style="left:19.5%"></div>
+            </div>
+            <div class="dumbbell-delta">Δ -156.8W</div>
+            <div class="compare-source">best source 2026-01-06-10-29-23.fit</div>
+          </div>
+        </div>
+        
+        <div class="compare-card">
+          <div class="compare-head">
+            <span>VO2 Max · 2m 59s</span>
+            <strong>2 uploaded FIT files</strong>
+          </div>
+          <div class="dumbbell-row">
+            <div class="dumbbell-meta">
+              <span>Reported 353.0W</span>
+              <span>FIT best 248.0W</span>
+            </div>
+            <div class="dumbbell-track">
+              <div class="dumbbell-line"></div>
+              <div class="dumbbell-dot dumbbell-dot-left" style="left:46.1%"></div>
+              <div class="dumbbell-dot dumbbell-dot-right" style="left:32.4%"></div>
+            </div>
+            <div class="dumbbell-delta">Δ -105.0W</div>
+            <div class="compare-source">best source 2026-01-06-10-29-23.fit</div>
+          </div>
+        </div>
+        
+        <div class="compare-card">
+          <div class="compare-head">
+            <span>VO2 Max · 7m 58s</span>
+            <strong>2 uploaded FIT files</strong>
+          </div>
+          <div class="dumbbell-row">
+            <div class="dumbbell-meta">
+              <span>Reported 306.0W</span>
+              <span>FIT best 149.2W</span>
+            </div>
+            <div class="dumbbell-track">
+              <div class="dumbbell-line"></div>
+              <div class="dumbbell-dot dumbbell-dot-left" style="left:40.0%"></div>
+              <div class="dumbbell-dot dumbbell-dot-right" style="left:19.5%"></div>
+            </div>
+            <div class="dumbbell-delta">Δ -156.8W</div>
+            <div class="compare-source">best source 2026-01-06-10-29-23.fit</div>
+          </div>
+        </div>
+        
+        <div class="compare-card">
+          <div class="compare-head">
+            <span>Power Duration · 16s</span>
+            <strong>2 uploaded FIT files</strong>
+          </div>
+          <div class="dumbbell-row">
+            <div class="dumbbell-meta">
+              <span>Reported 765.0W</span>
+              <span>FIT best 327.1W</span>
+            </div>
+            <div class="dumbbell-track">
+              <div class="dumbbell-line"></div>
+              <div class="dumbbell-dot dumbbell-dot-left" style="left:100.0%"></div>
+              <div class="dumbbell-dot dumbbell-dot-right" style="left:42.8%"></div>
+            </div>
+            <div class="dumbbell-delta">Δ -437.9W</div>
+            <div class="compare-source">best source 2026-01-06-10-29-23.fit</div>
+          </div>
+        </div>
+        
+        <div class="compare-card">
+          <div class="compare-head">
+            <span>Power Duration · 15s</span>
+            <strong>2 uploaded FIT files</strong>
+          </div>
+          <div class="dumbbell-row">
+            <div class="dumbbell-meta">
+              <span>Reported 746.0W</span>
+              <span>FIT best 326.8W</span>
+            </div>
+            <div class="dumbbell-track">
+              <div class="dumbbell-line"></div>
+              <div class="dumbbell-dot dumbbell-dot-left" style="left:97.5%"></div>
+              <div class="dumbbell-dot dumbbell-dot-right" style="left:42.7%"></div>
+            </div>
+            <div class="dumbbell-delta">Δ -419.2W</div>
+            <div class="compare-source">best source 2026-01-06-10-29-23.fit</div>
+          </div>
+        </div>
+        </div>
+      <table class="data-table">
+        <thead><tr><th>Type</th><th>Duration</th><th>PDF Avg</th><th>FIT Best</th><th>Delta</th></tr></thead>
+        <tbody>
+        <tr>
+          <td>Power Duration</td>
+          <td>2m 59s</td>
+          <td>353.0W</td>
+          <td>248.0W</td>
+          <td>-105.0W</td>
+        </tr>
+        
+        <tr>
+          <td>Power Duration</td>
+          <td>7m 58s</td>
+          <td>306.0W</td>
+          <td>149.2W</td>
+          <td>-156.8W</td>
+        </tr>
+        
+        <tr>
+          <td>VO2 Max</td>
+          <td>2m 59s</td>
+          <td>353.0W</td>
+          <td>248.0W</td>
+          <td>-105.0W</td>
+        </tr>
+        
+        <tr>
+          <td>VO2 Max</td>
+          <td>7m 58s</td>
+          <td>306.0W</td>
+          <td>149.2W</td>
+          <td>-156.8W</td>
+        </tr>
+        
+        <tr>
+          <td>Power Duration</td>
+          <td>16s</td>
+          <td>765.0W</td>
+          <td>327.1W</td>
+          <td>-437.9W</td>
+        </tr>
+        
+        <tr>
+          <td>Power Duration</td>
+          <td>15s</td>
+          <td>746.0W</td>
+          <td>326.8W</td>
+          <td>-419.2W</td>
+        </tr>
+        </tbody>
+      </table>
+    </section>
+    
+
+
+    <section class="widget-card">
+      <div class="widget-eyebrow">FIT Evidence</div>
+      <h2>실제 수행 파일에서 확인된 세션 개요</h2>
+      <div class="fit-grid">
+        <article class="fit-card">
+          <div class="fit-card-title">2026-01-06-09-35-14.fit</div>
+          <div class="fit-card-meta">duration 17m 42s · max 357.0W</div>
+          <div class="fit-card-meta">target ceiling 340.0W · laps 29</div>
+        </article>
+        
+        <article class="fit-card">
+          <div class="fit-card-title">2026-01-06-10-29-23.fit</div>
+          <div class="fit-card-meta">duration 20m 35s · max 467.0W</div>
+          <div class="fit-card-meta">target ceiling 365.0W · laps 31</div>
+        </article>
+        </div>
+    </section>
+    
+
+    <section class="widget-card">
+      <div class="widget-eyebrow">Planned Protocol</div>
+      <h2>프로토콜 설계 참고</h2>
+      <div class="stacked-notes">
+        <p><strong>Power Performance Decoder - V3</strong></p>
+        <p>source: Power_Performance_Decoder___V3.zwo</p>
+        <p>stages: 16 · duration: -</p>
+        
+      </div>
+    </section>
+    
+
+    <section class="widget-card warning-card">
+      <div class="widget-eyebrow">Warnings</div>
+      <h2>파싱/해석 시 참고사항</h2>
+      <ul class="warning-list"><li>[WARN] Block &#x27;block_1&#x27; has non-contiguous laps: [1, 2, 3, 4, 29]</li><li>[WARN] Block &#x27;block_2&#x27; has non-contiguous laps: [5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]</li><li>[WARN] Block &#x27;recovery_2&#x27; has non-contiguous laps: [10, 25, 26, 27, 28]</li><li>[WARN] Block &#x27;block_2&#x27; has non-contiguous laps: [6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28]</li><li>[WARN] Block &#x27;recovery_2&#x27; has non-contiguous laps: [10, 29, 30, 31]</li><li>ZWO parsing fell back to text summary: not well-formed (invalid token): line 26, column 91</li></ul>
+    </section>
+    
+      
+    <section class="widget-card">
+      <div class="widget-eyebrow">Original Pages</div>
+      <h2>원본 리포트 페이지 참조</h2>
+      <div class="artifact-grid">
+        <article class="artifact-card">
+          <div class="artifact-card-head">
+            <span>Page 1</span>
+            <a href="./original-page-1.png" target="_blank" rel="noreferrer">open image</a>
+          </div>
+          <img src="./original-page-1.png" alt="INSCYD page 1" loading="lazy" />
+        </article>
+        
+        <article class="artifact-card">
+          <div class="artifact-card-head">
+            <span>Page 2</span>
+            <a href="./original-page-2.png" target="_blank" rel="noreferrer">open image</a>
+          </div>
+          <img src="./original-page-2.png" alt="INSCYD page 2" loading="lazy" />
+        </article>
+        </div>
+    </section>
+    
+    </div>
+  </main>
+  <script id="report-data" type="application/json">{&quot;meta&quot;: {&quot;analysis_method&quot;: &quot;INSCYD 해설 리포트&quot;, &quot;report_type&quot;: &quot;inscyd&quot;, &quot;generated_at&quot;: &quot;2026-03-24T07:55:46.452814+00:00&quot;}, &quot;subject&quot;: {&quot;name&quot;: &quot;Geunyun Park&quot;, &quot;body_mass_kg&quot;: 74.2, &quot;body_height_cm&quot;: 179.5}, &quot;session&quot;: {&quot;test_date&quot;: &quot;2026-01-06&quot;, &quot;sport&quot;: &quot;Cycling&quot;, &quot;test_type&quot;: &quot;PPD&quot;}, &quot;inscyd&quot;: {&quot;vo2max_rel_ml_kg_min&quot;: 51.7, &quot;vlamax_mmol_l_s&quot;: 0.53, &quot;mfo_abs_kcal_h&quot;: 325.0, &quot;fatmax_watt&quot;: 150.0, &quot;at_abs_watt&quot;: 230.0, &quot;training_zones&quot;: [{&quot;zone_number&quot;: 1, &quot;name&quot;: &quot;recovery&quot;, &quot;code&quot;: &quot;rec&quot;, &quot;lower_watt&quot;: 97.0, &quot;upper_watt&quot;: 137.0, &quot;target_watt&quot;: 113.0, &quot;energy_kcal_h&quot;: 437.0, &quot;fat_percent&quot;: 67.0, &quot;carbohydrate_percent&quot;: 33.0, &quot;fat_g_h&quot;: 31.0, &quot;carbohydrate_g_h&quot;: 35.0}, {&quot;zone_number&quot;: 2, &quot;name&quot;: &quot;base&quot;, &quot;code&quot;: &quot;bas&quot;, &quot;lower_watt&quot;: 137.0, &quot;upper_watt&quot;: 178.0, &quot;target_watt&quot;: 162.0, &quot;energy_kcal_h&quot;: 617.0, &quot;fat_percent&quot;: 52.0, &quot;carbohydrate_percent&quot;: 48.0, &quot;fat_g_h&quot;: 34.0, &quot;carbohydrate_g_h&quot;: 71.0}, {&quot;zone_number&quot;: 3, &quot;name&quot;: &quot;medio&quot;, &quot;code&quot;: &quot;med&quot;, &quot;lower_watt&quot;: 166.0, &quot;upper_watt&quot;: 214.0, &quot;target_watt&quot;: 190.0, &quot;energy_kcal_h&quot;: 715.0, &quot;fat_percent&quot;: 36.0, &quot;carbohydrate_percent&quot;: 64.0, &quot;fat_g_h&quot;: 27.0, &quot;carbohydrate_g_h&quot;: 109.0}, {&quot;zone_number&quot;: 4, &quot;name&quot;: &quot;FATmax&quot;, &quot;code&quot;: &quot;fmax&quot;, &quot;lower_watt&quot;: 135.0, &quot;upper_watt&quot;: 165.0, &quot;target_watt&quot;: 150.0, &quot;energy_kcal_h&quot;: 573.0, &quot;fat_percent&quot;: 57.0, &quot;carbohydrate_percent&quot;: 43.0, &quot;fat_g_h&quot;: 34.0, &quot;carbohydrate_g_h&quot;: 59.0}, {&quot;zone_number&quot;: 5, &quot;name&quot;: &quot;anaerobic threshold&quot;, &quot;code&quot;: &quot;AT&quot;, &quot;lower_watt&quot;: 214.0, &quot;upper_watt&quot;: 246.0, &quot;target_watt&quot;: 230.0, &quot;energy_kcal_h&quot;: 844.0, &quot;fat_percent&quot;: 0.0, &quot;carbohydrate_percent&quot;: 100.0, &quot;fat_g_h&quot;: 0.0, &quot;carbohydrate_g_h&quot;: 202.0}, {&quot;zone_number&quot;: 6, &quot;name&quot;: &quot;aerobic maximum&quot;, &quot;code&quot;: &quot;aemax&quot;, &quot;lower_watt&quot;: 308.0, &quot;upper_watt&quot;: 338.0, &quot;target_watt&quot;: 323.0, &quot;energy_kcal_h&quot;: null, &quot;fat_percent&quot;: null, &quot;carbohydrate_percent&quot;: null, &quot;fat_g_h&quot;: null, &quot;carbohydrate_g_h&quot;: null}, {&quot;zone_number&quot;: 7, &quot;name&quot;: &quot;high anaerobic&quot;, &quot;code&quot;: &quot;anmax&quot;, &quot;lower_watt&quot;: 304.0, &quot;upper_watt&quot;: 349.0, &quot;target_watt&quot;: 327.0, &quot;energy_kcal_h&quot;: null, &quot;fat_percent&quot;: null, &quot;carbohydrate_percent&quot;: null, &quot;fat_g_h&quot;: null, &quot;carbohydrate_g_h&quot;: null}, {&quot;zone_number&quot;: 8, &quot;name&quot;: &quot;lactate shuttling&quot;, &quot;code&quot;: &quot;LaEx&quot;, &quot;lower_watt&quot;: 150.0, &quot;upper_watt&quot;: 257.0, &quot;target_watt&quot;: null, &quot;energy_kcal_h&quot;: null, &quot;fat_percent&quot;: null, &quot;carbohydrate_percent&quot;: null, &quot;fat_g_h&quot;: null, &quot;carbohydrate_g_h&quot;: null}, {&quot;zone_number&quot;: 9, &quot;name&quot;: &quot;custom 1&quot;, &quot;code&quot;: &quot;C1&quot;, &quot;lower_watt&quot;: null, &quot;upper_watt&quot;: null, &quot;target_watt&quot;: null, &quot;energy_kcal_h&quot;: null, &quot;fat_percent&quot;: null, &quot;carbohydrate_percent&quot;: null, &quot;fat_g_h&quot;: null, &quot;carbohydrate_g_h&quot;: null}, {&quot;zone_number&quot;: 10, &quot;name&quot;: &quot;custom 2&quot;, &quot;code&quot;: &quot;C2&quot;, &quot;lower_watt&quot;: null, &quot;upper_watt&quot;: null, &quot;target_watt&quot;: null, &quot;energy_kcal_h&quot;: null, &quot;fat_percent&quot;: null, &quot;carbohydrate_percent&quot;: null, &quot;fat_g_h&quot;: null, &quot;carbohydrate_g_h&quot;: null}, {&quot;zone_number&quot;: 11, &quot;name&quot;: &quot;custom 3&quot;, &quot;code&quot;: &quot;C3&quot;, &quot;lower_watt&quot;: null, &quot;upper_watt&quot;: null, &quot;target_watt&quot;: null, &quot;energy_kcal_h&quot;: null, &quot;fat_percent&quot;: null, &quot;carbohydrate_percent&quot;: null, &quot;fat_g_h&quot;: null, &quot;carbohydrate_g_h&quot;: null}, {&quot;zone_number&quot;: 12, &quot;name&quot;: &quot;custom 4&quot;, &quot;code&quot;: &quot;C4&quot;, &quot;lower_watt&quot;: null, &quot;upper_watt&quot;: null, &quot;target_watt&quot;: null, &quot;energy_kcal_h&quot;: null, &quot;fat_percent&quot;: null, &quot;carbohydrate_percent&quot;: null, &quot;fat_g_h&quot;: null, &quot;carbohydrate_g_h&quot;: null}, {&quot;zone_number&quot;: 13, &quot;name&quot;: &quot;custom 5&quot;, &quot;code&quot;: &quot;C5&quot;, &quot;lower_watt&quot;: null, &quot;upper_watt&quot;: null, &quot;target_watt&quot;: null, &quot;energy_kcal_h&quot;: null, &quot;fat_percent&quot;: null, &quot;carbohydrate_percent&quot;: null, &quot;fat_g_h&quot;: null, &quot;carbohydrate_g_h&quot;: null}], &quot;test_data_rows&quot;: [{&quot;type&quot;: &quot;Power Duration&quot;, &quot;average_power_watt&quot;: 353.0, &quot;duration_sec&quot;: 179, &quot;additional_value&quot;: null}, {&quot;type&quot;: &quot;Power Duration&quot;, &quot;average_power_watt&quot;: 306.0, &quot;duration_sec&quot;: 478, &quot;additional_value&quot;: null}, {&quot;type&quot;: &quot;VO2 Max&quot;, &quot;average_power_watt&quot;: 353.0, &quot;duration_sec&quot;: 179, &quot;additional_value&quot;: &quot;None&quot;}, {&quot;type&quot;: &quot;VO2 Max&quot;, &quot;average_power_watt&quot;: 306.0, &quot;duration_sec&quot;: 478, &quot;additional_value&quot;: &quot;None&quot;}, {&quot;type&quot;: &quot;VO2 Max&quot;, &quot;average_power_watt&quot;: 353.0, &quot;duration_sec&quot;: 179, &quot;additional_value&quot;: &quot;None&quot;}, {&quot;type&quot;: &quot;VO2 Max&quot;, &quot;average_power_watt&quot;: 306.0, &quot;duration_sec&quot;: 478, &quot;additional_value&quot;: &quot;None&quot;}, {&quot;type&quot;: &quot;Power Duration&quot;, &quot;average_power_watt&quot;: 765.0, &quot;duration_sec&quot;: 16, &quot;additional_value&quot;: &quot;None&quot;}, {&quot;type&quot;: &quot;Power Duration&quot;, &quot;average_power_watt&quot;: 746.0, &quot;duration_sec&quot;: 15, &quot;additional_value&quot;: &quot;None&quot;}], &quot;weighted_regression&quot;: {&quot;vlamax&quot;: 1.0, &quot;vo2max&quot;: 1.0, &quot;anaerobic_threshold&quot;: 1.0}}, &quot;protocol&quot;: {&quot;description&quot;: &quot;&quot;, &quot;protocol_summary&quot;: &quot;&quot;, &quot;protocol_context&quot;: {}, &quot;fit_sessions&quot;: [{&quot;filename&quot;: &quot;2026-01-06-09-35-14.fit&quot;, &quot;record_count&quot;: 1035, &quot;lap_count&quot;: 29, &quot;duration_sec&quot;: 1062, &quot;mean_power_w&quot;: 109.54685990338164, &quot;max_power_w&quot;: 357.0, &quot;mean_hr_bpm&quot;: 134.25893719806763, &quot;max_hr_bpm&quot;: 173.0, &quot;max_target_power_w&quot;: 340.0, &quot;block_counts&quot;: {&quot;block_1&quot;: 721, &quot;block_2&quot;: 203, &quot;recovery_2&quot;: 111}, &quot;rolling_best_efforts&quot;: {&quot;15&quot;: 245.0, &quot;16&quot;: 244.875, &quot;179&quot;: 153.49720670391062, &quot;478&quot;: 129.06903765690376}}, {&quot;filename&quot;: &quot;2026-01-06-10-29-23.fit&quot;, &quot;record_count&quot;: 1236, &quot;lap_count&quot;: 31, &quot;duration_sec&quot;: 1235, &quot;mean_power_w&quot;: 123.66100323624596, &quot;max_power_w&quot;: 467.0, &quot;mean_hr_bpm&quot;: 148.4126213592233, &quot;max_hr_bpm&quot;: 189.0, &quot;max_target_power_w&quot;: 365.0, &quot;block_counts&quot;: {&quot;block_1&quot;: 884, &quot;block_2&quot;: 195, &quot;recovery_2&quot;: 157}, &quot;rolling_best_efforts&quot;: {&quot;15&quot;: 326.8, &quot;16&quot;: 327.0625, &quot;179&quot;: 247.95530726256985, &quot;478&quot;: 149.19665271966528}}], &quot;zwo_summary&quot;: {&quot;name&quot;: &quot;Power Performance Decoder - V3&quot;, &quot;source&quot;: &quot;Power_Performance_Decoder___V3.zwo&quot;, &quot;stage_count&quot;: 16, &quot;summary&quot;: &quot;&lt;workout_file&gt; &lt;author&gt;Kevin Poulton&lt;/author&gt; &lt;name&gt;Power Performance Decoder - V3&lt;/name&gt; &lt;description&gt;Zwift has partnered with INSCYD to provide you with the most advanced tool to analyze your performance. The Power Performance Decoder test protocol will provide you with a full metabolic performance profile. Your performance relies on more than just Anaerobic Threshold (FTP). Other areas to consi&quot;, &quot;fit_alignment&quot;: [{&quot;type&quot;: &quot;Power Duration&quot;, &quot;duration_sec&quot;: 179, &quot;reported_average_power_watt&quot;: 353.0, &quot;fit_session_count&quot;: 2, &quot;session&quot;: &quot;2026-01-06-10-29-23.fit&quot;, &quot;fit_best_power_w&quot;: 247.95530726256985, &quot;delta_w&quot;: -105.0}, {&quot;type&quot;: &quot;Power Duration&quot;, &quot;duration_sec&quot;: 478, &quot;reported_average_power_watt&quot;: 306.0, &quot;fit_session_count&quot;: 2, &quot;session&quot;: &quot;2026-01-06-10-29-23.fit&quot;, &quot;fit_best_power_w&quot;: 149.19665271966528, &quot;delta_w&quot;: -156.8}, {&quot;type&quot;: &quot;VO2 Max&quot;, &quot;duration_sec&quot;: 179, &quot;reported_average_power_watt&quot;: 353.0, &quot;fit_session_count&quot;: 2, &quot;session&quot;: &quot;2026-01-06-10-29-23.fit&quot;, &quot;fit_best_power_w&quot;: 247.95530726256985, &quot;delta_w&quot;: -105.0}, {&quot;type&quot;: &quot;VO2 Max&quot;, &quot;duration_sec&quot;: 478, &quot;reported_average_power_watt&quot;: 306.0, &quot;fit_session_count&quot;: 2, &quot;session&quot;: &quot;2026-01-06-10-29-23.fit&quot;, &quot;fit_best_power_w&quot;: 149.19665271966528, &quot;delta_w&quot;: -156.8}, {&quot;type&quot;: &quot;VO2 Max&quot;, &quot;duration_sec&quot;: 179, &quot;reported_average_power_watt&quot;: 353.0, &quot;fit_session_count&quot;: 2, &quot;session&quot;: &quot;2026-01-06-10-29-23.fit&quot;, &quot;fit_best_power_w&quot;: 247.95530726256985, &quot;delta_w&quot;: -105.0}, {&quot;type&quot;: &quot;VO2 Max&quot;, &quot;duration_sec&quot;: 478, &quot;reported_average_power_watt&quot;: 306.0, &quot;fit_session_count&quot;: 2, &quot;session&quot;: &quot;2026-01-06-10-29-23.fit&quot;, &quot;fit_best_power_w&quot;: 149.19665271966528, &quot;delta_w&quot;: -156.8}, {&quot;type&quot;: &quot;Power Duration&quot;, &quot;duration_sec&quot;: 16, &quot;reported_average_power_watt&quot;: 765.0, &quot;fit_session_count&quot;: 2, &quot;session&quot;: &quot;2026-01-06-10-29-23.fit&quot;, &quot;fit_best_power_w&quot;: 327.0625, &quot;delta_w&quot;: -437.9}, {&quot;type&quot;: &quot;Power Duration&quot;, &quot;duration_sec&quot;: 15, &quot;reported_average_power_watt&quot;: 746.0, &quot;fit_session_count&quot;: 2, &quot;session&quot;: &quot;2026-01-06-10-29-23.fit&quot;, &quot;fit_best_power_w&quot;: 326.8, &quot;delta_w&quot;: -419.2}]}}, &quot;coaching&quot;: {&quot;focus&quot;: &quot;balanced&quot;, &quot;confidence&quot;: &quot;medium&quot;, &quot;coach_brief&quot;: &quot;균형 개발형 기준으로 보면, 지금 프로파일은 한쪽만 과하게 밀기보다 endurance와 threshold를 함께 정리하는 올라운드 블록이 어울립니다. uploaded FIT 비교 근거도 있어 추천 신뢰도는 비교적 괜찮습니다.&quot;, &quot;archetype&quot;: {&quot;title&quot;: &quot;균형 개발형&quot;, &quot;summary&quot;: &quot;여러 에너지 시스템이 함께 보이며 우선순위를 두고 다듬을 여지가 있습니다.&quot;, &quot;strengths&quot;: [&quot;무산소 punch가 분명한 올라운더 쪽입니다.&quot;], &quot;limiters&quot;: [&quot;유산소 ceiling은 중간 이상입니다.&quot;, &quot;FatMax는 실전 지구력 anchor로 쓸 수 있지만 더 올릴 여지가 있습니다.&quot;], &quot;evidence&quot;: [&quot;VO2max 51.7 mL/kg/min&quot;, &quot;VLamax 0.53 mmol/L/s&quot;, &quot;FatMax/AT ratio 0.65&quot;]}, &quot;chart_commentary&quot;: {&quot;training_zones&quot;: {&quot;headline&quot;: &quot;FatMax는 usable하지만 threshold 대비 간격이 커서 base economy를 더 다듬을 여지가 있습니다.&quot;, &quot;notes&quot;: [&quot;FatMax anchor는 150.0W이고 AT는 230.0W입니다.&quot;, &quot;medio 이후 CHO 비중이 빠르게 높아지면 threshold 전후 훈련의 연료 의존도 관리가 중요합니다.&quot;, &quot;가장 낮은 zone의 지방 기여는 67% 수준으로 시작합니다.&quot;]}, &quot;test_rows&quot;: {&quot;headline&quot;: &quot;업로드된 FIT 근거는 비교적 충분합니다.&quot;, &quot;notes&quot;: [&quot;짧은 sprint power는 reported 값 대비 FIT 근거가 낮습니다.&quot;, &quot;3-8분 구간은 uploaded FIT에서 reported 수치보다 낮게 나타납니다.&quot;, &quot;짧은 effort와 3-8분 effort를 같이 보면, punch와 sustained power가 같은 방향으로 움직이는지 확인할 수 있습니다.&quot;]}}, &quot;training_directions&quot;: [{&quot;priority&quot;: &quot;primary&quot;, &quot;title&quot;: &quot;FatMax / base economy 확장&quot;, &quot;why&quot;: &quot;FatMax anchor를 더 안정적으로 쓰기 위해 zone 2 전후의 지방 대사 기반을 키우는 편이 좋습니다.&quot;, &quot;session&quot;: &quot;150.0W 전후로 60-120분 steady ride, 후반부 cadence와 nutrition 반응까지 같이 점검합니다.&quot;}, {&quot;priority&quot;: &quot;secondary&quot;, &quot;title&quot;: &quot;Threshold support 정리&quot;, &quot;why&quot;: &quot;AT 근처 지속 능력은 실전 페이스와 직접 연결되므로 주간 기준 anchor로 유지할 가치가 큽니다.&quot;, &quot;session&quot;: &quot;220.0W - 230.0W 범위에서 2 x 16-20min 또는 3 x 10-12min.&quot;}, {&quot;priority&quot;: &quot;support&quot;, &quot;title&quot;: &quot;무산소 punch는 유지, 과잉 비중은 제한&quot;, &quot;why&quot;: &quot;VLamax가 이미 분명해 짧은 강점은 살리되, 전체 블록의 대부분을 여기에 쓰는 것은 비효율적일 수 있습니다.&quot;, &quot;session&quot;: &quot;주 1회 8-12초 sprint 4-6회 정도로 sharpness만 유지하고, 나머지 고강도는 threshold 또는 VO2 쪽으로 배분합니다.&quot;}, {&quot;priority&quot;: &quot;review&quot;, &quot;title&quot;: &quot;reported endurance와 실제 수행 재현 차이 점검&quot;, &quot;why&quot;: &quot;3-8분 구간 FIT가 reported보다 낮으면 이번 업로드만으로는 long effort 재현도가 충분하지 않을 수 있습니다.&quot;, &quot;session&quot;: &quot;컨디션이 비슷한 날 3분/8분 effort를 다시 수집해 reported metric과의 차이를 재확인합니다.&quot;}], &quot;microcycle&quot;: [{&quot;day&quot;: &quot;Day 1&quot;, &quot;title&quot;: &quot;Endurance Main&quot;, &quot;intent&quot;: &quot;기반 체력 유지/확장&quot;, &quot;session&quot;: &quot;150.0W 전후로 2-3시간 long endurance&quot;}, {&quot;day&quot;: &quot;Day 2&quot;, &quot;title&quot;: &quot;Threshold Main&quot;, &quot;intent&quot;: &quot;지속 강도 정리&quot;, &quot;session&quot;: &quot;220.0W - 230.0W 범위 2 x 16-20min&quot;}, {&quot;day&quot;: &quot;Day 3&quot;, &quot;title&quot;: &quot;Recovery / Easy&quot;, &quot;intent&quot;: &quot;회복과 다음 질세션 준비&quot;, &quot;session&quot;: &quot;아주 가볍게 45-60분 또는 완전 휴식&quot;}, {&quot;day&quot;: &quot;Day 4&quot;, &quot;title&quot;: &quot;Top-end Maintenance&quot;, &quot;intent&quot;: &quot;짧은 반응성 유지&quot;, &quot;session&quot;: &quot;8-12초 all-out sprint 4-6회, 완전 회복&quot;}], &quot;alignment&quot;: {&quot;coverage&quot;: &quot;high&quot;, &quot;short_ratio&quot;: 0.43280119241619797, &quot;long_ratio&quot;: 0.5949968636356359, &quot;headline&quot;: &quot;업로드된 FIT 근거는 비교적 충분합니다.&quot;, &quot;notes&quot;: [&quot;짧은 sprint power는 reported 값 대비 FIT 근거가 낮습니다.&quot;, &quot;3-8분 구간은 uploaded FIT에서 reported 수치보다 낮게 나타납니다.&quot;]}}, &quot;report_plan&quot;: [&quot;key_metrics&quot;, &quot;coaching_overview&quot;, &quot;training_directions&quot;, &quot;microcycle&quot;, &quot;training_zones&quot;, &quot;test_rows&quot;, &quot;fit_alignment&quot;, &quot;fit_protocol&quot;, &quot;zwo_protocol&quot;, &quot;warnings&quot;], &quot;warnings&quot;: [&quot;[WARN] Block &#x27;block_1&#x27; has non-contiguous laps: [1, 2, 3, 4, 29]&quot;, &quot;[WARN] Block &#x27;block_2&#x27; has non-contiguous laps: [5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]&quot;, &quot;[WARN] Block &#x27;recovery_2&#x27; has non-contiguous laps: [10, 25, 26, 27, 28]&quot;, &quot;[WARN] Block &#x27;block_2&#x27; has non-contiguous laps: [6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28]&quot;, &quot;[WARN] Block &#x27;recovery_2&#x27; has non-contiguous laps: [10, 29, 30, 31]&quot;, &quot;ZWO parsing fell back to text summary: not well-formed (invalid token): line 26, column 91&quot;], &quot;artifacts&quot;: {&quot;original_pdf_name&quot;: &quot;KY Park_2026.pdf&quot;, &quot;original_pdf_file&quot;: &quot;original-inscyd-report.pdf&quot;, &quot;original_pdf_url&quot;: &quot;./original-inscyd-report.pdf&quot;, &quot;page_images&quot;: [{&quot;page&quot;: 1, &quot;file&quot;: &quot;original-page-1.png&quot;, &quot;url&quot;: &quot;./original-page-1.png&quot;}, {&quot;page&quot;: 2, &quot;file&quot;: &quot;original-page-2.png&quot;, &quot;url&quot;: &quot;./original-page-2.png&quot;}]}}</script>
+</body>
+</html>

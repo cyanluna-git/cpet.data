@@ -1,0 +1,289 @@
+<workout_file>
+    <author>Kevin Poulton</author>
+    <name>Power Performance Decoder - V3</name>
+    <description>Zwift has partnered with INSCYD to provide you with the most advanced tool to analyze your performance. The Power Performance Decoder test protocol will provide you with a full metabolic performance profile. Your performance relies on more than just Anaerobic Threshold (FTP). Other areas to consider include: Aerobic Capacity (VO2max) and Anaerobic Capacity (Vlamax).
+
+This testing should not be carried out immediately after a hard block of training. For better reliability, one or two rest days is ideal.
+
+Make sure your powermeter/smart trainer is calibrated.
+NOTE: Erg mode MUST be on.</description>
+    <sportType>bike</sportType>
+    <tags>
+        <tag name="INSCYD"/>
+    </tags>
+    <workout>
+        <Warmup Duration="420" PowerLow="0.45449999" PowerHigh="0.6045" pace="0">
+            <textevent timeoffset="10" message="Welcome to the INSCYD - Power Performance Decoder test protocol. The most advanced physiological testing model available."/>
+            <textevent timeoffset="40" message="Please ensure you have ERG mode ON."/>
+            <textevent timeoffset="60" message="INSCYD is more than just testing."/>
+            <textevent timeoffset="80" message="INSCYD is about applying your results to your training and racing!"/>
+            <textevent timeoffset="110" message="There is much more to your performance than just FTP."/>
+            <textevent timeoffset="130" message="INSCYD takes into account the most important metrics for performance, including:"/>
+            <textevent timeoffset="140" message="Your maximum aerobic capacity (VO2max)"/>
+            <textevent timeoffset="150" message="and your maximum anaerobic capacity (VLamax)."/>
+            <textevent timeoffset="170" message="Of course we also look at your anaerobic threshold (FTP)."/>
+            <textevent timeoffset="200" message="The test protocol requires you to complete 4 maximal efforts. ALWAYS SEATED!"/>
+            <textevent timeoffset="220" message="The intervals required are 2x20sec, 3min & 6-8min."/>
+            <textevent timeoffset="240" message="These efforts will be completed as free-ride efforts on a flat road."/>
+            <textevent timeoffset="250" message="Regardless of the terrain you see on Zwift, you will be provided with the feeling of a flat road."/>
+            <textevent timeoffset="260" message="Your smart trainer will provide resistance."/>
+            <textevent timeoffset="290" message="You may feel that there is a lot of easy riding today."/>
+            <textevent timeoffset="300" message="This is necessary to ensure you are in a recovered state and that lactate has returned to resting levels."/>
+            <textevent timeoffset="320" message="The first test interval is a set of two 20sec maximal SEATED sprints."/>
+            <textevent timeoffset="340" message="The test sprint is performed in a free-ride section, with the resistance coming from the trainer."/>
+            <textevent timeoffset="350" message="You MUST begin the sprint from a period of pedaling below 0.5 w/kg. Think, slow walking pace."/>
+            <textevent timeoffset="360" message="You MUST stay SEATED for the entire sprint. Performing any test out of the seat will lead to incorrect results."/>
+            <textevent timeoffset="370" message="Absolutely no gear changes in the sprint effort."/>
+            <textevent timeoffset="380" message="It is important that you choose a gear that allows you to reach maximum power as quickly as possible."/>
+            <textevent timeoffset="390" message="We are looking for peak power to occur in the opening 6sec. Then hang on for as long as you can!"/>
+            <textevent timeoffset="400" message="The next phase of the warm up will allow you to experiment with the gear you will sprint in."/>
+            <textevent timeoffset="410" message="These 6sec sprints are just practice to give you an idea of the gear required and the sprint test format coming up."/>
+        </Warmup>
+        
+        <FreeRide Duration="75" FlatRoad="1">
+            <textevent timeoffset="5" message="In this free-ride portion, you will be guided through 2 x 6sec SEATED sprints to get a feel for the resistance."/>
+            <textevent timeoffset="15" message="You MUST start the test sprint from a period of easy pedaling under 0.5 w/kg."/>
+            <textevent timeoffset="25" message="Bring your power down to under 0.5 w/kg now. This is imperative."/>
+            <textevent timeoffset="40" message="Choose a gear that will allow you to reach maximum power as quickly as possible. Remember - NO gear changes."/>
+            <textevent timeoffset="50" message="Ensure your power is under 0.5 w/kg."/>
+            <textevent timeoffset="65" message="Ready... Here we go! In 10 sec!"/>
+        </FreeRide>
+        
+        <FreeRide Duration="7" FlatRoad="1">
+            <textevent timeoffset="0" message="GO!"/>
+            <textevent timeoffset="6" message="Finish!"/>
+        </FreeRide>
+            
+        <FreeRide Duration="75" FlatRoad="1">
+            <textevent timeoffset="3" message="And easy!"/>
+            <textevent timeoffset="20" message="How did that gear feel? Too big? Too small?"/>
+            <textevent timeoffset="30" message="Try a different gear in this next sprint just to be sure you have the best gear to perform the test sprint in."/>
+            <textevent timeoffset="40" message="Bring your power down to under 0.5 w/kg now."/>
+            <textevent timeoffset="50" message="Nice and slow here. Under 0.5 w/kg."/>
+            <textevent timeoffset="65" message="Ready... Here we go! In 10 sec!"/>
+        </FreeRide>
+            
+        <FreeRide Duration="7" FlatRoad="1">
+            <textevent timeoffset="0" message="GO!"/>
+            <textevent timeoffset="6" message="Finish!"/>
+        </FreeRide>
+        
+        <FreeRide Duration="20" FlatRoad="1">
+            <textevent timeoffset="3" message="And easy!"/>
+            <textevent timeoffset="15" message="Select the gear you will sprint in now. ERG mode will take you through the next phase and you will be ready to sprint."/>   
+        </FreeRide>
+
+        <SteadyState Duration="480" Power="0.55449998" pace="0">
+            <textevent timeoffset="10" message="Now we continue the warmup with a good period of easy pedaling."/>
+            <textevent timeoffset="30" message="Ensure you are drinking the appropriate amount of fluid to your conditions."/>
+            <textevent timeoffset="50" message="We don&apos;t want dehydration affecting the data collected."/>
+            <textevent timeoffset="70" message="It is important that we allow for a long period of easy pedaling before the 1st test interval."/>
+            <textevent timeoffset="100" message="Your test will provide you with a wealth of accurate and performance relevant metrics."/>
+            <textevent timeoffset="120" message="One of the key metrics we test today is VLamax."/>
+            <textevent timeoffset="130" message="VLamax stands for the maximum production rate of lactate in your muscles."/>
+            <textevent timeoffset="140" message="The sprinter needs a lot of energy very quickly."/>
+            <textevent timeoffset="150" message="The endurance athlete needs a good amount of energy for a long time."/>
+            <textevent timeoffset="170" message="A higher VLamax value indicates that more carbohydrates are burnt during exercise, resulting in higher lactate production."/>
+            <textevent timeoffset="190" message="This is a good thing for the sprinter!"/>
+            <textevent timeoffset="210" message="On the other hand, if your VLamax is lower, it means that less carbohydrates are burnt during exercise."/>
+            <textevent timeoffset="230" message="And carbohydrates are a precious fuel that you want to preserve during endurance events."/>
+            <textevent timeoffset="240" message="A good thing for triathletes, climbers and endurance athletes."/>
+            <textevent timeoffset="260" message="Monitoring the effect of training on your VLamax results in improved performance."/>
+            <textevent timeoffset="270" message="The sprinter wants a higher VLamax. While the triathlete wants a lower VLamax."/>
+            <textevent timeoffset="320" message="First up is the 2x20 sec SEATED MAXIMAL sprint."/>
+            <textevent timeoffset="340" message="There are some key points to remember for this interval."/>
+            <textevent timeoffset="350" message="1. You MUST complete 90sec of very easy pedaling below 0.5 w/kg prior to the sprint."/>
+            <textevent timeoffset="360" message="2. You MUST stay SEATED for the entire sprint. Performing the test out of the seat will lead to incorrect results."/>
+            <textevent timeoffset="370" message="3. Absolutely no gear changes."/>
+            <textevent timeoffset="380" message="4. Push as hard as you can for the full 20sec."/>
+            <textevent timeoffset="400" message="You should already be in the gear you will conduct the sprint test in."/>
+            <textevent timeoffset="420" message="You will be provided with a 2.5 min free-ride block to perform the 20 sec effort within."/>
+            <textevent timeoffset="440" message="This will allow you to complete 90sec below 0.5 w/kg prior to sprinting."/>
+            <textevent timeoffset="460" message="You will be instructed when to start the 20 sec sprint."/>
+            <textevent timeoffset="470" message="You should reach your peak power in the opening 5-6sec. Then hang on as best you can!"/>
+        </SteadyState>
+
+        <FreeRide Duration="130" FlatRoad="1">
+            <textevent timeoffset="5" message="Bring your power down to under 0.5 w/kg. "/>
+            <textevent timeoffset="15" message="It is imperative that power is under 0.5 w/kg here."/>
+            <textevent timeoffset="30" message="To ensure we are measuring your maximum anaerobic capacity..."/>
+            <textevent timeoffset="40" message="... you must complete 90sec of VERY low effort prior to the sprint."/>
+            <textevent timeoffset="50" message="Otherwise we have an aerobic contribution to the sprint."/>
+            <textevent timeoffset="60" message="The aim is to measure your anaerobic system with minimal aerobic contribution."/>
+            <textevent timeoffset="70" message="Under 0.5 w/kg here!"/>
+            <textevent timeoffset="90" message="You should already be in your sprint gear."/>
+            <textevent timeoffset="100" message="You MUST stay SEATED."/>
+            <textevent timeoffset="110" message="We start in 20sec."/>
+            <textevent timeoffset="120" message="Ready... Here we go! In 10 sec!"/>
+        </FreeRide>
+
+        <FreeRide Duration="20" FlatRoad="1" show_avg="1">
+            <textevent timeoffset="0" message="GO GO GO!"/>
+            <textevent timeoffset="5" message="Stay SEATED!"/>
+            <textevent timeoffset="15" message="Maximal effort all the way to the line!"/>
+            <textevent timeoffset="20" message="Finished!"/>
+        </FreeRide>
+
+        <SteadyState Duration="300" Power="0.50" pace="0">
+            <textevent timeoffset="10" message="How did that feel?"/>
+            <textevent timeoffset="20" message="Were you able to produce a maximal effort?"/>
+            <textevent timeoffset="30" message="Now you are going to have the second 20 sec sprint."/>
+            <textevent timeoffset="50" message="1. You MUST complete 90sec of very easy pedaling below 0.5 w/kg prior to the sprint."/>
+            <textevent timeoffset="60" message="2. You MUST stay SEATED for the entire sprint. Performing the test out of the seat will lead to incorrect results."/>
+            <textevent timeoffset="70" message="3. Absolutely no gear changes."/>
+            <textevent timeoffset="80" message="4. Push as hard as you can for the full 20sec."/>
+            <textevent timeoffset="100" message="You should already be in the gear you will conduct the sprint test in."/>
+            <textevent timeoffset="120" message="You will be provided with a 2.5 min free-ride block to perform the 20 sec effort within."/>
+            <textevent timeoffset="140" message="This will allow you to complete 90sec below 0.5 w/kg prior to sprinting."/>
+            <textevent timeoffset="160" message="You will be instructed when to start the 20 sec sprint."/>
+            <textevent timeoffset="170" message="You should reach your peak power in the opening 5-6sec. Then hang on as best you can!"/>
+        </SteadyState>
+
+        <FreeRide Duration="130" FlatRoad="1">
+            <textevent timeoffset="5" message="Bring your power down to under 0.5 w/kg. "/>
+            <textevent timeoffset="15" message="It is imperative that power is under 0.5 w/kg here."/>
+            <textevent timeoffset="30" message="To ensure we are measuring your maximum anaerobic capacity..."/>
+            <textevent timeoffset="40" message="... you must complete 90sec of VERY low effort prior to the sprint."/>
+            <textevent timeoffset="50" message="Otherwise we have an aerobic contribution to the sprint."/>
+            <textevent timeoffset="60" message="The aim is to measure your anaerobic system with minimal aerobic contribution."/>
+            <textevent timeoffset="70" message="Under 0.5 w/kg here!"/>
+            <textevent timeoffset="90" message="You should already be in your sprint gear."/>
+            <textevent timeoffset="100" message="You MUST stay SEATED."/>
+            <textevent timeoffset="110" message="We start in 20sec."/>
+            <textevent timeoffset="120" message="Ready... Here we go! In 10 sec!"/>
+        </FreeRide>
+
+        <FreeRide Duration="20" FlatRoad="1" show_avg="1">
+            <textevent timeoffset="0" message="GO GO GO!"/>
+            <textevent timeoffset="5" message="Stay SEATED!"/>
+            <textevent timeoffset="15" message="Maximal effort all the way to the line!"/>
+            <textevent timeoffset="20" message="Finished!"/>
+        </FreeRide>
+
+        <SteadyState Duration="720" Power="0.50" pace="0">
+            <textevent timeoffset="10" message="Great work!"/>
+            <textevent timeoffset="30" message="How did that feel?"/>
+            <textevent timeoffset="60" message="Were you able to produce a maximal effort?"/>
+            <textevent timeoffset="80" message="After an effort like that, we need a long period of recovery now."/>
+            <textevent timeoffset="100" message="Before commencing the next phase of the test!"/>
+            <textevent timeoffset="120" message="Ensure you are remaining hydrated and fueled."/>
+            <textevent timeoffset="140" message="As athletes, we sometimes become fixated on FTP and w/kg."/>
+            <textevent timeoffset="160" message="However, both are highly dependent on your V02max."/>
+            <textevent timeoffset="180" message="VO2max is often mentioned as the most important measurement for endurance sport."/>
+            <textevent timeoffset="200" message="VO2max is the maximum volume of oxygen that you can utilize during exercise."/>
+            <textevent timeoffset="220" message="A higher VO2max number corresponds to a better aerobic metabolism."/>
+            <textevent timeoffset="240" message="That means a better capacity to use oxygen and fat as fuel for the workout."/>
+            <textevent timeoffset="280" message="INSCYD will enable you to compare the effect of high-intensity interval training over endurance training on VO2max."/>
+            <textevent timeoffset="300" message="We can now monitor the effect your training has had on your performance."/>
+            <textevent timeoffset="320" message="Part 2 of the test requires you to complete a 3 min maximal effort."/>
+            <textevent timeoffset="340" message="Like before, you will be presented with a flat road for the interval period."/>
+            <textevent timeoffset="360" message="Resistance will be provided from your smart trainer."/>
+            <textevent timeoffset="380" message="You will need to change gears to provide the resistance you desire to produce the power."/>
+            <textevent timeoffset="400" message="Self select your cadence for these test intervals."/>
+            <textevent timeoffset="420" message="Any increase or decrease in power should be gradual. From the maximal effort."/>
+            <textevent timeoffset="440" message="Are you feeling fully recovered yet?"/>
+            <textevent timeoffset="490" message="If you are sprinting at the end, you have more than likely not gone hard enough earlier."/>
+            <textevent timeoffset="510" message="Try to pace your effort."/>
+            <textevent timeoffset="530" message="While this is a maximal effort. The opening 30 sec should feel hard, but in control."/>
+            <textevent timeoffset="550" message="Then try to maintain or even lift this effort in the middle portion."/>
+            <textevent timeoffset="570" message="And finally, give it everything you have in the closing minute!"/>
+            <textevent timeoffset="600" message="Unlike the previous 20 sec test, this effort is from a normal rolling speed start."/>
+            <textevent timeoffset="630" message="Start preparing yourself mentally for a maximal effort!"/>
+            <textevent timeoffset="670" message="You are aiming to produce 3 min of steady, maximal power."/>
+            <textevent timeoffset="680" message="You MUST remain SEATED for this effort."/>
+            <textevent timeoffset="700" message="Ready... Here we go!"/>
+            <textevent timeoffset="710" message="In 10 sec!"/>
+        </SteadyState>
+
+        <FreeRide Duration="180" FlatRoad="1" show_avg="1">
+            <textevent timeoffset="0" message="Go!"/>
+            <textevent timeoffset="10" message="Great start! Looking for hard, but comfortable here."/>
+            <textevent timeoffset="20" message="Pace your effort here."/>
+            <textevent timeoffset="30" message="Aim to maintain or lift a little here."/>
+            <textevent timeoffset="40" message="This is very good!"/>
+            <textevent timeoffset="60" message="Look at the avg power on the screen."/>
+            <textevent timeoffset="70" message="You are not going below this!"/>
+            <textevent timeoffset="90" message="Try to lift the power a little now!"/>
+            <textevent timeoffset="120" message="Give it everything!!!"/>
+            <textevent timeoffset="150" message="Final 30 sec. Hold this power!"/>
+            <textevent timeoffset="160" message="There&apos;s the line!"/>
+            <textevent timeoffset="180" message="Finished!"/>
+        </FreeRide>
+
+        <SteadyState Duration="900" Power="0.50" pace="0">
+            <textevent timeoffset="10" message="Well done!"/>
+            <textevent timeoffset="60" message="That was good!"/>
+            <textevent timeoffset="90" message="That was a big effort."/>
+            <textevent timeoffset="120" message="How was your pacing?"/>
+            <textevent timeoffset="140" message="Were you able to lift in the 2nd half?"/>
+            <textevent timeoffset="160" message="Or did you start too hard and the power dropped away?"/>
+            <textevent timeoffset="180" message="Don't worry. You get another chance!"/>
+            <textevent timeoffset="210" message="Easy pedaling for now."/>
+            <textevent timeoffset="240" message="Up next is a longer SEATED maximal effort."/>
+            <textevent timeoffset="270" message="But first we have a long recovery period."/>
+            <textevent timeoffset="300" message="Have a good drink here."/>
+            <textevent timeoffset="330" message="Once you have completed testing, you will be provided with a wealth of information."/>
+            <textevent timeoffset="360" message="Your VO2max, Anaerobic capacity, and FTP, will all be accurately assessed."/>
+            <textevent timeoffset="390" message="We are saving the best for last."/>
+            <textevent timeoffset="410" message="By producing your best effort today, you will receive valid and reliable test data."/>
+            <textevent timeoffset="470" message="Continue hydrating here and recover the best you can."/>
+            <textevent timeoffset="620" message="Let's start preparing for this SEATED maximal effort."/>
+            <textevent timeoffset="640" message="Like before, you will be presented with a flat 6-8min effort."/>
+            <textevent timeoffset="660" message="You don&apos;t have to do the entire 8min effort."/>
+            <textevent timeoffset="680" message="Do your best for 6min, and then try to hold it as long as you can."/>
+            <textevent timeoffset="720" message="Like all test intervals. You are required to remain SEATED at all times."/>
+            <textevent timeoffset="740" message="From your 3 min effort, you should have a good idea of a target power for this effort."/>
+            <textevent timeoffset="760" message="This should allow you to start hard, but comfortable."/>
+            <textevent timeoffset="800" message="This is a long interval. Be prepared to produce a controlled effort."/>
+            <textevent timeoffset="820" message="Then, aim to lift over the middle portion. This should be hard!"/>
+            <textevent timeoffset="840" message="And finally, aim to maintain your avg power over the closing minutes, or lift again."/>
+            <textevent timeoffset="860" message="Good luck! You've got this!"/>
+            <textevent timeoffset="880" message="Ready... Here we go!"/>
+            <textevent timeoffset="890" message="In 10 sec!"/>
+        </SteadyState>
+        
+        <FreeRide Duration="480" FlatRoad="1" show_avg="1">
+            <textevent timeoffset="0" message="Go!"/>
+            <textevent timeoffset="20" message="Great start!"/>
+            <textevent timeoffset="40" message="Looking for hard, but comfortable here."/>
+            <textevent timeoffset="70" message="Settle into a nice rhythm."/>
+            <textevent timeoffset="100" message="Judge your effort here."/>
+            <textevent timeoffset="120" message="Have a look at your avg power."/>
+            <textevent timeoffset="140" message="Don't go out too hard! Controlled effort here."/>
+            <textevent timeoffset="180" message="That's 3 min down!"/>
+            <textevent timeoffset="220" message="You are doing great!"/>
+            <textevent timeoffset="260" message="This is where things start to get serious."/>
+            <textevent timeoffset="280" message="Remember to stay SEATED!"/>
+            <textevent timeoffset="360" message="6 min! Look at the avg power on the screen."/>
+            <textevent timeoffset="370" message="You are not going below this!"/>
+            <textevent timeoffset="390" message="Keep your cadence up."/>
+            <textevent timeoffset="410" message="Come on! Give me your best!"/>
+            <textevent timeoffset="420" message="Into the final minute. Hold this power!"/>
+            <textevent timeoffset="450" message="Last 30 sec. Give it everything!!!"/>
+            <textevent timeoffset="470" message="There&apos;s the line!"/>
+            <textevent timeoffset="480" message="Finished!"/>
+        </FreeRide>
+
+        <SteadyState Duration="355" Power="0.45449999" pace="0">
+            <textevent timeoffset="10" message="That was good!"/>
+            <textevent timeoffset="20" message="Testing is always hard and unpleasant!"/>
+            <textevent timeoffset="30" message="That completes the Zwift - Power Performance Decoder test protocol."/>
+            <textevent timeoffset="50" message="You have produced some excellent results."/>
+            <textevent timeoffset="60" message="This data will be used to assess your current metabolic profile"/>
+            <textevent timeoffset="70" message="And to observe any changes from previous testing."/>
+            <textevent timeoffset="90" message="Enjoy an easy spin after all the hard work you just completed."/>
+            <textevent timeoffset="110" message="Use the information provided to you from your test report to direct your next training block."/>
+            <textevent timeoffset="140" message="What are the demands of the event you are training for?"/>
+            <textevent timeoffset="150" message="Do you need to increase your Anaerobic Threshold?"/>
+            <textevent timeoffset="160" message="Do you need to increase or decrease your Anaerobic Capacity (VLamax)?"/>
+            <textevent timeoffset="170" message="Do you need to increase your Maximum Aerobic Capacity (VO2max)?"/>
+            <textevent timeoffset="200" message="What type of training do you need to perform to achieve these training effects?"/>
+            <textevent timeoffset="240" message="It is crucial that your weight, height and Date of Birth are entered accurately in Zwift."/>
+            <textevent timeoffset="260" message="It is recommended that you record your weight first thing in the morning."/>
+            <textevent timeoffset="280" message="Because we are measuring more than just FTP and w/kg, your body composition will effect the results."/>
+            <textevent timeoffset="310" message="The more we measure... the less we guess in training."/>
+            <textevent timeoffset="330" message="If you feel you need a longer cool down feel free to stay in Zwift and ride a little longer."/>
+            <textevent timeoffset="340" message="Good luck with your training and we hope to see you re-testing in 6-8 weeks."/>
+        </SteadyState>
+    </workout>
+</workout_file>

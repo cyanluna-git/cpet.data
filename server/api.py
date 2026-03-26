@@ -25,11 +25,15 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from server.db import (
     create_job,
     create_submission,
+    create_subject,
     get_job,
     get_job_by_submission,
+    get_subject,
     get_submission,
+    get_user,
     list_jobs,
     list_jobs_by_user,
+    list_subjects,
     update_job_status,
 )
 from server.publish import publish_report
@@ -499,6 +503,7 @@ def _list_dashboard_entries(
             "processing_note": processing_note,
             "processing_seconds": processing_seconds,
             "submission_user_id": sub.get("user_id") if sub else None,
+            "submission_subject_id": sub.get("subject_id") if sub else None,
             "file_tags": _get_file_tags(sub, sub.get("workspace_path") if sub else None),
         }
         enriched.append(enriched_job)
@@ -546,19 +551,27 @@ def _list_dashboard_entries(
                             except Exception:
                                 pass
 
-    # Mark ownership via both submission.user_id and report_user_links
+    # Mark ownership via submission.user_id, subject_id, and report_user_links
     from server.db import get_report_user_links
     report_links = get_report_user_links(db_path)
 
-    # Get current session user_id for is_mine calculation
+    # Get current session user_id and their subject_id for is_mine calculation
     session_user_id = None
+    session_subject_id = None
     if hasattr(request, "session"):
         session_user_id = request.session.get("user_id")
+    if session_user_id:
+        session_user = get_user(db_path, session_user_id)
+        if session_user:
+            session_subject_id = session_user.get("subject_id")
 
     for row in enriched:
         is_mine = False
         if session_user_id:
             if row.get("submission_user_id") == session_user_id:
+                is_mine = True
+            # Check subject_id match: user.subject_id == submission.subject_id
+            if session_subject_id and row.get("submission_subject_id") == session_subject_id:
                 is_mine = True
             slug = row.get("report_slug", "")
             if slug and report_links.get(slug) == session_user_id:
@@ -631,6 +644,7 @@ async def submit(
     subject_name: str = Form(""),
     test_date: str = Form(""),
     target_user_id: str = Form(""),
+    subject_id: str = Form(""),
     reanalyze: str | None = Query(default=None),
 ) -> JSONResponse:
     """Upload files, create workspace/submission/job, dispatch to channel.
@@ -687,6 +701,19 @@ async def submit(
     session_role = request.session.get("role", "user") if hasattr(request, "session") else "user"
     if target_user_id and target_user_id != "__new__" and session_role in ("researcher", "admin"):
         effective_user_id = target_user_id
+
+    # Resolve subject_id
+    effective_subject_id = subject_id or None
+    if not effective_subject_id and session_role not in ("researcher", "admin"):
+        # Regular user: auto-link to their own subject
+        current_user = get_user(db_path, user_id)
+        if current_user and current_user.get("subject_id"):
+            effective_subject_id = current_user["subject_id"]
+    # If researcher selected a subject, also populate subject_name from it
+    if effective_subject_id and not subject_name:
+        subj = get_subject(db_path, effective_subject_id)
+        if subj:
+            subject_name = subj.get("name", "")
 
     # Re-analysis mode: add files to existing workspace
     if reanalyze:
@@ -763,6 +790,8 @@ async def submit(
         test_date=test_date,
         submission_id=submission_id,
         user_id=effective_user_id,
+        subject_id=effective_subject_id,
+        uploaded_by_user_id=user_id,
     )
     job_id = create_job(db_path, submission_id)
 
@@ -937,3 +966,98 @@ async def job_detail(
         )
 
     return JSONResponse(content=job)
+
+
+# ── POST /api/subjects ──────────────────────────────────────────────
+
+
+@router.post("/api/subjects", status_code=201)
+async def create_subject_endpoint(
+    request: Request,
+    name: str = Form(""),
+    gender: str = Form(""),
+    birth_year: str = Form(""),
+    height_cm: str = Form(""),
+    weight_kg: str = Form(""),
+) -> JSONResponse:
+    """Create a new subject. Returns the created subject as JSON."""
+    user_id = request.session.get("user_id") if hasattr(request, "session") else None
+    if not user_id:
+        return JSONResponse(
+            status_code=401,
+            content={"error": "로그인이 필요합니다"},
+        )
+
+    if not name.strip():
+        return JSONResponse(
+            status_code=400,
+            content={"error": "이름은 필수입니다"},
+        )
+    if not gender.strip():
+        return JSONResponse(
+            status_code=400,
+            content={"error": "성별은 필수입니다"},
+        )
+    if not birth_year.strip():
+        return JSONResponse(
+            status_code=400,
+            content={"error": "출생년도는 필수입니다"},
+        )
+
+    db_path = get_db_path(request)
+
+    birth_year_int: int | None = None
+    try:
+        birth_year_int = int(birth_year)
+    except (ValueError, TypeError):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "출생년도는 숫자여야 합니다"},
+        )
+
+    height_val: float | None = None
+    if height_cm.strip():
+        try:
+            height_val = float(height_cm)
+        except (ValueError, TypeError):
+            pass
+
+    weight_val: float | None = None
+    if weight_kg.strip():
+        try:
+            weight_val = float(weight_kg)
+        except (ValueError, TypeError):
+            pass
+
+    subject = create_subject(
+        db_path,
+        name=name.strip(),
+        gender=gender.strip(),
+        birth_year=birth_year_int,
+        height_cm=height_val,
+        weight_kg=weight_val,
+    )
+
+    return JSONResponse(
+        status_code=201,
+        content={"data": subject},
+    )
+
+
+# ── GET /api/subjects ───────────────────────────────────────────────
+
+
+@router.get("/api/subjects")
+async def list_subjects_endpoint(
+    request: Request,
+) -> JSONResponse:
+    """List all subjects."""
+    user_id = request.session.get("user_id") if hasattr(request, "session") else None
+    if not user_id:
+        return JSONResponse(
+            status_code=401,
+            content={"error": "로그인이 필요합니다"},
+        )
+    db_path = get_db_path(request)
+    subjects = list_subjects(db_path)
+    return JSONResponse(content={"data": subjects})

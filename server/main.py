@@ -22,8 +22,10 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from server.db import (
     complete_onboarding,
+    create_subject,
     get_fitness_trends,
     get_report_user_links,
+    get_subject,
     get_submission,
     get_user,
     get_user_profile,
@@ -31,13 +33,18 @@ from server.db import (
     init_db,
     link_report_to_user,
     link_submission_user,
+    link_submission_subject,
+    link_user_to_subject,
     get_report_name_overrides,
+    list_subjects,
     set_report_name_override,
+    update_subject,
     update_submission_subject_name,
     list_submissions_with_users,
     list_users,
     unlink_report_from_user,
     unlink_submission_user,
+    unlink_user_from_subject,
     update_user_role,
     upsert_user_profile,
 )
@@ -175,17 +182,23 @@ async def upload_page(request: Request, reanalyze: str = "") -> HTMLResponse:
     if guard:
         return guard
 
-    # For researcher/admin: load user list for target selection
     db_path = request.app.state.db_path
     actual_role = request.session.get("role", "user")
-    target_users = []
+
+    # For researcher/admin: load subjects list for target selection
+    subjects = []
     if actual_role in ("researcher", "admin"):
-        target_users = list_users(db_path)
+        subjects = list_subjects(db_path)
+
+    # For regular user: get their linked subject
+    user_subject = None
+    user_record = get_user(db_path, user["id"])
+    if user_record and user_record.get("subject_id"):
+        user_subject = get_subject(db_path, user_record["subject_id"])
 
     prefill = {}
     existing_files = []
     if reanalyze:
-        db_path = request.app.state.db_path
         sub = get_submission(db_path, reanalyze)
         if sub:
             prefill = {
@@ -207,7 +220,8 @@ async def upload_page(request: Request, reanalyze: str = "") -> HTMLResponse:
     return _template_response(request, "upload.html", {
         "prefill": prefill,
         "existing_files": existing_files,
-        "target_users": target_users,
+        "subjects": subjects,
+        "user_subject": user_subject,
         "is_researcher": actual_role in ("researcher", "admin"),
     })
 
@@ -239,10 +253,16 @@ async def profile_page(request: Request) -> HTMLResponse:
     profile = get_user_profile(db_path, user_id) or {}
     trends = get_fitness_trends(db_path, user_id, data_dir=data_dir)
 
+    # Load linked subject
+    linked_subject = None
+    if user.get("subject_id"):
+        linked_subject = get_subject(db_path, user["subject_id"])
+
     return _template_response(request, "profile.html", {
         "user": user,
         "profile": profile,
         "trends": trends,
+        "linked_subject": linked_subject,
     })
 
 
@@ -403,6 +423,17 @@ async def onboarding_submit(request: Request) -> HTMLResponse:
     }
     upsert_user_profile(db_path, user_id, **profile_fields)
 
+    # Create a subject for this user and link it
+    user_record = get_user(db_path, user_id)
+    if user_record and not user_record.get("subject_id"):
+        subject = create_subject(
+            db_path,
+            name=display_name,
+            gender=gender,
+            birth_year=birth_year,
+        )
+        link_user_to_subject(db_path, user_id, subject["id"])
+
     # Update session
     request.session["display_name"] = display_name
     request.session["onboarding_completed"] = 1
@@ -518,7 +549,7 @@ def _get_manage_submissions(request: Request, users: list[dict]) -> tuple[list[d
 
 @app.get("/manage", response_class=HTMLResponse)
 async def manage_page(request: Request, tab: str = "users") -> HTMLResponse:
-    """Render the admin management page with tabs for users and submissions."""
+    """Render the admin management page with tabs for users, subjects, and submissions."""
     auth_result = _require_manage_access(request)
     if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
         return auth_result
@@ -526,12 +557,14 @@ async def manage_page(request: Request, tab: str = "users") -> HTMLResponse:
 
     db_path = request.app.state.db_path
     users = list_users(db_path)
+    subjects = list_subjects(db_path)
     submissions, suggestions = _get_manage_submissions(request, users)
 
-    active_tab = tab if tab in ("users", "submissions") else "users"
+    active_tab = tab if tab in ("users", "subjects", "submissions") else "users"
 
     return _template_response(request, "manage.html", {
         "users": users,
+        "subjects": subjects,
         "submissions": submissions,
         "suggestions": suggestions,
         "active_tab": active_tab,
@@ -772,6 +805,169 @@ async def manage_link_submission(request: Request, submission_id: str) -> HTMLRe
 async def manage_unlink_submission(request: Request, submission_id: str) -> HTMLResponse:
     """Legacy: unlink a submission from a user."""
     return await manage_unlink_entry(request, submission_id)
+
+
+# ── Manage Subjects ──────────────────────────────────────────────────
+
+
+@app.post("/api/manage/subjects", response_class=HTMLResponse)
+async def manage_create_subject(request: Request) -> HTMLResponse:
+    """Create a new subject from the manage page."""
+    from fastapi.responses import JSONResponse
+
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+
+    form = await request.form()
+    name = str(form.get("name", "")).strip()
+    gender = str(form.get("gender", "")).strip()
+    birth_year_raw = str(form.get("birth_year", "")).strip()
+    height_cm_raw = str(form.get("height_cm", "")).strip()
+    weight_kg_raw = str(form.get("weight_kg", "")).strip()
+    training_level = str(form.get("training_level", "")).strip()
+    notes = str(form.get("notes", "")).strip()
+
+    if not name:
+        return JSONResponse(status_code=400, content={"error": "이름은 필수입니다"})
+
+    db_path = request.app.state.db_path
+
+    birth_year: int | None = None
+    if birth_year_raw:
+        try:
+            birth_year = int(birth_year_raw)
+        except ValueError:
+            pass
+
+    height_cm: float | None = None
+    if height_cm_raw:
+        try:
+            height_cm = float(height_cm_raw)
+        except ValueError:
+            pass
+
+    weight_kg: float | None = None
+    if weight_kg_raw:
+        try:
+            weight_kg = float(weight_kg_raw)
+        except ValueError:
+            pass
+
+    create_subject(
+        db_path,
+        name=name,
+        gender=gender or None,
+        birth_year=birth_year,
+        height_cm=height_cm,
+        weight_kg=weight_kg,
+        training_level=training_level or None,
+        notes=notes or None,
+    )
+
+    # Return the updated subjects partial
+    subjects = list_subjects(db_path)
+    users = list_users(db_path)
+    return templates.TemplateResponse(
+        request,
+        "partials/manage_subjects.html",
+        {"subjects": subjects, "users": users, "session_user": session_user, "current_user": session_user},
+    )
+
+
+@app.patch("/api/manage/subjects/{subject_id}", response_class=HTMLResponse)
+async def manage_update_subject(request: Request, subject_id: str) -> HTMLResponse:
+    """Update a subject's fields from the manage page."""
+    from fastapi.responses import JSONResponse
+
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+
+    form = await request.form()
+    db_path = request.app.state.db_path
+
+    fields: dict[str, str | float | int | None] = {}
+    for key in ("name", "gender", "training_level", "notes"):
+        if key in form:
+            raw = str(form[key]).strip()
+            fields[key] = raw if raw else None
+    for key in ("height_cm", "weight_kg", "body_fat_pct", "skeletal_muscle_mass", "bmi"):
+        if key in form:
+            raw = str(form[key]).strip()
+            fields[key] = float(raw) if raw else None
+    if "birth_year" in form:
+        raw = str(form["birth_year"]).strip()
+        fields["birth_year"] = int(raw) if raw else None
+
+    try:
+        update_subject(db_path, subject_id, **fields)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+
+    subjects = list_subjects(db_path)
+    users = list_users(db_path)
+    return templates.TemplateResponse(
+        request,
+        "partials/manage_subjects.html",
+        {"subjects": subjects, "users": users, "session_user": session_user, "current_user": session_user},
+    )
+
+
+@app.patch("/api/manage/subjects/{subject_id}/link-user", response_class=HTMLResponse)
+async def manage_link_user_to_subject(request: Request, subject_id: str) -> HTMLResponse:
+    """Link a user to a subject."""
+    from fastapi.responses import JSONResponse
+
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+
+    form = await request.form()
+    target_user_id = str(form.get("user_id", "")).strip()
+    if not target_user_id:
+        return JSONResponse(status_code=400, content={"error": "user_id is required"})
+
+    db_path = request.app.state.db_path
+    link_user_to_subject(db_path, target_user_id, subject_id)
+
+    subjects = list_subjects(db_path)
+    users = list_users(db_path)
+    return templates.TemplateResponse(
+        request,
+        "partials/manage_subjects.html",
+        {"subjects": subjects, "users": users, "session_user": session_user, "current_user": session_user},
+    )
+
+
+@app.delete("/api/manage/subjects/{subject_id}/link-user", response_class=HTMLResponse)
+async def manage_unlink_user_from_subject(request: Request, subject_id: str) -> HTMLResponse:
+    """Unlink a user from a subject."""
+    from fastapi.responses import JSONResponse
+
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+
+    form = await request.form()
+    target_user_id = str(form.get("user_id", "")).strip()
+    if not target_user_id:
+        return JSONResponse(status_code=400, content={"error": "user_id is required"})
+
+    db_path = request.app.state.db_path
+    unlink_user_from_subject(db_path, target_user_id)
+
+    subjects = list_subjects(db_path)
+    users = list_users(db_path)
+    return templates.TemplateResponse(
+        request,
+        "partials/manage_subjects.html",
+        {"subjects": subjects, "users": users, "session_user": session_user, "current_user": session_user},
+    )
 
 
 # ── Auth router ──────────────────────────────────────────────────────

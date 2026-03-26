@@ -81,26 +81,31 @@
 
     {% if not prefill %}
     {% if is_researcher %}
-    <!-- 연구자: 대상 피험자 선택 -->
+    <!-- 연구자: 대상 피험자 선택 (subjects 기반) -->
     <div>
-      <label for="target_user_id" class="block text-sm font-medium text-gray-700 mb-1">
+      <label for="subject_id" class="block text-sm font-medium text-gray-700 mb-1">
         대상 피험자 <span class="text-red-500">*</span>
       </label>
-      <select
-        name="target_user_id"
-        id="target_user_id"
-        required
-        class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm
-               focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-        onchange="if(this.value==='__new__')window.location.href='/manage?tab=users&action=invite'"
-      >
-        <option value="">피험자를 선택하세요</option>
-        {% for u in target_users %}
-        <option value="{{ u.id }}">{{ u.display_name or u.email }}{% if u.email %} ({{ u.email }}){% endif %}</option>
-        {% endfor %}
-        <option value="__new__" class="text-blue-600">+ 새 피험자 등록...</option>
-      </select>
-      <p class="text-xs text-gray-400 mt-1">피험자가 먼저 Google 로그인을 완료해야 목록에 나타납니다</p>
+      <div class="flex gap-2">
+        <select
+          name="subject_id"
+          id="subject_id"
+          required
+          class="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm
+                 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+        >
+          <option value="">피험자를 선택하세요</option>
+          {% for s in subjects %}
+          <option value="{{ s.id }}" data-name="{{ s.name }}">{{ s.name }}{% if s.gender %} ({{ s.gender }}{% if s.birth_year %}, {{ s.birth_year }}{% endif %}){% endif %}</option>
+          {% endfor %}
+        </select>
+        <button
+          type="button"
+          onclick="openNewSubjectModal()"
+          class="px-3 py-2 bg-gray-900 text-white rounded-md text-sm font-medium
+                 hover:bg-gray-800 transition-colors flex-shrink-0"
+        >+ 새 피험자</button>
+      </div>
     </div>
 
     <!-- 피험자 이름 (자동 채워짐, 수동 입력도 가능) -->
@@ -118,16 +123,19 @@
       />
     </div>
     <script>
-      document.getElementById('target_user_id').addEventListener('change', function() {
+      document.getElementById('subject_id').addEventListener('change', function() {
         var opt = this.options[this.selectedIndex];
-        if (opt.value && opt.value !== '__new__') {
-          var name = opt.textContent.split(' (')[0].trim();
+        if (opt.value) {
+          var name = opt.getAttribute('data-name') || opt.textContent.split(' (')[0].trim();
           document.getElementById('subject_name').value = name;
         }
       });
     </script>
     {% else %}
     <!-- 일반 유저: 본인 데이터 (자동 연결, 이름만 입력) -->
+    {% if user_subject %}
+    <input type="hidden" name="subject_id" value="{{ user_subject.id }}" />
+    {% endif %}
     <div>
       <label for="subject_name" class="block text-sm font-medium text-gray-700 mb-1">
         피험자 이름
@@ -136,7 +144,7 @@
         type="text"
         name="subject_name"
         id="subject_name"
-        value="{{ current_user.display_name or '' }}"
+        value="{{ user_subject.name if user_subject else (current_user.display_name or '') }}"
         placeholder="예: 홍길동"
         class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm
                focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
@@ -181,6 +189,113 @@
     </button>
   </form>
 </div>
+
+{% if is_researcher %}
+<!-- 새 피험자 등록 모달 -->
+<div id="new-subject-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50" onclick="if(event.target===this)closeNewSubjectModal()">
+  <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md mx-4" onclick="event.stopPropagation()">
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">새 피험자 등록</h3>
+    <form id="new-subject-form" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">이름 <span class="text-red-500">*</span></label>
+        <input type="text" id="ns-name" required class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" placeholder="홍길동" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">성별 <span class="text-red-500">*</span></label>
+        <select id="ns-gender" required class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+          <option value="">선택</option>
+          <option value="남성">남성</option>
+          <option value="여성">여성</option>
+          <option value="기타">기타</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">출생년도 <span class="text-red-500">*</span></label>
+        <input type="number" id="ns-birth-year" required min="1900" max="2025" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" placeholder="1990" />
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">신장 (cm)</label>
+          <input type="number" step="0.1" id="ns-height" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" placeholder="175" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">체중 (kg)</label>
+          <input type="number" step="0.1" id="ns-weight" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" placeholder="70" />
+        </div>
+      </div>
+      <div id="ns-error" class="text-sm text-red-600 hidden"></div>
+      <div class="flex justify-end gap-3 mt-4">
+        <button type="button" onclick="closeNewSubjectModal()" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">취소</button>
+        <button type="submit" class="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800">등록</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openNewSubjectModal() {
+  var modal = document.getElementById('new-subject-modal');
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+  document.getElementById('ns-name').focus();
+}
+
+function closeNewSubjectModal() {
+  var modal = document.getElementById('new-subject-modal');
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+  document.getElementById('ns-error').classList.add('hidden');
+}
+
+document.getElementById('new-subject-form').addEventListener('submit', function(e) {
+  e.preventDefault();
+  var errorEl = document.getElementById('ns-error');
+  errorEl.classList.add('hidden');
+
+  var body = new FormData();
+  body.append('name', document.getElementById('ns-name').value);
+  body.append('gender', document.getElementById('ns-gender').value);
+  body.append('birth_year', document.getElementById('ns-birth-year').value);
+  body.append('height_cm', document.getElementById('ns-height').value || '');
+  body.append('weight_kg', document.getElementById('ns-weight').value || '');
+
+  fetch('/api/subjects', {
+    method: 'POST',
+    body: body,
+  }).then(function(r) {
+    if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'Error'); });
+    return r.json();
+  }).then(function(result) {
+    var subject = result.data;
+    var select = document.getElementById('subject_id');
+    var opt = document.createElement('option');
+    opt.value = subject.id;
+    opt.setAttribute('data-name', subject.name);
+    var label = subject.name;
+    if (subject.gender) {
+      label += ' (' + subject.gender;
+      if (subject.birth_year) label += ', ' + subject.birth_year;
+      label += ')';
+    }
+    opt.textContent = label;
+    // Insert before the last option
+    select.appendChild(opt);
+    select.value = subject.id;
+    document.getElementById('subject_name').value = subject.name;
+    closeNewSubjectModal();
+    // Reset modal form
+    document.getElementById('new-subject-form').reset();
+  }).catch(function(err) {
+    errorEl.textContent = err.message;
+    errorEl.classList.remove('hidden');
+  });
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeNewSubjectModal();
+});
+</script>
+{% endif %}
 
 <script>
 (function () {
