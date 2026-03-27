@@ -12,7 +12,7 @@ Park Geunyun:
   fatmax_gmin = 1.2, fatmax_power_w = 175
 
 Hong Changsun:
-  vo2max_ml = 4490.9, vo2max_rel = 66.9
+  vo2max_ml = 4381.2, vo2max_rel = 65.3  # updated: BxB preprocessing + top-3 triplet avg
   lt1_fixed_power_w = 134.4, lt1_dmax_power_w = 172.5
   fatmax_gmin = 1.412, fatmax_power_w = 225
 """
@@ -180,12 +180,12 @@ class TestHongChangsun:
 
     def test_vo2max_ml(self) -> None:
         _assert_within_pct(
-            self._results["vo2max"]["vo2max_ml"], 4490.9, label="vo2max_ml"
+            self._results["vo2max"]["vo2max_ml"], 4381.2, label="vo2max_ml"
         )
 
     def test_vo2max_rel(self) -> None:
         _assert_within_pct(
-            self._results["vo2max"]["vo2max_rel"], 66.9, label="vo2max_rel"
+            self._results["vo2max"]["vo2max_rel"], 65.3, label="vo2max_rel"
         )
 
     def test_lt1_fixed(self) -> None:

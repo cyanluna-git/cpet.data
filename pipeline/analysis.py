@@ -96,6 +96,82 @@ def _active_bxb_window(bxb: pd.DataFrame) -> pd.DataFrame:
     return valid.sort_values("t_s").reset_index(drop=True)
 
 
+# Target columns for BxB preprocessing (HR excluded intentionally)
+_BXB_PREPROCESS_COLS = ["vo2_ml", "vco2_ml", "ve_lmin"]
+
+
+def _preprocess_bxb(bxb: pd.DataFrame) -> pd.DataFrame:
+    """Apply 5-second smoothing and 30% local-median outlier removal to BxB data.
+
+    Step 1: Time-based 5s rolling mean on vo2_ml, vco2_ml, ve_lmin.
+    Step 2: Local median filter (±5 breaths) — values deviating >30% from
+            local median are replaced with NaN, then linearly interpolated.
+            Gaps >30s in t_s are not interpolated across.
+
+    Returns the preprocessed DataFrame (copy). Skips if <10 breaths.
+    """
+    if bxb.empty or len(bxb) < 10:
+        return bxb.copy()
+
+    required = {"t_s"} | set(_BXB_PREPROCESS_COLS)
+    if not required.issubset(bxb.columns):
+        return bxb.copy()
+
+    df = bxb.copy().sort_values("t_s").reset_index(drop=True)
+
+    # ------------------------------------------------------------------
+    # Step 1: 5-second time-based rolling mean
+    # ------------------------------------------------------------------
+    # Create a temporary DatetimeIndex from t_s for time-based rolling
+    df["_dt"] = pd.to_timedelta(df["t_s"], unit="s")
+    df = df.set_index("_dt")
+
+    for col in _BXB_PREPROCESS_COLS:
+        if col in df.columns:
+            df[col] = df[col].rolling("5s", min_periods=1).mean()
+
+    df = df.reset_index(drop=True)
+
+    # ------------------------------------------------------------------
+    # Step 2: 30% local-median outlier removal
+    # ------------------------------------------------------------------
+    for col in _BXB_PREPROCESS_COLS:
+        if col not in df.columns:
+            continue
+        series = df[col].copy()
+        local_median = series.rolling(window=11, center=True, min_periods=1).median()
+        deviation = (series - local_median).abs()
+        threshold = local_median.abs() * 0.30
+        outlier_mask = deviation > threshold
+
+        # Edge case: if ALL values are outliers, keep originals
+        if outlier_mask.all():
+            continue
+
+        df.loc[outlier_mask, col] = np.nan
+
+        # Interpolate linearly, but not across gaps >30s in t_s
+        # Identify gap boundaries
+        t_s = df["t_s"].values
+        gap_indices = np.where(np.diff(t_s) > 30.0)[0]
+
+        if len(gap_indices) == 0:
+            df[col] = df[col].interpolate(method="linear")
+        else:
+            # Split into segments, interpolate each independently
+            boundaries = [0] + (gap_indices + 1).tolist() + [len(df)]
+            for start, end in zip(boundaries[:-1], boundaries[1:]):
+                segment = df[col].iloc[start:end]
+                df[col].iloc[start:end] = segment.interpolate(method="linear")
+
+    # Recalculate RQ after smoothing + outlier removal
+    if "rq" in df.columns and "vo2_ml" in df.columns and "vco2_ml" in df.columns:
+        valid_vo2 = df["vo2_ml"] > 0
+        df.loc[valid_vo2, "rq"] = df.loc[valid_vo2, "vco2_ml"] / df.loc[valid_vo2, "vo2_ml"]
+
+    return df
+
+
 def _json_default(value: Any) -> Any:
     """Convert numpy/pandas scalars to plain Python values for JSON storage."""
     if isinstance(value, np.generic):
@@ -334,11 +410,17 @@ def analyze_vo2max(
         valid["ve_lmin"].rolling(window, min_periods=1).mean()
     )
 
-    peak_idx = valid["vo2_rolling"].idxmax()
-    results["vo2max_ml"] = round(float(valid.loc[peak_idx, "vo2_rolling"]), 1)
-    results["vo2max_rel"] = round(
-        float(valid.loc[peak_idx, "vo2_rolling"]) / weight, 1
-    )
+    # VO2max = mean of top-3 rolling peaks (triplet averaging)
+    n_peaks = min(3, len(valid))
+    top3 = valid["vo2_rolling"].nlargest(n_peaks)
+    vo2max_value = float(top3.mean())
+    peak_idx = top3.idxmax()  # index of the single highest for associated metrics
+
+    results["vo2max_ml"] = round(vo2max_value, 1)
+    results["vo2max_rel"] = round(vo2max_value / weight, 1)
+    results["vo2max_method"] = "top3_mean"
+    results["vo2max_triplet_values"] = [round(float(v), 1) for v in top3.values]
+    results["vo2max_outliers_removed"] = True
     results["vco2max_ml"] = round(
         float(valid.loc[peak_idx, "vco2_rolling"]), 1
     )
@@ -1095,6 +1177,10 @@ def run_analysis(db_path: Path) -> dict[str, Any]:
             return {"_error": str(exc)}
 
     data = _coerce_numeric(load_data(db_path))
+
+    # BxB preprocessing: 5s smoothing + 30% outlier removal
+    if not data["breath_by_breath"].empty:
+        data["breath_by_breath"] = _preprocess_bxb(data["breath_by_breath"])
 
     print("\n1. Lactate Threshold Analysis...")
     if not data["blood_samples"].empty:
