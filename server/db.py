@@ -5,11 +5,13 @@ Every function takes a db_path: Path parameter. No global state.
 Uses raw sqlite3, WAL mode, TEXT primary keys (UUID).
 """
 
+import html
 import json
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+import re
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS subjects (
@@ -1115,6 +1117,24 @@ _CPET_SNAPSHOT_METRIC_KEYS = (
     "fatmax_power_w",
     "fatmax_gmin",
 )
+_INSCYD_SNAPSHOT_EXTRACTION_VERSION = "inscyd_snapshot_v1"
+_INSCYD_SNAPSHOT_METRIC_MAP = {
+    "vo2max_rel_ml_kg_min": "vo2max_rel",
+    "fatmax_watt": "fatmax_power_w",
+    "vlamax_mmol_l_s": "vlamax",
+    "at_abs_watt": "at_power_w",
+    "carbmax_abs_watt": "carbmax_w",
+    "glycogen_abs_g": "glycogen_g",
+}
+_INSCYD_SNAPSHOT_METRIC_KEYS = (
+    "vo2max_ml",
+    "vo2max_rel",
+    "fatmax_power_w",
+    "vlamax",
+    "at_power_w",
+    "carbmax_w",
+    "glycogen_g",
+)
 
 
 def _parse_analysis_result_value(raw_value: str | None) -> float | int | None:
@@ -1247,6 +1267,122 @@ def extract_cpet_snapshot(
         "measured_at": source["test_date"],
         "protocol_type": protocol_type or None,
         "extraction_version": _CPET_SNAPSHOT_EXTRACTION_VERSION,
+        "quality_flags_json": json.dumps(quality_flags),
+        "payload_json": json.dumps(payload, ensure_ascii=True, sort_keys=True),
+    }
+    snapshot.update(present_metrics)
+    return snapshot
+
+
+def _find_inscyd_report_html(workspace: Path) -> Path | None:
+    """Find the rendered INSCYD report HTML inside a workspace."""
+    candidates = [
+        workspace / "report" / "index.html",
+        workspace / "index.html",
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _read_inscyd_report_data(report_html_path: Path) -> dict:
+    """Read embedded report-data JSON from a rendered INSCYD report."""
+    try:
+        text = report_html_path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+
+    match = re.search(
+        r'<script id="report-data" type="application/json">(.*?)</script>',
+        text,
+        re.DOTALL,
+    )
+    if match is None:
+        return {}
+
+    try:
+        payload = html.unescape(match.group(1))
+        data = json.loads(payload)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def extract_inscyd_snapshot(
+    db_path: Path,
+    submission_id: str,
+    data_dir: Path | None = None,
+) -> dict | None:
+    """Build an INSCYD snapshot row dict from a rendered report artifact."""
+    submission = get_submission(db_path, submission_id)
+    if submission is None or not submission.get("subject_id"):
+        return None
+
+    workspace = _resolve_workspace_path(submission.get("workspace_path"), data_dir=data_dir)
+    if workspace is None:
+        return None
+
+    report_html = _find_inscyd_report_html(workspace)
+    if report_html is None:
+        return None
+
+    report_data = _read_inscyd_report_data(report_html)
+    if not report_data:
+        return None
+
+    session = report_data.get("session") if isinstance(report_data.get("session"), dict) else {}
+    inscyd = report_data.get("inscyd") if isinstance(report_data.get("inscyd"), dict) else {}
+
+    measured_at = str(session.get("test_date") or "").strip()
+    quality_flags: list[str] = []
+    if not measured_at:
+        measured_at = str(submission.get("test_date") or "").strip()
+        if measured_at:
+            quality_flags.append("fallback_submission_test_date")
+    if not measured_at:
+        return None
+
+    protocol_type = str(session.get("test_type") or "").strip()
+    if not protocol_type:
+        quality_flags.append("missing_protocol_type")
+
+    present_metrics: dict[str, float | int] = {}
+    for src_key, dest_key in _INSCYD_SNAPSHOT_METRIC_MAP.items():
+        value = inscyd.get(src_key)
+        if isinstance(value, (int, float)):
+            present_metrics[dest_key] = value
+
+    missing_metrics = sorted(
+        key for key in _INSCYD_SNAPSHOT_METRIC_KEYS if key not in present_metrics
+    )
+    quality_flags.extend(f"missing_{key}" for key in missing_metrics)
+    quality_flags.sort()
+
+    relative_report_html = report_html.relative_to(workspace).as_posix()
+    payload = {
+        "source": {
+            "submission_id": submission_id,
+            "workspace_path": submission.get("workspace_path", ""),
+            "report_html": relative_report_html,
+        },
+        "meta": report_data.get("meta", {}),
+        "subject": report_data.get("subject", {}),
+        "session": session,
+        "inscyd": inscyd,
+        "warnings": report_data.get("warnings", []),
+        "missing_metrics": missing_metrics,
+    }
+
+    snapshot = {
+        "snapshot_id": str(uuid.uuid4()),
+        "subject_id": submission["subject_id"],
+        "source_kind": "inscyd_report",
+        "source_ref_id": submission_id,
+        "submission_id": submission_id,
+        "measured_at": measured_at,
+        "protocol_type": protocol_type or None,
+        "extraction_version": _INSCYD_SNAPSHOT_EXTRACTION_VERSION,
         "quality_flags_json": json.dumps(quality_flags),
         "payload_json": json.dumps(payload, ensure_ascii=True, sort_keys=True),
     }
