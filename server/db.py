@@ -1135,6 +1135,30 @@ _INSCYD_SNAPSHOT_METRIC_KEYS = (
     "carbmax_w",
     "glycogen_g",
 )
+_SNAPSHOT_METRIC_COLUMNS = (
+    "vo2max_ml",
+    "vo2max_rel",
+    "lt1_power_w",
+    "lt2_power_w",
+    "fatmax_power_w",
+    "fatmax_gmin",
+    "vlamax",
+    "at_power_w",
+    "carbmax_w",
+    "glycogen_g",
+)
+_SNAPSHOT_BASE_COLUMNS = (
+    "subject_id",
+    "source_kind",
+    "source_ref_id",
+    "submission_id",
+    "measured_at",
+    "protocol_type",
+    "extraction_version",
+    "quality_flags_json",
+    "payload_json",
+)
+_SNAPSHOT_MUTABLE_COLUMNS = _SNAPSHOT_BASE_COLUMNS + _SNAPSHOT_METRIC_COLUMNS
 
 
 def _parse_analysis_result_value(raw_value: str | None) -> float | int | None:
@@ -1388,6 +1412,153 @@ def extract_inscyd_snapshot(
     }
     snapshot.update(present_metrics)
     return snapshot
+
+
+def _list_snapshot_candidate_submissions(
+    db_path: Path,
+    submission_ids: list[str] | None = None,
+) -> list[dict]:
+    """List submissions that can be scanned for snapshot extraction."""
+    conn = _connect(db_path)
+    if submission_ids:
+        placeholders = ", ".join("?" for _ in submission_ids)
+        rows = conn.execute(
+            f"SELECT * FROM submissions WHERE id IN ({placeholders}) ORDER BY created_at ASC",
+            submission_ids,
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM submissions ORDER BY created_at ASC"
+        ).fetchall()
+    conn.close()
+    results = []
+    for row in rows:
+        item = dict(row)
+        if item.get("file_manifest"):
+            item["file_manifest"] = json.loads(item["file_manifest"])
+        results.append(item)
+    return results
+
+
+def upsert_subject_metric_snapshot(
+    db_path: Path,
+    snapshot: dict,
+    dry_run: bool = False,
+) -> dict:
+    """Insert or refresh a subject_metric_snapshots row by its source artifact key."""
+    conn = _connect(db_path)
+    existing = conn.execute(
+        """SELECT * FROM subject_metric_snapshots
+           WHERE subject_id = ? AND source_kind = ? AND source_ref_id = ?""",
+        (
+            snapshot["subject_id"],
+            snapshot["source_kind"],
+            snapshot["source_ref_id"],
+        ),
+    ).fetchone()
+
+    if existing is None:
+        if dry_run:
+            conn.close()
+            return {"action": "would_insert", "snapshot_id": snapshot.get("snapshot_id")}
+
+        now = _now_utc()
+        payload = {
+            "snapshot_id": snapshot.get("snapshot_id") or str(uuid.uuid4()),
+            "created_at": now,
+            "updated_at": now,
+        }
+        for column in _SNAPSHOT_MUTABLE_COLUMNS:
+            payload[column] = snapshot.get(column)
+
+        columns = ["snapshot_id", *_SNAPSHOT_MUTABLE_COLUMNS, "created_at", "updated_at"]
+        placeholders = ", ".join("?" for _ in columns)
+        conn.execute(
+            f"INSERT INTO subject_metric_snapshots ({', '.join(columns)}) VALUES ({placeholders})",
+            [payload[column] for column in columns],
+        )
+        conn.commit()
+        conn.close()
+        return {"action": "inserted", "snapshot_id": payload["snapshot_id"]}
+
+    existing_dict = dict(existing)
+    if existing_dict.get("extraction_version") == snapshot.get("extraction_version"):
+        conn.close()
+        return {"action": "skipped", "snapshot_id": existing_dict["snapshot_id"]}
+
+    if dry_run:
+        conn.close()
+        return {"action": "would_update", "snapshot_id": existing_dict["snapshot_id"]}
+
+    now = _now_utc()
+    set_clause = ", ".join(f"{column} = ?" for column in (*_SNAPSHOT_MUTABLE_COLUMNS, "updated_at"))
+    values = [snapshot.get(column) for column in _SNAPSHOT_MUTABLE_COLUMNS]
+    values.append(now)
+    values.append(existing_dict["snapshot_id"])
+    conn.execute(
+        f"UPDATE subject_metric_snapshots SET {set_clause} WHERE snapshot_id = ?",
+        values,
+    )
+    conn.commit()
+    conn.close()
+    return {"action": "updated", "snapshot_id": existing_dict["snapshot_id"]}
+
+
+def backfill_subject_metric_snapshots(
+    db_path: Path,
+    submission_ids: list[str] | None = None,
+    data_dir: Path | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Scan submissions, extract snapshot rows, and upsert them into the platform DB."""
+    submissions = _list_snapshot_candidate_submissions(db_path, submission_ids=submission_ids)
+    extractors = (extract_cpet_snapshot, extract_inscyd_snapshot)
+
+    summary = {
+        "dry_run": dry_run,
+        "submissions_scanned": len(submissions),
+        "snapshots_found": 0,
+        "inserted": 0,
+        "updated": 0,
+        "skipped": 0,
+        "would_insert": 0,
+        "would_update": 0,
+        "errors": [],
+    }
+
+    for submission in submissions:
+        submission_id = submission["id"]
+        for extractor in extractors:
+            try:
+                snapshot = extractor(db_path, submission_id, data_dir=data_dir)
+            except Exception as exc:  # pragma: no cover - defensive runner guard
+                summary["errors"].append(
+                    {
+                        "submission_id": submission_id,
+                        "extractor": extractor.__name__,
+                        "error": str(exc),
+                    }
+                )
+                continue
+
+            if snapshot is None:
+                continue
+
+            summary["snapshots_found"] += 1
+            result = upsert_subject_metric_snapshot(db_path, snapshot, dry_run=dry_run)
+            action = result["action"]
+            if action == "inserted":
+                summary["inserted"] += 1
+            elif action == "updated":
+                summary["updated"] += 1
+            elif action == "skipped":
+                summary["skipped"] += 1
+            elif action == "would_insert":
+                summary["would_insert"] += 1
+            elif action == "would_update":
+                summary["would_update"] += 1
+
+    return summary
 
 
 def _read_analysis_metrics(analysis_db_path: Path) -> dict:
