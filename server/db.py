@@ -1194,6 +1194,16 @@ _SNAPSHOT_COMPARE_METRICS: list[tuple[str, str, str]] = [
     ("carbmax_w", "CarbMax", "W"),
     ("glycogen_g", "Glycogen", "g"),
 ]
+_ENDURANCE_CORE_FEATURE_SPEC_KEY = "endurance_core"
+_ENDURANCE_CORE_FEATURE_SPEC_VERSION = "v1"
+_ENDURANCE_CORE_FEATURE_KEYS = (
+    "vo2max_rel",
+    "lt1_power_w",
+    "lt2_power_w",
+    "fatmax_power_w",
+    "vlamax",
+    "at_power_w",
+)
 
 
 def _parse_analysis_result_value(raw_value: str | None) -> float | int | None:
@@ -1732,6 +1742,55 @@ def build_subject_metric_snapshot_compare(
         "baseline": baseline,
         "current": current,
         "metrics": metrics,
+    }
+
+
+def build_endurance_core_feature_set(
+    db_path: Path,
+    anchor_snapshot_id: str,
+) -> dict | None:
+    """Build an endurance_core_v1 feature row dict from one snapshot anchor."""
+    snapshot = get_subject_metric_snapshot(db_path, anchor_snapshot_id)
+    if snapshot is None:
+        return None
+
+    features = {
+        key: snapshot[key]
+        for key in _ENDURANCE_CORE_FEATURE_KEYS
+        if snapshot.get(key) is not None
+    }
+    features["source_kind"] = snapshot["source_kind"]
+
+    missing_metrics = sorted(
+        key for key in _ENDURANCE_CORE_FEATURE_KEYS if key not in features
+    )
+    quality_flags = [f"missing_{key}" for key in missing_metrics]
+
+    payload = {
+        "spec": {
+            "key": _ENDURANCE_CORE_FEATURE_SPEC_KEY,
+            "version": _ENDURANCE_CORE_FEATURE_SPEC_VERSION,
+        },
+        "inputs": {
+            "anchor_snapshot_id": anchor_snapshot_id,
+            "anchor_measured_at": snapshot["measured_at"],
+            "source_kind": snapshot["source_kind"],
+        },
+        "features": features,
+    }
+
+    return {
+        "feature_row_id": str(uuid.uuid4()),
+        "subject_id": snapshot["subject_id"],
+        "feature_spec_key": _ENDURANCE_CORE_FEATURE_SPEC_KEY,
+        "feature_spec_version": _ENDURANCE_CORE_FEATURE_SPEC_VERSION,
+        "anchor_snapshot_id": anchor_snapshot_id,
+        "anchor_measured_at": snapshot["measured_at"],
+        "window_label": "anchor",
+        "input_snapshot_ids_json": json.dumps([anchor_snapshot_id]),
+        "input_source_kinds_json": json.dumps([snapshot["source_kind"]]),
+        "feature_payload_json": json.dumps(payload, ensure_ascii=True, sort_keys=True),
+        "quality_flags_json": json.dumps(quality_flags),
     }
 
 
