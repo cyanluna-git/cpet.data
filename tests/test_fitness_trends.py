@@ -544,6 +544,8 @@ class TestProfileTrendsAPI:
         )
         assert resp.status_code == 200
         assert "fitness-trends" in resp.text
+        assert "시계열 차트" in resp.text
+        assert "data-trend-chart-root" in resp.text
         assert "두 시점 비교" in resp.text
         assert 'name="baseline"' in resp.text
 
@@ -585,6 +587,8 @@ class TestProfilePageTrends:
         assert "2026-03-01" in resp.text
         assert "최근 스냅샷" in resp.text
         assert "개인 최고" in resp.text
+        assert "profile-trends-chart.js" in resp.text
+        assert "시계열 차트" not in resp.text
 
     def test_profile_page_shows_deltas(
         self, client: TestClient, tmp_path: Path,
@@ -610,5 +614,7 @@ class TestProfilePageTrends:
         # Delta should show +300.0 for vo2max_ml
         assert "+300.0" in resp.text
         assert "+4.0" in resp.text
+        assert "시계열 차트" in resp.text
+        assert "data-trend-chart-root" in resp.text
         assert "두 시점 비교" in resp.text
         assert "기준 검사" in resp.text

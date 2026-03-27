@@ -42,6 +42,49 @@
     {% endfor %}
   </div>
 
+  {% if trends|length >= 2 %}
+  <section
+    class="mb-5 rounded-lg border border-gray-200 bg-white px-4 py-4 shadow-sm"
+    data-trend-chart-root
+  >
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <p class="text-xs font-medium uppercase tracking-wide text-gray-500">시계열 차트</p>
+        <p class="text-sm text-gray-700">날짜 흐름에 따라 핵심 지표 변화를 빠르게 확인합니다.</p>
+      </div>
+      <label class="text-sm text-gray-700">
+        <span class="sr-only">차트 지표 선택</span>
+        <select
+          class="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+          data-trend-chart-select
+        >
+          <option value="vo2max_rel">VO2max (mL/kg/min)</option>
+          <option value="lt1_power_w">LT1 (W)</option>
+          <option value="lt2_power_w">LT2 (W)</option>
+          <option value="fatmax_power_w">FatMax (W)</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="mt-4 rounded-lg border border-gray-100 bg-gray-50 p-3">
+      <div class="mb-2 flex items-center justify-between gap-3">
+        <p class="text-xs font-medium uppercase tracking-wide text-gray-500" data-trend-chart-title>VO2max</p>
+        <p class="text-xs text-gray-500" data-trend-chart-unit>mL/kg/min</p>
+      </div>
+      <svg
+        viewBox="0 0 640 220"
+        class="h-56 w-full"
+        preserveAspectRatio="none"
+        aria-label="피트니스 지표 시계열 차트"
+        data-trend-chart-svg
+      ></svg>
+      <div class="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4" data-trend-chart-points></div>
+    </div>
+
+    <script type="application/json" data-trend-chart-data>{{ trends|tojson }}</script>
+  </section>
+  {% endif %}
+
   {% if trend_compare.enabled %}
   <div class="mb-5 rounded-lg border border-gray-200 bg-gray-50 px-4 py-4">
     <div class="flex flex-wrap items-center justify-between gap-2">
