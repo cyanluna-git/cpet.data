@@ -7,6 +7,7 @@
 - [README.md](../README.md): 현재 코드베이스와 실행 방법
 - [specs/REBUILD_PLAN.md](./specs/REBUILD_PLAN.md): v2 목표 구조와 설계 의도
 - [specs/SUBJECT_METRIC_SNAPSHOTS_V2.md](./specs/SUBJECT_METRIC_SNAPSHOTS_V2.md): 연구용 2차 snapshot layer 설계
+- [specs/DERIVED_FEATURE_EXPERIMENT_LAYER_V2.md](./specs/DERIVED_FEATURE_EXPERIMENT_LAYER_V2.md): snapshot 위 파생 feature / clustering 실험 계층 설계
 - [specs/DATA_VALIDATION_SERVICE.md](./specs/DATA_VALIDATION_SERVICE.md): 검증 서비스 설계
 - [specs/DATA_VALIDATOR_QUICKREF.md](./specs/DATA_VALIDATOR_QUICKREF.md): 검증 규칙 빠른 참조
 - [specs/USER_ACCOUNTS.md](./specs/USER_ACCOUNTS.md): 사용자/온보딩 흐름
