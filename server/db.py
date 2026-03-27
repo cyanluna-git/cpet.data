@@ -1053,6 +1053,14 @@ _TREND_METRICS: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
+_TREND_SUMMARY_METRICS: list[tuple[str, str, str]] = [
+    ("vo2max_rel", "VO2max", "mL/kg/min"),
+    ("lt1_power_w", "LT1", "W"),
+    ("lt2_power_w", "LT2", "W"),
+    ("fatmax_power_w", "FatMax", "W"),
+    ("fatmax_gmin", "FatMax Ox", "g/min"),
+]
+
 
 def _read_analysis_metrics(analysis_db_path: Path) -> dict:
     """Read key metrics from a single workspace analysis.db file.
@@ -1165,3 +1173,59 @@ def get_fitness_trends(
             trends[-1]["deltas"] = deltas
 
     return trends
+
+
+def summarize_fitness_trends(trends: list[dict]) -> dict:
+    """Build compact summary cards from trend rows."""
+    if not trends:
+        return {
+            "total_tests": 0,
+            "latest_test_date": None,
+            "subject_name": "",
+            "cards": [],
+        }
+
+    cards: list[dict] = []
+    latest_test_date = trends[-1].get("test_date")
+    subject_name = str(trends[-1].get("subject_name") or "")
+
+    for key, label, unit in _TREND_SUMMARY_METRICS:
+        history = [entry for entry in trends if entry.get(key) is not None]
+        if not history:
+            continue
+
+        latest_entry = history[-1]
+        latest_value = latest_entry.get(key)
+        prev_entry = history[-2] if len(history) >= 2 else None
+        delta = None
+        if prev_entry is not None:
+            try:
+                delta = round(float(latest_value) - float(prev_entry[key]), 2)
+            except (TypeError, ValueError, KeyError):
+                delta = None
+
+        best_entry = max(history, key=lambda entry: float(entry.get(key) or 0))
+        try:
+            gap_to_best = round(float(latest_value) - float(best_entry.get(key) or 0), 2)
+        except (TypeError, ValueError):
+            gap_to_best = None
+
+        cards.append({
+            "key": key,
+            "label": label,
+            "unit": unit,
+            "latest_value": latest_value,
+            "latest_test_date": latest_entry.get("test_date"),
+            "delta": delta,
+            "best_value": best_entry.get(key),
+            "best_test_date": best_entry.get("test_date"),
+            "is_best_now": latest_entry is best_entry,
+            "gap_to_best": gap_to_best,
+        })
+
+    return {
+        "total_tests": len(trends),
+        "latest_test_date": latest_test_date,
+        "subject_name": subject_name,
+        "cards": cards,
+    }

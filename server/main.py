@@ -24,6 +24,7 @@ from server.db import (
     complete_onboarding,
     create_subject,
     get_fitness_trends,
+    summarize_fitness_trends,
     get_report_user_links,
     get_subject,
     get_submission,
@@ -253,6 +254,7 @@ async def profile_page(request: Request) -> HTMLResponse:
     user = get_user(db_path, user_id) or session_user
     profile = get_user_profile(db_path, user_id) or {}
     trends = get_fitness_trends(db_path, user_id, data_dir=data_dir)
+    trend_summary = summarize_fitness_trends(trends)
 
     # Load linked subject
     linked_subject = None
@@ -263,6 +265,7 @@ async def profile_page(request: Request) -> HTMLResponse:
         "user": user,
         "profile": profile,
         "trends": trends,
+        "trend_summary": trend_summary,
         "linked_subject": linked_subject,
     })
 
@@ -330,16 +333,17 @@ async def profile_trends(request: Request) -> HTMLResponse:
     db_path = request.app.state.db_path
     data_dir = request.app.state.data_dir
     trends = get_fitness_trends(db_path, user_id, data_dir=data_dir)
+    trend_summary = summarize_fitness_trends(trends)
 
     # HTMX partial response
     if request.headers.get("HX-Request"):
         return templates.TemplateResponse(
             request,
             "partials/profile_trends.html",
-            {"trends": trends},
+            {"trends": trends, "trend_summary": trend_summary},
         )
 
-    return JSONResponse(content={"data": trends})
+    return JSONResponse(content={"data": trends, "summary": trend_summary})
 
 
 # ── Onboarding routes ─────────────────────────────────────────────────

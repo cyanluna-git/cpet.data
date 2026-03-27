@@ -19,10 +19,12 @@ from fastapi.testclient import TestClient
 
 from server.db import (
     _read_analysis_metrics,
+    complete_onboarding,
     create_submission,
     get_fitness_trends,
     init_db,
     list_submissions_by_user,
+    summarize_fitness_trends,
     upsert_user,
 )
 from server.main import app
@@ -102,6 +104,13 @@ def client() -> TestClient:
 
 def _login_user(client: TestClient, google_id: str = "trends-gid") -> dict:
     """Simulate Google OAuth login and return the created user dict."""
+    db_path = app.state.db_path
+    user = upsert_user(
+        db_path, google_id=google_id, email=f"{google_id}@example.com",
+        display_name="Trends User", avatar_url="https://example.com/avatar.jpg",
+    )
+    complete_onboarding(db_path, user["id"], "Trends User")
+
     with patch(
         "server.auth.oauth.google.authorize_access_token",
         new_callable=AsyncMock,
@@ -295,6 +304,46 @@ class TestGetFitnessTrends:
         assert trends == []
 
 
+class TestSummarizeFitnessTrends:
+    def test_empty_summary(self) -> None:
+        summary = summarize_fitness_trends([])
+        assert summary["total_tests"] == 0
+        assert summary["cards"] == []
+
+    def test_summary_uses_latest_and_best_values(self) -> None:
+        trends = [
+            {
+                "test_date": "2026-01-10",
+                "subject_name": "Park",
+                "vo2max_rel": 55.0,
+                "fatmax_power_w": 150,
+            },
+            {
+                "test_date": "2026-03-15",
+                "subject_name": "Park",
+                "vo2max_rel": 57.5,
+                "fatmax_power_w": 145,
+            },
+        ]
+
+        summary = summarize_fitness_trends(trends)
+
+        assert summary["total_tests"] == 2
+        assert summary["latest_test_date"] == "2026-03-15"
+        assert summary["subject_name"] == "Park"
+
+        vo2_card = next(card for card in summary["cards"] if card["key"] == "vo2max_rel")
+        assert vo2_card["latest_value"] == 57.5
+        assert vo2_card["delta"] == 2.5
+        assert vo2_card["best_value"] == 57.5
+        assert vo2_card["is_best_now"] is True
+
+        fatmax_card = next(card for card in summary["cards"] if card["key"] == "fatmax_power_w")
+        assert fatmax_card["latest_value"] == 145
+        assert fatmax_card["best_value"] == 150
+        assert fatmax_card["gap_to_best"] == -5.0
+
+
 # ── GET /api/profile/trends ──────────────────────────────────────
 
 
@@ -332,6 +381,8 @@ class TestProfileTrendsAPI:
         body = resp.json()
         assert len(body["data"]) == 1
         assert body["data"][0]["vo2max_ml"] == 3900.0
+        assert body["summary"]["total_tests"] == 1
+        assert body["summary"]["cards"]
 
     def test_htmx_returns_partial_html(self, client: TestClient) -> None:
         """HTMX request returns partial HTML instead of JSON."""
@@ -379,6 +430,8 @@ class TestProfilePageTrends:
         assert "56.0" in resp.text
         assert "175.0" in resp.text
         assert "2026-03-01" in resp.text
+        assert "최근 스냅샷" in resp.text
+        assert "개인 최고" in resp.text
 
     def test_profile_page_shows_deltas(
         self, client: TestClient, tmp_path: Path,
