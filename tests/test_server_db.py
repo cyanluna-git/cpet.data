@@ -61,6 +61,7 @@ class TestInitDb:
         assert "submissions" in names
         assert "jobs" in names
         assert "subject_metric_snapshots" in names
+        assert "subject_feature_sets" in names
 
     def test_wal_mode(self, db_path: Path) -> None:
         conn = _connect(db_path)
@@ -77,11 +78,12 @@ class TestInitDb:
             "AND name NOT LIKE 'sqlite_%'"
         ).fetchall()
         conn.close()
-        # 9 tables: subjects, users, submissions, jobs,
+        # 10 tables: subjects, users, submissions, jobs,
         #           report_user_links, report_name_overrides,
         #           report_notes, user_profiles,
-        #           subject_metric_snapshots
-        assert len(tables) == 9
+        #           subject_metric_snapshots,
+        #           subject_feature_sets
+        assert len(tables) == 10
 
     def test_creates_subject_metric_snapshots_columns(self, db_path: Path) -> None:
         conn = sqlite3.connect(str(db_path))
@@ -169,6 +171,84 @@ class TestInitDb:
         assert "idx_sms_subject_measured_at" in names
         assert "idx_sms_source_kind_measured_at" in names
         assert "idx_sms_submission_id" in names
+
+    def test_creates_subject_feature_sets_columns(self, db_path: Path) -> None:
+        conn = sqlite3.connect(str(db_path))
+        rows = conn.execute(
+            "PRAGMA table_xinfo(subject_feature_sets)"
+        ).fetchall()
+        conn.close()
+        names = {row[1] for row in rows}
+        assert {
+            "feature_row_id",
+            "subject_id",
+            "feature_spec_key",
+            "feature_spec_version",
+            "anchor_snapshot_id",
+            "anchor_measured_at",
+            "window_label",
+            "input_snapshot_ids_json",
+            "input_source_kinds_json",
+            "feature_payload_json",
+            "quality_flags_json",
+            "created_at",
+            "updated_at",
+        }.issubset(names)
+
+    def test_subject_feature_sets_unique_spec_anchor_window(self, db_path: Path) -> None:
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "INSERT INTO subjects (id, name) VALUES (?, ?)",
+            ("subject-1", "Test Subject"),
+        )
+        conn.execute(
+            "INSERT INTO subject_metric_snapshots (snapshot_id, subject_id, source_kind, source_ref_id, measured_at, extraction_version) VALUES (?, ?, ?, ?, ?, ?)",
+            ("snapshot-1", "subject-1", "cpet_submission", "submission-1", "2026-03-28T10:00:00Z", "snapshot-v1"),
+        )
+        row = (
+            "feature-row-1",
+            "subject-1",
+            "endurance_core",
+            "v1",
+            "snapshot-1",
+            "2026-03-28T10:00:00Z",
+            "latest",
+        )
+        conn.execute(
+            """INSERT INTO subject_feature_sets (
+                   feature_row_id, subject_id, feature_spec_key, feature_spec_version,
+                   anchor_snapshot_id, anchor_measured_at, window_label
+               ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            row,
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                """INSERT INTO subject_feature_sets (
+                       feature_row_id, subject_id, feature_spec_key, feature_spec_version,
+                       anchor_snapshot_id, anchor_measured_at, window_label
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    "feature-row-2",
+                    "subject-1",
+                    "endurance_core",
+                    "v1",
+                    "snapshot-1",
+                    "2026-03-28T10:00:00Z",
+                    "latest",
+                ),
+            )
+        conn.close()
+
+    def test_creates_subject_feature_sets_indexes(self, db_path: Path) -> None:
+        conn = sqlite3.connect(str(db_path))
+        indexes = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' "
+            "AND tbl_name = 'subject_feature_sets'"
+        ).fetchall()
+        conn.close()
+        names = {row[0] for row in indexes}
+        assert "idx_sfs_subject_anchor" in names
+        assert "idx_sfs_spec" in names
 
 
 # ── Submissions ──────────────────────────────────────────────────────

@@ -134,6 +134,29 @@ ON subject_metric_snapshots(source_kind, measured_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_sms_submission_id
 ON subject_metric_snapshots(submission_id);
+
+CREATE TABLE IF NOT EXISTS subject_feature_sets (
+    feature_row_id TEXT PRIMARY KEY,
+    subject_id TEXT NOT NULL REFERENCES subjects(id),
+    feature_spec_key TEXT NOT NULL,
+    feature_spec_version TEXT NOT NULL,
+    anchor_snapshot_id TEXT REFERENCES subject_metric_snapshots(snapshot_id),
+    anchor_measured_at TEXT NOT NULL,
+    window_label TEXT,
+    input_snapshot_ids_json TEXT NOT NULL DEFAULT '[]',
+    input_source_kinds_json TEXT NOT NULL DEFAULT '[]',
+    feature_payload_json TEXT NOT NULL DEFAULT '{}',
+    quality_flags_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(subject_id, feature_spec_key, feature_spec_version, anchor_snapshot_id, window_label)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sfs_subject_anchor
+ON subject_feature_sets(subject_id, anchor_measured_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_sfs_spec
+ON subject_feature_sets(feature_spec_key, feature_spec_version, anchor_measured_at DESC);
 """
 
 MIGRATION_ADD_USER_ID = """
