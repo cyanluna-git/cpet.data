@@ -51,6 +51,9 @@ def _active_bxb_window(bxb: pd.DataFrame) -> pd.DataFrame:
     """Keep only active exercise breaths and trim recovery artifacts."""
     if bxb.empty or "vo2_ml" not in bxb.columns or "rq" not in bxb.columns:
         return pd.DataFrame()
+    bxb = bxb.copy()
+    bxb["vo2_ml"] = pd.to_numeric(bxb["vo2_ml"], errors="coerce")
+    bxb["rq"] = pd.to_numeric(bxb["rq"], errors="coerce")
     valid = bxb[(bxb["vo2_ml"] > 100) & (bxb["rq"] < 1.6)].copy()
     if valid.empty:
         return valid
