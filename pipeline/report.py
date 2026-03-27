@@ -811,6 +811,8 @@ def render_html(context: dict[str, Any]) -> str:
       color: var(--ink);
       font-family: "Avenir Next", "Segoe UI", sans-serif;
       line-height: 1.55;
+      word-break: keep-all;
+      overflow-wrap: break-word;
     }}
     .page {{
       max-width: 1320px;
