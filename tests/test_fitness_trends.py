@@ -19,6 +19,8 @@ from fastapi.testclient import TestClient
 
 from server.db import (
     _read_analysis_metrics,
+    build_fitness_trend_compare,
+    build_fitness_trend_options,
     complete_onboarding,
     create_submission,
     get_fitness_trends,
@@ -344,6 +346,80 @@ class TestSummarizeFitnessTrends:
         assert fatmax_card["gap_to_best"] == -5.0
 
 
+class TestBuildFitnessTrendCompare:
+    def test_compare_disabled_for_single_entry(self) -> None:
+        compare = build_fitness_trend_compare([
+            {"submission_id": "sub-1", "test_date": "2026-03-01", "vo2max_rel": 56.0},
+        ])
+        assert compare["enabled"] is False
+        assert compare["metrics"] == []
+
+    def test_compare_defaults_to_latest_vs_previous(self) -> None:
+        trends = [
+            {
+                "submission_id": "sub-1",
+                "test_date": "2026-01-10",
+                "vo2max_ml": 4000.0,
+                "vo2max_rel": 55.0,
+                "fatmax_power_w": 150,
+            },
+            {
+                "submission_id": "sub-2",
+                "test_date": "2026-03-15",
+                "vo2max_ml": 4200.0,
+                "vo2max_rel": 57.5,
+                "fatmax_power_w": 145,
+            },
+        ]
+
+        options = build_fitness_trend_options(trends)
+        compare = build_fitness_trend_compare(trends)
+
+        assert options[0]["submission_id"] == "sub-2"
+        assert compare["enabled"] is True
+        assert compare["baseline_submission_id"] == "sub-1"
+        assert compare["current_submission_id"] == "sub-2"
+
+        vo2_abs = next(metric for metric in compare["metrics"] if metric["key"] == "vo2max_ml")
+        assert vo2_abs["before_value"] == 4000.0
+        assert vo2_abs["after_value"] == 4200.0
+        assert vo2_abs["delta"] == 200.0
+
+    def test_compare_honors_explicit_selection(self) -> None:
+        trends = [
+            {"submission_id": "sub-1", "test_date": "2026-01-10", "vo2max_rel": 55.0},
+            {"submission_id": "sub-2", "test_date": "2026-02-10", "vo2max_rel": 56.0},
+            {"submission_id": "sub-3", "test_date": "2026-03-10", "vo2max_rel": 58.0},
+        ]
+
+        compare = build_fitness_trend_compare(
+            trends,
+            baseline_submission_id="sub-1",
+            current_submission_id="sub-3",
+        )
+
+        assert compare["baseline_submission_id"] == "sub-1"
+        assert compare["current_submission_id"] == "sub-3"
+        vo2_rel = next(metric for metric in compare["metrics"] if metric["key"] == "vo2max_rel")
+        assert vo2_rel["delta"] == 3.0
+
+    def test_compare_rejects_invalid_selection(self) -> None:
+        trends = [
+            {"submission_id": "sub-1", "test_date": "2026-01-10", "vo2max_rel": 55.0},
+            {"submission_id": "sub-2", "test_date": "2026-03-10", "vo2max_rel": 58.0},
+        ]
+
+        with pytest.raises(ValueError, match="invalid current selection"):
+            build_fitness_trend_compare(trends, current_submission_id="missing")
+
+        with pytest.raises(ValueError, match="must differ"):
+            build_fitness_trend_compare(
+                trends,
+                baseline_submission_id="sub-2",
+                current_submission_id="sub-2",
+            )
+
+
 # ── GET /api/profile/trends ──────────────────────────────────────
 
 
@@ -360,6 +436,8 @@ class TestProfileTrendsAPI:
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"] == []
+        assert body["options"] == []
+        assert body["compare"]["enabled"] is False
 
     def test_json_response_with_trends(
         self, client: TestClient, tmp_path: Path,
@@ -383,16 +461,91 @@ class TestProfileTrendsAPI:
         assert body["data"][0]["vo2max_ml"] == 3900.0
         assert body["summary"]["total_tests"] == 1
         assert body["summary"]["cards"]
+        assert len(body["options"]) == 1
+        assert body["compare"]["enabled"] is False
+
+    def test_json_response_includes_compare_payload(
+        self, client: TestClient, tmp_path: Path,
+    ) -> None:
+        user = _login_user(client, google_id="compare-api-gid")
+        db_path = app.state.db_path
+
+        ws1 = tmp_path / "data" / "workspaces" / "ws-compare-1"
+        _create_analysis_db(ws1, "2026-01-01", {
+            "vo2max": {"vo2max_ml": 3800.0, "vo2max_rel": 52.0},
+            "substrate": {"fatmax_power_w": 145, "fatmax_gmin": 0.72},
+        })
+        sub1 = create_submission(db_path, "compare-1", [{}], str(ws1), user_id=user["id"])
+
+        ws2 = tmp_path / "data" / "workspaces" / "ws-compare-2"
+        _create_analysis_db(ws2, "2026-03-01", {
+            "vo2max": {"vo2max_ml": 4100.0, "vo2max_rel": 56.0},
+            "substrate": {"fatmax_power_w": 160, "fatmax_gmin": 0.86},
+        })
+        sub2 = create_submission(db_path, "compare-2", [{}], str(ws2), user_id=user["id"])
+
+        resp = client.get(
+            "/api/profile/trends",
+            params={"baseline": sub1, "current": sub2},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["options"]) == 2
+        assert body["compare"]["baseline_submission_id"] == sub1
+        assert body["compare"]["current_submission_id"] == sub2
+
+        vo2_rel = next(metric for metric in body["compare"]["metrics"] if metric["key"] == "vo2max_rel")
+        assert vo2_rel["before_value"] == 52.0
+        assert vo2_rel["after_value"] == 56.0
+        assert vo2_rel["delta"] == 4.0
+
+    def test_invalid_compare_selection_returns_400(
+        self, client: TestClient, tmp_path: Path,
+    ) -> None:
+        user = _login_user(client, google_id="invalid-compare-gid")
+        db_path = app.state.db_path
+
+        ws1 = tmp_path / "data" / "workspaces" / "ws-invalid-1"
+        _create_analysis_db(ws1, "2026-01-01", {
+            "vo2max": {"vo2max_ml": 3800.0, "vo2max_rel": 52.0},
+        })
+        create_submission(db_path, "invalid-1", [{}], str(ws1), user_id=user["id"])
+
+        ws2 = tmp_path / "data" / "workspaces" / "ws-invalid-2"
+        _create_analysis_db(ws2, "2026-03-01", {
+            "vo2max": {"vo2max_ml": 4100.0, "vo2max_rel": 56.0},
+        })
+        create_submission(db_path, "invalid-2", [{}], str(ws2), user_id=user["id"])
+
+        resp = client.get("/api/profile/trends", params={"current": "missing"})
+        assert resp.status_code == 400
+        assert "invalid current selection" in resp.text
 
     def test_htmx_returns_partial_html(self, client: TestClient) -> None:
         """HTMX request returns partial HTML instead of JSON."""
-        _login_user(client)
+        user = _login_user(client, google_id="htmx-compare-gid")
+        db_path = app.state.db_path
+
+        ws1 = app.state.data_dir / "workspaces" / "ws-htmx-1"
+        _create_analysis_db(ws1, "2026-01-01", {
+            "vo2max": {"vo2max_ml": 3800.0, "vo2max_rel": 52.0},
+        })
+        create_submission(db_path, "htmx-1", [{}], str(ws1), user_id=user["id"])
+
+        ws2 = app.state.data_dir / "workspaces" / "ws-htmx-2"
+        _create_analysis_db(ws2, "2026-03-01", {
+            "vo2max": {"vo2max_ml": 4100.0, "vo2max_rel": 56.0},
+        })
+        create_submission(db_path, "htmx-2", [{}], str(ws2), user_id=user["id"])
+
         resp = client.get(
             "/api/profile/trends",
             headers={"HX-Request": "true"},
         )
         assert resp.status_code == 200
         assert "fitness-trends" in resp.text
+        assert "두 시점 비교" in resp.text
+        assert 'name="baseline"' in resp.text
 
 
 # ── Profile Page Trends Section ──────────────────────────────────
@@ -457,3 +610,5 @@ class TestProfilePageTrends:
         # Delta should show +300.0 for vo2max_ml
         assert "+300.0" in resp.text
         assert "+4.0" in resp.text
+        assert "두 시점 비교" in resp.text
+        assert "기준 검사" in resp.text

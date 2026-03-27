@@ -1061,6 +1061,15 @@ _TREND_SUMMARY_METRICS: list[tuple[str, str, str]] = [
     ("fatmax_gmin", "FatMax Ox", "g/min"),
 ]
 
+_TREND_COMPARE_METRICS: list[tuple[str, str, str]] = [
+    ("vo2max_ml", "VO2max", "mL/min"),
+    ("vo2max_rel", "VO2max", "mL/kg/min"),
+    ("lt1_power_w", "LT1", "W"),
+    ("lt2_power_w", "LT2", "W"),
+    ("fatmax_power_w", "FatMax", "W"),
+    ("fatmax_gmin", "FatMax Ox", "g/min"),
+]
+
 
 def _read_analysis_metrics(analysis_db_path: Path) -> dict:
     """Read key metrics from a single workspace analysis.db file.
@@ -1228,4 +1237,94 @@ def summarize_fitness_trends(trends: list[dict]) -> dict:
         "latest_test_date": latest_test_date,
         "subject_name": subject_name,
         "cards": cards,
+    }
+
+
+def build_fitness_trend_options(trends: list[dict]) -> list[dict]:
+    """Return select-friendly trend options ordered newest first."""
+    options: list[dict] = []
+    for index, entry in enumerate(reversed(trends)):
+        test_date = str(entry.get("test_date") or "날짜 없음")
+        subject_name = str(entry.get("subject_name") or "").strip()
+        label = test_date if not subject_name else f"{test_date} · {subject_name}"
+        options.append({
+            "submission_id": entry.get("submission_id"),
+            "test_date": entry.get("test_date"),
+            "label": label,
+            "is_latest": index == 0,
+        })
+    return options
+
+
+def build_fitness_trend_compare(
+    trends: list[dict],
+    baseline_submission_id: str | None = None,
+    current_submission_id: str | None = None,
+) -> dict:
+    """Build a two-point comparison payload from trend rows."""
+    if len(trends) < 2:
+        return {
+            "enabled": False,
+            "baseline_submission_id": None,
+            "baseline_test_date": None,
+            "current_submission_id": None,
+            "current_test_date": None,
+            "metrics": [],
+        }
+
+    trend_map = {
+        str(entry["submission_id"]): entry
+        for entry in trends
+        if entry.get("submission_id")
+    }
+
+    if current_submission_id is not None and current_submission_id not in trend_map:
+        raise ValueError("invalid current selection")
+    if baseline_submission_id is not None and baseline_submission_id not in trend_map:
+        raise ValueError("invalid baseline selection")
+
+    current_entry = (
+        trend_map[current_submission_id]
+        if current_submission_id is not None
+        else trends[-1]
+    )
+    current_index = trends.index(current_entry)
+
+    if baseline_submission_id is not None:
+        baseline_entry = trend_map[baseline_submission_id]
+    else:
+        baseline_index = current_index - 1 if current_index > 0 else 1
+        baseline_entry = trends[baseline_index]
+
+    if baseline_entry["submission_id"] == current_entry["submission_id"]:
+        raise ValueError("baseline and current selections must differ")
+
+    metrics: list[dict] = []
+    for key, label, unit in _TREND_COMPARE_METRICS:
+        if baseline_entry.get(key) is None or current_entry.get(key) is None:
+            continue
+
+        before = baseline_entry[key]
+        after = current_entry[key]
+        try:
+            delta = round(float(after) - float(before), 2)
+        except (TypeError, ValueError):
+            continue
+
+        metrics.append({
+            "key": key,
+            "label": label,
+            "unit": unit,
+            "before_value": before,
+            "after_value": after,
+            "delta": delta,
+        })
+
+    return {
+        "enabled": True,
+        "baseline_submission_id": baseline_entry.get("submission_id"),
+        "baseline_test_date": baseline_entry.get("test_date"),
+        "current_submission_id": current_entry.get("submission_id"),
+        "current_test_date": current_entry.get("test_date"),
+        "metrics": metrics,
     }

@@ -42,6 +42,79 @@
     {% endfor %}
   </div>
 
+  {% if trend_compare.enabled %}
+  <div class="mb-5 rounded-lg border border-gray-200 bg-gray-50 px-4 py-4">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <p class="text-xs font-medium uppercase tracking-wide text-gray-500">두 시점 비교</p>
+        <p class="text-sm text-gray-700">
+          {{ trend_compare.baseline_test_date }} 대비 {{ trend_compare.current_test_date }}
+        </p>
+      </div>
+      <p class="text-xs text-gray-500">기준 검사와 현재 검사를 바꾸면 비교 카드가 즉시 갱신됩니다.</p>
+    </div>
+
+    <form class="mt-4 grid gap-3 md:grid-cols-2">
+      <label class="block text-sm">
+        <span class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">기준 검사</span>
+        <select
+          name="baseline"
+          class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+          hx-get="/api/profile/trends"
+          hx-target="#fitness-trends"
+          hx-swap="outerHTML"
+          hx-include="closest form"
+        >
+          {% for option in trend_options %}
+          <option value="{{ option.submission_id }}" {% if option.submission_id == trend_compare.baseline_submission_id %}selected{% endif %}>
+            {{ option.label }}
+          </option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label class="block text-sm">
+        <span class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">현재 검사</span>
+        <select
+          name="current"
+          class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+          hx-get="/api/profile/trends"
+          hx-target="#fitness-trends"
+          hx-swap="outerHTML"
+          hx-include="closest form"
+        >
+          {% for option in trend_options %}
+          <option value="{{ option.submission_id }}" {% if option.submission_id == trend_compare.current_submission_id %}selected{% endif %}>
+            {{ option.label }}
+          </option>
+          {% endfor %}
+        </select>
+      </label>
+    </form>
+
+    <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {% for metric in trend_compare.metrics %}
+      <article class="rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-sm">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ metric.label }}</p>
+            <p class="mt-1 text-lg font-semibold text-gray-900">{{ metric.after_value }}</p>
+            <p class="text-xs text-gray-500">{{ metric.unit }}</p>
+          </div>
+          <span class="inline-flex rounded-full px-2 py-1 text-xs font-medium {% if metric.delta > 0 %}bg-green-50 text-green-700{% elif metric.delta < 0 %}bg-red-50 text-red-700{% else %}bg-gray-100 text-gray-600{% endif %}">
+            {% if metric.delta > 0 %}+{% endif %}{{ metric.delta }}
+          </span>
+        </div>
+        <div class="mt-3 space-y-1 text-xs text-gray-500">
+          <p>기준 {{ metric.before_value }} {{ metric.unit }}</p>
+          <p>현재 {{ metric.after_value }} {{ metric.unit }}</p>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <div class="overflow-x-auto">
     <table class="min-w-full text-sm">
       <thead>

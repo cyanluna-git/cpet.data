@@ -14,13 +14,15 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from server.db import (
+    build_fitness_trend_compare,
+    build_fitness_trend_options,
     complete_onboarding,
     create_subject,
     get_fitness_trends,
@@ -255,6 +257,8 @@ async def profile_page(request: Request) -> HTMLResponse:
     profile = get_user_profile(db_path, user_id) or {}
     trends = get_fitness_trends(db_path, user_id, data_dir=data_dir)
     trend_summary = summarize_fitness_trends(trends)
+    trend_options = build_fitness_trend_options(trends)
+    trend_compare = build_fitness_trend_compare(trends)
 
     # Load linked subject
     linked_subject = None
@@ -266,6 +270,8 @@ async def profile_page(request: Request) -> HTMLResponse:
         "profile": profile,
         "trends": trends,
         "trend_summary": trend_summary,
+        "trend_options": trend_options,
+        "trend_compare": trend_compare,
         "linked_subject": linked_subject,
     })
 
@@ -317,7 +323,11 @@ async def update_profile(request: Request) -> HTMLResponse:
 
 
 @app.get("/api/profile/trends")
-async def profile_trends(request: Request) -> HTMLResponse:
+async def profile_trends(
+    request: Request,
+    baseline: str | None = Query(default=None),
+    current: str | None = Query(default=None),
+) -> HTMLResponse:
     """Return fitness metric trends as JSON or HTMX partial.
 
     If the request has HX-Request header (HTMX), returns the trends
@@ -334,16 +344,35 @@ async def profile_trends(request: Request) -> HTMLResponse:
     data_dir = request.app.state.data_dir
     trends = get_fitness_trends(db_path, user_id, data_dir=data_dir)
     trend_summary = summarize_fitness_trends(trends)
+    trend_options = build_fitness_trend_options(trends)
+    try:
+        trend_compare = build_fitness_trend_compare(
+            trends,
+            baseline_submission_id=baseline,
+            current_submission_id=current,
+        )
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
 
     # HTMX partial response
     if request.headers.get("HX-Request"):
         return templates.TemplateResponse(
             request,
             "partials/profile_trends.html",
-            {"trends": trends, "trend_summary": trend_summary},
+            {
+                "trends": trends,
+                "trend_summary": trend_summary,
+                "trend_options": trend_options,
+                "trend_compare": trend_compare,
+            },
         )
 
-    return JSONResponse(content={"data": trends, "summary": trend_summary})
+    return JSONResponse(content={
+        "data": trends,
+        "summary": trend_summary,
+        "options": trend_options,
+        "compare": trend_compare,
+    })
 
 
 # ── Onboarding routes ─────────────────────────────────────────────────
