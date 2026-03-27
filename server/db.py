@@ -96,6 +96,42 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     measured_at TEXT,
     updated_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS subject_metric_snapshots (
+    snapshot_id TEXT PRIMARY KEY,
+    subject_id TEXT NOT NULL REFERENCES subjects(id),
+    source_kind TEXT NOT NULL,
+    source_ref_id TEXT NOT NULL,
+    submission_id TEXT REFERENCES submissions(id),
+    measured_at TEXT NOT NULL,
+    measured_date TEXT GENERATED ALWAYS AS (substr(measured_at, 1, 10)) VIRTUAL,
+    protocol_type TEXT,
+    vo2max_ml REAL,
+    vo2max_rel REAL,
+    lt1_power_w REAL,
+    lt2_power_w REAL,
+    fatmax_power_w REAL,
+    fatmax_gmin REAL,
+    vlamax REAL,
+    at_power_w REAL,
+    carbmax_w REAL,
+    glycogen_g REAL,
+    extraction_version TEXT NOT NULL,
+    quality_flags_json TEXT NOT NULL DEFAULT '[]',
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(subject_id, source_kind, source_ref_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sms_subject_measured_at
+ON subject_metric_snapshots(subject_id, measured_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_sms_source_kind_measured_at
+ON subject_metric_snapshots(source_kind, measured_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_sms_submission_id
+ON subject_metric_snapshots(submission_id);
 """
 
 MIGRATION_ADD_USER_ID = """

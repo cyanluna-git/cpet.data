@@ -60,6 +60,7 @@ class TestInitDb:
         assert "users" in names
         assert "submissions" in names
         assert "jobs" in names
+        assert "subject_metric_snapshots" in names
 
     def test_wal_mode(self, db_path: Path) -> None:
         conn = _connect(db_path)
@@ -76,10 +77,98 @@ class TestInitDb:
             "AND name NOT LIKE 'sqlite_%'"
         ).fetchall()
         conn.close()
-        # 8 tables: subjects, users, submissions, jobs,
+        # 9 tables: subjects, users, submissions, jobs,
         #           report_user_links, report_name_overrides,
-        #           report_notes, user_profiles
-        assert len(tables) == 8
+        #           report_notes, user_profiles,
+        #           subject_metric_snapshots
+        assert len(tables) == 9
+
+    def test_creates_subject_metric_snapshots_columns(self, db_path: Path) -> None:
+        conn = sqlite3.connect(str(db_path))
+        rows = conn.execute(
+            "PRAGMA table_xinfo(subject_metric_snapshots)"
+        ).fetchall()
+        conn.close()
+        names = {row[1] for row in rows}
+        assert {
+            "snapshot_id",
+            "subject_id",
+            "source_kind",
+            "source_ref_id",
+            "submission_id",
+            "measured_at",
+            "measured_date",
+            "protocol_type",
+            "vo2max_ml",
+            "vo2max_rel",
+            "lt1_power_w",
+            "lt2_power_w",
+            "fatmax_power_w",
+            "fatmax_gmin",
+            "vlamax",
+            "at_power_w",
+            "carbmax_w",
+            "glycogen_g",
+            "extraction_version",
+            "quality_flags_json",
+            "payload_json",
+            "created_at",
+            "updated_at",
+        }.issubset(names)
+
+    def test_subject_metric_snapshots_unique_source_artifact(self, db_path: Path) -> None:
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "INSERT INTO subjects (id, name) VALUES (?, ?)",
+            ("subject-1", "Test Subject"),
+        )
+        row = (
+            "snapshot-1",
+            "subject-1",
+            "cpet_submission",
+            "submission-1",
+            "submission-1",
+            "2026-03-28T10:00:00Z",
+            "ramp",
+            "snapshot-v1",
+        )
+        conn.execute(
+            """INSERT INTO subject_metric_snapshots (
+                   snapshot_id, subject_id, source_kind, source_ref_id,
+                   submission_id, measured_at, protocol_type, extraction_version
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            row,
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                """INSERT INTO subject_metric_snapshots (
+                       snapshot_id, subject_id, source_kind, source_ref_id,
+                       submission_id, measured_at, protocol_type, extraction_version
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    "snapshot-2",
+                    "subject-1",
+                    "cpet_submission",
+                    "submission-1",
+                    "submission-1",
+                    "2026-03-28T10:00:00Z",
+                    "ramp",
+                    "snapshot-v1",
+                ),
+            )
+        conn.close()
+
+    def test_creates_subject_metric_snapshots_indexes(self, db_path: Path) -> None:
+        conn = sqlite3.connect(str(db_path))
+        indexes = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' "
+            "AND tbl_name = 'subject_metric_snapshots'"
+        ).fetchall()
+        conn.close()
+        names = {row[0] for row in indexes}
+        assert "idx_sms_subject_measured_at" in names
+        assert "idx_sms_source_kind_measured_at" in names
+        assert "idx_sms_submission_id" in names
 
 
 # ── Submissions ──────────────────────────────────────────────────────
