@@ -228,6 +228,20 @@ def _reconcile_job_artifacts(
     workspace = Path(str(submission.get("workspace_path") or ""))
     report_index = workspace / "report" / "index.html"
     if not report_index.is_file():
+        # Timeout: if processing > 10 minutes with no report, mark as failed
+        if str(job.get("status") or "") == "processing" and job.get("started_at"):
+            try:
+                started = datetime.fromisoformat(str(job["started_at"]))
+                elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+                if elapsed > 600:  # 10 minutes
+                    from server.db import update_job_status
+                    update_job_status(
+                        get_db_path(request), str(job["id"]), "failed",
+                        error_message=f"타임아웃 ({int(elapsed)}초) — 재분석을 시도하세요",
+                    )
+                    job = {**job, "status": "failed", "error_message": f"타임아웃 ({int(elapsed)}초)"}
+            except (ValueError, TypeError):
+                pass
         return job
 
     published_dir = get_published_dir(request)

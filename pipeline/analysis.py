@@ -47,13 +47,43 @@ def load_data(db_path: Path) -> dict[str, pd.DataFrame]:
     return tables
 
 
+# Numeric columns that must be coerced from potential string values
+_BXB_NUMERIC_COLS = [
+    "t_s", "vo2_ml", "vco2_ml", "ve_lmin", "rq", "hr_bpm",
+    "bike_power_w", "cadence", "fat_gmin", "cho_gmin",
+]
+_BLOOD_NUMERIC_COLS = [
+    "load_w", "hr_bpm", "lactate_mmol", "glucose_mmol", "duration_min",
+]
+_WORKOUT_NUMERIC_COLS = [
+    "elapsed_s", "hr_bpm", "power_w", "cadence",
+]
+
+
+def _coerce_numeric(data: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
+    """Force-convert known numeric columns to float. Prevents TypeError on comparison."""
+    for col in _BXB_NUMERIC_COLS:
+        if col in data["breath_by_breath"].columns:
+            data["breath_by_breath"][col] = pd.to_numeric(
+                data["breath_by_breath"][col], errors="coerce"
+            )
+    for col in _BLOOD_NUMERIC_COLS:
+        if col in data["blood_samples"].columns:
+            data["blood_samples"][col] = pd.to_numeric(
+                data["blood_samples"][col], errors="coerce"
+            )
+    for col in _WORKOUT_NUMERIC_COLS:
+        if col in data["workout_data"].columns:
+            data["workout_data"][col] = pd.to_numeric(
+                data["workout_data"][col], errors="coerce"
+            )
+    return data
+
+
 def _active_bxb_window(bxb: pd.DataFrame) -> pd.DataFrame:
     """Keep only active exercise breaths and trim recovery artifacts."""
     if bxb.empty or "vo2_ml" not in bxb.columns or "rq" not in bxb.columns:
         return pd.DataFrame()
-    bxb = bxb.copy()
-    bxb["vo2_ml"] = pd.to_numeric(bxb["vo2_ml"], errors="coerce")
-    bxb["rq"] = pd.to_numeric(bxb["rq"], errors="coerce")
     valid = bxb[(bxb["vo2_ml"] > 100) & (bxb["rq"] < 1.6)].copy()
     if valid.empty:
         return valid
@@ -1056,7 +1086,15 @@ def run_analysis(db_path: Path) -> dict[str, Any]:
     print("ANALYSIS ALGORITHMS")
     print("=" * 60)
 
-    data = load_data(db_path)
+    def _safe_run(label: str, fn, *args, **kwargs) -> dict[str, Any]:
+        """Run an analysis step safely — return empty dict on error."""
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:
+            print(f"   ⚠ Error: {exc}")
+            return {"_error": str(exc)}
+
+    data = _coerce_numeric(load_data(db_path))
 
     print("\n1. Lactate Threshold Analysis...")
     if not data["blood_samples"].empty:
@@ -1088,7 +1126,7 @@ def run_analysis(db_path: Path) -> dict[str, Any]:
         print("   Skipped (no blood sample data)")
 
     print("\n3. VO2max Analysis...")
-    vo2max_results = analyze_vo2max(
+    vo2max_results = _safe_run("VO2max", analyze_vo2max,
         data["breath_by_breath"], data["subject"]
     )
     print(
@@ -1102,7 +1140,7 @@ def run_analysis(db_path: Path) -> dict[str, Any]:
     print(f"   VO2 plateau: {vo2max_results.get('vo2_plateau')}")
 
     print("\n4. Ventilatory Thresholds...")
-    vt_results = analyze_ventilatory_thresholds(data["breath_by_breath"])
+    vt_results = _safe_run("VT", analyze_ventilatory_thresholds, data["breath_by_breath"])
     print(
         f"   VT1: power={vt_results.get('vt1_power_w')}W, HR={vt_results.get('vt1_hr')}"
     )
@@ -1111,14 +1149,14 @@ def run_analysis(db_path: Path) -> dict[str, Any]:
     )
 
     print("\n5. Substrate Utilization...")
-    substrate_results = analyze_substrate(data["breath_by_breath"])
+    substrate_results = _safe_run("Substrate", analyze_substrate, data["breath_by_breath"])
     print(
         f"   FatMax: {substrate_results.get('fatmax_gmin')} g/min at {substrate_results.get('fatmax_power_w')}W"
     )
     print(f"   Crossover: {substrate_results.get('crossover_power_w')}W")
 
     print("\n6. Efficiency Metrics...")
-    efficiency_results = analyze_efficiency(data["breath_by_breath"])
+    efficiency_results = _safe_run("Efficiency", analyze_efficiency, data["breath_by_breath"])
     print(
         f"   Gross efficiency peak: {efficiency_results.get('peak_gross_efficiency_pct')}%"
     )
@@ -1149,7 +1187,7 @@ def run_analysis(db_path: Path) -> dict[str, Any]:
         )
 
     print("\n9. Energy System 3-Pathway...")
-    energy_system_results = analyze_energy_system(
+    energy_system_results = _safe_run("Energy System", analyze_energy_system,
         data["breath_by_breath"], data["blood_samples"], data["subject"],
     )
     if energy_system_results.get("status") == "computed":
