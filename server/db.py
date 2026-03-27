@@ -1106,6 +1106,153 @@ _TREND_COMPARE_METRICS: list[tuple[str, str, str]] = [
     ("fatmax_gmin", "FatMax Ox", "g/min"),
 ]
 
+_CPET_SNAPSHOT_EXTRACTION_VERSION = "cpet_snapshot_v1"
+_CPET_SNAPSHOT_METRIC_KEYS = (
+    "vo2max_ml",
+    "vo2max_rel",
+    "lt1_power_w",
+    "lt2_power_w",
+    "fatmax_power_w",
+    "fatmax_gmin",
+)
+
+
+def _parse_analysis_result_value(raw_value: str | None) -> float | int | None:
+    """Parse a numeric analysis_results value from JSON or plain text."""
+    if raw_value is None:
+        return None
+    try:
+        value = json.loads(raw_value)
+        if isinstance(value, (int, float)):
+            return value
+    except (json.JSONDecodeError, TypeError):
+        pass
+    try:
+        return float(raw_value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _resolve_workspace_path(
+    workspace_path: str | None,
+    data_dir: Path | None = None,
+) -> Path | None:
+    """Resolve a submission workspace path to an absolute path when possible."""
+    if not workspace_path:
+        return None
+    path = Path(workspace_path)
+    if path.is_absolute() or data_dir is None:
+        return path
+    return data_dir / path
+
+
+def _read_analysis_snapshot_source(analysis_db_path: Path) -> dict:
+    """Read test_session metadata plus stable trend metrics from analysis.db."""
+    if not analysis_db_path.exists():
+        return {}
+
+    try:
+        conn = sqlite3.connect(str(analysis_db_path))
+        conn.row_factory = sqlite3.Row
+
+        table_check = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='analysis_results'"
+        ).fetchone()
+        if table_check is None:
+            conn.close()
+            return {}
+
+        session_row = conn.execute(
+            "SELECT test_date, protocol_name FROM test_session LIMIT 1"
+        ).fetchone()
+        if session_row is None or not session_row["test_date"]:
+            conn.close()
+            return {}
+
+        data: dict = {
+            "test_date": session_row["test_date"],
+            "protocol_name": session_row["protocol_name"] or "",
+        }
+
+        for category, keys in _TREND_METRICS.items():
+            for src_key, dest_key in keys:
+                row = conn.execute(
+                    "SELECT value FROM analysis_results WHERE category = ? AND key = ?",
+                    (category, src_key),
+                ).fetchone()
+                parsed = _parse_analysis_result_value(
+                    row["value"] if row is not None else None
+                )
+                if parsed is not None:
+                    data[dest_key] = parsed
+
+        conn.close()
+        return data
+    except (sqlite3.Error, OSError):
+        return {}
+
+
+def extract_cpet_snapshot(
+    db_path: Path,
+    submission_id: str,
+    data_dir: Path | None = None,
+) -> dict | None:
+    """Build a CPET snapshot row dict from a submission and its analysis.db."""
+    submission = get_submission(db_path, submission_id)
+    if submission is None or not submission.get("subject_id"):
+        return None
+
+    workspace = _resolve_workspace_path(submission.get("workspace_path"), data_dir=data_dir)
+    if workspace is None:
+        return None
+
+    source = _read_analysis_snapshot_source(workspace / "analysis.db")
+    if not source:
+        return None
+
+    present_metrics = {
+        key: source[key]
+        for key in _CPET_SNAPSHOT_METRIC_KEYS
+        if key in source
+    }
+    missing_metrics = sorted(
+        key for key in _CPET_SNAPSHOT_METRIC_KEYS if key not in present_metrics
+    )
+    quality_flags = [f"missing_{key}" for key in missing_metrics]
+    protocol_type = source.get("protocol_name", "")
+    if not protocol_type:
+        quality_flags.append("missing_protocol_type")
+    quality_flags.sort()
+
+    payload = {
+        "source": {
+            "submission_id": submission_id,
+            "workspace_path": submission.get("workspace_path", ""),
+            "analysis_db_name": "analysis.db",
+        },
+        "test_session": {
+            "test_date": source["test_date"],
+            "protocol_name": protocol_type,
+        },
+        "metrics": present_metrics,
+        "missing_metrics": missing_metrics,
+    }
+
+    snapshot = {
+        "snapshot_id": str(uuid.uuid4()),
+        "subject_id": submission["subject_id"],
+        "source_kind": "cpet_submission",
+        "source_ref_id": submission_id,
+        "submission_id": submission_id,
+        "measured_at": source["test_date"],
+        "protocol_type": protocol_type or None,
+        "extraction_version": _CPET_SNAPSHOT_EXTRACTION_VERSION,
+        "quality_flags_json": json.dumps(quality_flags),
+        "payload_json": json.dumps(payload, ensure_ascii=True, sort_keys=True),
+    }
+    snapshot.update(present_metrics)
+    return snapshot
+
 
 def _read_analysis_metrics(analysis_db_path: Path) -> dict:
     """Read key metrics from a single workspace analysis.db file.
