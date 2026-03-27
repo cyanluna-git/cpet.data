@@ -1561,6 +1561,92 @@ def backfill_subject_metric_snapshots(
     return summary
 
 
+def list_subject_metric_snapshots(
+    db_path: Path,
+    subject_id: str | None = None,
+    source_kind: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 200,
+) -> list[dict]:
+    """List snapshot rows with optional filters for explorer UIs."""
+    conn = _connect(db_path)
+    conditions = []
+    params: list[str | int] = []
+
+    if subject_id:
+        conditions.append("sms.subject_id = ?")
+        params.append(subject_id)
+    if source_kind:
+        conditions.append("sms.source_kind = ?")
+        params.append(source_kind)
+    if date_from:
+        conditions.append("sms.measured_at >= ?")
+        params.append(date_from)
+    if date_to:
+        conditions.append("sms.measured_at <= ?")
+        params.append(date_to)
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    params.append(limit)
+
+    rows = conn.execute(
+        f"""SELECT sms.*,
+                   subj.name AS subject_name,
+                   sub.description AS submission_description,
+                   sub.test_date AS submission_test_date
+            FROM subject_metric_snapshots sms
+            LEFT JOIN subjects subj ON sms.subject_id = subj.id
+            LEFT JOIN submissions sub ON sms.submission_id = sub.id
+            {where_clause}
+            ORDER BY sms.measured_at DESC, sms.created_at DESC
+            LIMIT ?""",
+        params,
+    ).fetchall()
+    conn.close()
+
+    results: list[dict] = []
+    for row in rows:
+        item = dict(row)
+        try:
+            item["quality_flags"] = json.loads(item.get("quality_flags_json") or "[]")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            item["quality_flags"] = []
+        item["quality_flag_count"] = len(item["quality_flags"])
+        results.append(item)
+    return results
+
+
+def get_subject_metric_snapshot(db_path: Path, snapshot_id: str) -> dict | None:
+    """Fetch a single snapshot row with parsed payload fields for detail views."""
+    conn = _connect(db_path)
+    row = conn.execute(
+        """SELECT sms.*,
+                  subj.name AS subject_name,
+                  sub.description AS submission_description,
+                  sub.test_date AS submission_test_date
+           FROM subject_metric_snapshots sms
+           LEFT JOIN subjects subj ON sms.subject_id = subj.id
+           LEFT JOIN submissions sub ON sms.submission_id = sub.id
+           WHERE sms.snapshot_id = ?""",
+        (snapshot_id,),
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+
+    item = dict(row)
+    try:
+        item["quality_flags"] = json.loads(item.get("quality_flags_json") or "[]")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        item["quality_flags"] = []
+    try:
+        item["payload"] = json.loads(item.get("payload_json") or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        item["payload"] = {}
+    return item
+
+
 def _read_analysis_metrics(analysis_db_path: Path) -> dict:
     """Read key metrics from a single workspace analysis.db file.
 

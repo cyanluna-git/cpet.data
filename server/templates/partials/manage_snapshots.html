@@ -1,0 +1,57 @@
+<div class="bg-white rounded-lg shadow overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="min-w-full divide-y divide-gray-200">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">피험자</th>
+          <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">측정일</th>
+          <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">소스</th>
+          <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">핵심 지표</th>
+          <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">추출</th>
+          <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">상세</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100 bg-white">
+        {% for row in snapshots %}
+        <tr class="hover:bg-gray-50">
+          <td class="px-4 py-3 text-sm text-gray-900">
+            <div class="font-medium">{{ row.subject_name or "—" }}</div>
+            <div class="text-xs text-gray-400">{{ row.subject_id }}</div>
+          </td>
+          <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{{ row.measured_at }}</td>
+          <td class="px-4 py-3 text-sm">
+            <span class="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">{{ row.source_kind }}</span>
+          </td>
+          <td class="px-4 py-3 text-sm text-gray-600">
+            <div class="space-y-0.5">
+              {% if row.vo2max_rel is not none %}<div>VO2max {{ row.vo2max_rel }}</div>{% endif %}
+              {% if row.fatmax_power_w is not none %}<div>FatMax {{ row.fatmax_power_w }}W</div>{% endif %}
+              {% if row.vlamax is not none %}<div>VLamax {{ row.vlamax }}</div>{% endif %}
+              {% if row.at_power_w is not none %}<div>AT {{ row.at_power_w }}W</div>{% endif %}
+              {% if row.vo2max_rel is none and row.fatmax_power_w is none and row.vlamax is none and row.at_power_w is none %}
+              <div class="text-gray-400">—</div>
+              {% endif %}
+            </div>
+          </td>
+          <td class="px-4 py-3 text-sm text-gray-600">
+            <div>{{ row.extraction_version }}</div>
+            <div class="text-xs text-gray-400">{{ row.quality_flag_count }} flags</div>
+          </td>
+          <td class="px-4 py-3 text-sm">
+            <button
+              class="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              hx-get="/api/manage/snapshots/{{ row.snapshot_id }}"
+              hx-target="#manage-snapshot-detail"
+              hx-swap="innerHTML"
+            >상세</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="px-4 py-8 text-center text-sm text-gray-500">조건에 맞는 snapshot이 없습니다</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

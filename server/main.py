@@ -25,6 +25,7 @@ from server.db import (
     build_fitness_trend_options,
     complete_onboarding,
     create_subject,
+    get_subject_metric_snapshot,
     get_fitness_trends,
     summarize_fitness_trends,
     get_report_user_links,
@@ -41,6 +42,7 @@ from server.db import (
     get_report_name_overrides,
     set_report_note,
     list_subjects,
+    list_subject_metric_snapshots,
     set_report_name_override,
     update_subject,
     update_submission_subject_name,
@@ -540,11 +542,36 @@ def _get_manage_submissions(request: Request, users: list[dict]) -> tuple[list[d
     """Build the full submissions list for manage page (DB + published/ scan)."""
     db_path = request.app.state.db_path
     all_entries = _list_dashboard_entries(request)
+    db_submissions = list_submissions_with_users(db_path)
     report_links = get_report_user_links(db_path)
     users_by_id = {u["id"]: u for u in users}
+    entries_by_submission_id = {
+        str(entry.get("submission_id")): entry
+        for entry in all_entries
+        if entry.get("submission_id")
+    }
 
     submissions = []
+    for sub_row in db_submissions:
+        submission_id = str(sub_row["id"])
+        entry = entries_by_submission_id.get(submission_id, {})
+        merged = {
+            "id": submission_id,
+            "submission_id": submission_id,
+            "subject_name": sub_row.get("subject_name") or "",
+            "test_date": sub_row.get("test_date") or "",
+            "status": entry.get("status") or sub_row.get("job_status") or "",
+            "report_slug": entry.get("report_slug") or "",
+            "report_url": entry.get("report_url") or sub_row.get("report_url") or "",
+            "user_id": sub_row.get("user_id"),
+            "linked_user_name": sub_row.get("linked_user_name") or sub_row.get("linked_user_email"),
+            "created_at": sub_row.get("created_at") or "",
+        }
+        submissions.append(merged)
+
     for entry in all_entries:
+        if entry.get("submission_id"):
+            continue
         # Check user_id from submission first
         sub_id = entry.get("submission_id")
         user_id = None
@@ -568,6 +595,11 @@ def _get_manage_submissions(request: Request, users: list[dict]) -> tuple[list[d
         entry["linked_user_name"] = linked_user_name
         submissions.append(entry)
 
+    submissions.sort(
+        key=lambda row: str(row.get("test_date") or row.get("created_at") or ""),
+        reverse=True,
+    )
+
     # Build suggestion map
     suggestions: dict[str, str] = {}
     for sub in submissions:
@@ -582,7 +614,14 @@ def _get_manage_submissions(request: Request, users: list[dict]) -> tuple[list[d
 
 
 @app.get("/manage", response_class=HTMLResponse)
-async def manage_page(request: Request, tab: str = "users") -> HTMLResponse:
+async def manage_page(
+    request: Request,
+    tab: str = "users",
+    subject_id: str = "",
+    source_kind: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> HTMLResponse:
     """Render the admin management page with tabs for users, subjects, and submissions."""
     auth_result = _require_manage_access(request)
     if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
@@ -593,16 +632,30 @@ async def manage_page(request: Request, tab: str = "users") -> HTMLResponse:
     users = list_users(db_path)
     subjects = list_subjects(db_path)
     submissions, suggestions = _get_manage_submissions(request, users)
+    snapshots = list_subject_metric_snapshots(
+        db_path,
+        subject_id=subject_id or None,
+        source_kind=source_kind or None,
+        date_from=date_from or None,
+        date_to=date_to or None,
+    )
 
-    active_tab = tab if tab in ("users", "subjects", "submissions") else "users"
+    active_tab = tab if tab in ("users", "subjects", "submissions", "snapshots") else "users"
 
     return _template_response(request, "manage.html", {
         "users": users,
         "subjects": subjects,
         "submissions": submissions,
+        "snapshots": snapshots,
         "suggestions": suggestions,
         "active_tab": active_tab,
         "session_user": session_user,
+        "snapshot_filters": {
+            "subject_id": subject_id,
+            "source_kind": source_kind,
+            "date_from": date_from,
+            "date_to": date_to,
+        },
     })
 
 
@@ -672,6 +725,42 @@ def _render_manage_submissions(request: Request, session_user: dict) -> HTMLResp
     )
 
 
+def _render_manage_snapshots(
+    request: Request,
+    session_user: dict,
+    subject_id: str = "",
+    source_kind: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> HTMLResponse:
+    """Helper to render the snapshot explorer partial after HTMX filtering."""
+    db_path = request.app.state.db_path
+    snapshots = list_subject_metric_snapshots(
+        db_path,
+        subject_id=subject_id or None,
+        source_kind=source_kind or None,
+        date_from=date_from or None,
+        date_to=date_to or None,
+    )
+    subjects = list_subjects(db_path)
+    return templates.TemplateResponse(
+        request,
+        "partials/manage_snapshots.html",
+        {
+            "snapshots": snapshots,
+            "subjects": subjects,
+            "snapshot_filters": {
+                "subject_id": subject_id,
+                "source_kind": source_kind,
+                "date_from": date_from,
+                "date_to": date_to,
+            },
+            "session_user": session_user,
+            "current_user": session_user,
+        },
+    )
+
+
 @app.patch("/api/manage/link/{entry_id}", response_class=HTMLResponse)
 async def manage_link_entry(
     request: Request, entry_id: str,
@@ -695,6 +784,9 @@ async def manage_link_entry(
 
     # Try submission-based link first
     sub = get_submission(db_path, entry_id)
+    if sub is None and not report_slug:
+        return JSONResponse(status_code=404, content={"error": "entry not found"})
+
     if sub:
         link_submission_user(db_path, entry_id, link_user_id)
 
@@ -703,6 +795,52 @@ async def manage_link_entry(
         link_report_to_user(db_path, report_slug, link_user_id)
 
     return _render_manage_submissions(request, session_user)
+
+
+@app.get("/api/manage/snapshots", response_class=HTMLResponse)
+async def manage_snapshots_partial(
+    request: Request,
+    subject_id: str = "",
+    source_kind: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> HTMLResponse:
+    """Render the filtered snapshot explorer partial for HTMX swaps."""
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+    return _render_manage_snapshots(
+        request,
+        session_user,
+        subject_id=subject_id,
+        source_kind=source_kind,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+@app.get("/api/manage/snapshots/{snapshot_id}", response_class=HTMLResponse)
+async def manage_snapshot_detail(request: Request, snapshot_id: str) -> HTMLResponse:
+    """Render a snapshot detail card for explorer inspection."""
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+
+    snapshot = get_subject_metric_snapshot(request.app.state.db_path, snapshot_id)
+    if snapshot is None:
+        return HTMLResponse("<div class='text-sm text-gray-500'>Snapshot not found.</div>", status_code=404)
+
+    return templates.TemplateResponse(
+        request,
+        "partials/manage_snapshot_detail.html",
+        {
+            "snapshot": snapshot,
+            "session_user": session_user,
+            "current_user": session_user,
+        },
+    )
 
 
 @app.delete("/api/manage/link/{entry_id}", response_class=HTMLResponse)

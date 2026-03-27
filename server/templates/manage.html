@@ -19,6 +19,10 @@
       class="px-4 py-2 text-sm font-medium border-b-2 transition-colors
         {% if active_tab == 'submissions' %}border-gray-900 text-gray-900{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{% endif %}"
     >검사 데이터 연결</a>
+    <a href="/manage?tab=snapshots"
+      class="px-4 py-2 text-sm font-medium border-b-2 transition-colors
+        {% if active_tab == 'snapshots' %}border-gray-900 text-gray-900{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{% endif %}"
+    >Snapshot Explorer</a>
   </div>
 
   <!-- Tab content -->
@@ -86,10 +90,51 @@
     </div>
   </div>
 
-  {% else %}
+  {% elif active_tab == 'submissions' %}
   <div class="bg-white rounded-lg shadow" id="manage-submissions-container">
     <div id="manage-submissions-body" class="divide-y divide-gray-100">
       {% include "partials/manage_submissions.html" %}
+    </div>
+  </div>
+
+  {% else %}
+  <div class="space-y-4" id="manage-snapshots-container">
+    <div class="bg-white rounded-lg shadow p-4">
+      <div class="flex items-center justify-between gap-2 mb-3">
+        <div>
+          <h3 class="text-sm font-semibold text-gray-900">Snapshot Explorer</h3>
+          <p class="text-xs text-gray-500">subject_metric_snapshots 테이블을 필터링해서 원본 추출 결과를 검증합니다.</p>
+        </div>
+      </div>
+      <form
+        class="grid grid-cols-2 md:grid-cols-5 gap-2"
+        hx-get="/api/manage/snapshots"
+        hx-target="#manage-snapshots-body"
+        hx-swap="innerHTML"
+      >
+        <select name="subject_id" class="rounded border border-gray-300 px-2 py-1.5 text-sm">
+          <option value="">모든 피험자</option>
+          {% for subj in subjects %}
+          <option value="{{ subj.id }}" {% if snapshot_filters.subject_id == subj.id %}selected{% endif %}>{{ subj.name }}</option>
+          {% endfor %}
+        </select>
+        <select name="source_kind" class="rounded border border-gray-300 px-2 py-1.5 text-sm">
+          <option value="">모든 소스</option>
+          <option value="cpet_submission" {% if snapshot_filters.source_kind == 'cpet_submission' %}selected{% endif %}>cpet_submission</option>
+          <option value="inscyd_report" {% if snapshot_filters.source_kind == 'inscyd_report' %}selected{% endif %}>inscyd_report</option>
+        </select>
+        <input type="date" name="date_from" value="{{ snapshot_filters.date_from or '' }}" class="rounded border border-gray-300 px-2 py-1.5 text-sm" />
+        <input type="date" name="date_to" value="{{ snapshot_filters.date_to or '' }}" class="rounded border border-gray-300 px-2 py-1.5 text-sm" />
+        <button type="submit" class="rounded bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800">필터 적용</button>
+      </form>
+    </div>
+
+    <div id="manage-snapshots-body">
+      {% include "partials/manage_snapshots.html" %}
+    </div>
+
+    <div id="manage-snapshot-detail" class="bg-white rounded-lg shadow p-4 text-sm text-gray-500">
+      행의 상세 버튼을 누르면 payload와 provenance가 표시됩니다.
     </div>
   </div>
   {% endif %}
