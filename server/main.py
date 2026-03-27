@@ -9,13 +9,15 @@ Usage:
 """
 
 import os
+import csv
+import io
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -23,6 +25,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from server.db import (
     build_fitness_trend_compare,
     build_fitness_trend_options,
+    build_subject_metric_snapshot_compare,
     complete_onboarding,
     create_subject,
     get_subject_metric_snapshot,
@@ -639,6 +642,10 @@ async def manage_page(
         date_from=date_from or None,
         date_to=date_to or None,
     )
+    snapshot_compare_defaults = {
+        "baseline_snapshot_id": snapshots[1]["snapshot_id"] if len(snapshots) >= 2 else "",
+        "current_snapshot_id": snapshots[0]["snapshot_id"] if len(snapshots) >= 2 else "",
+    }
 
     active_tab = tab if tab in ("users", "subjects", "submissions", "snapshots") else "users"
 
@@ -650,6 +657,7 @@ async def manage_page(
         "suggestions": suggestions,
         "active_tab": active_tab,
         "session_user": session_user,
+        "snapshot_compare_defaults": snapshot_compare_defaults,
         "snapshot_filters": {
             "subject_id": subject_id,
             "source_kind": source_kind,
@@ -743,6 +751,10 @@ def _render_manage_snapshots(
         date_to=date_to or None,
     )
     subjects = list_subjects(db_path)
+    compare_defaults = {
+        "baseline_snapshot_id": snapshots[1]["snapshot_id"] if len(snapshots) >= 2 else "",
+        "current_snapshot_id": snapshots[0]["snapshot_id"] if len(snapshots) >= 2 else "",
+    }
     return templates.TemplateResponse(
         request,
         "partials/manage_snapshots.html",
@@ -755,6 +767,7 @@ def _render_manage_snapshots(
                 "date_from": date_from,
                 "date_to": date_to,
             },
+            "snapshot_compare_defaults": compare_defaults,
             "session_user": session_user,
             "current_user": session_user,
         },
@@ -817,6 +830,156 @@ async def manage_snapshots_partial(
         source_kind=source_kind,
         date_from=date_from,
         date_to=date_to,
+    )
+
+
+@app.get("/api/manage/snapshots/compare", response_class=HTMLResponse)
+async def manage_snapshot_compare(
+    request: Request,
+    baseline_snapshot_id: str = "",
+    current_snapshot_id: str = "",
+) -> HTMLResponse:
+    """Render a compare card for two selected snapshots."""
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+
+    if not baseline_snapshot_id or not current_snapshot_id:
+        return HTMLResponse(
+            "<div class='text-sm text-gray-500'>비교할 snapshot 두 개를 선택하세요.</div>",
+            status_code=400,
+        )
+
+    try:
+        compare = build_subject_metric_snapshot_compare(
+            request.app.state.db_path,
+            baseline_snapshot_id=baseline_snapshot_id,
+            current_snapshot_id=current_snapshot_id,
+        )
+    except ValueError as exc:
+        return HTMLResponse(
+            f"<div class='text-sm text-gray-500'>{str(exc)}</div>",
+            status_code=400,
+        )
+
+    return templates.TemplateResponse(
+        request,
+        "partials/manage_snapshot_compare.html",
+        {
+            "compare": compare,
+            "session_user": session_user,
+            "current_user": session_user,
+        },
+    )
+
+
+def _snapshot_export_filters(
+    subject_id: str = "",
+    source_kind: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> dict[str, str]:
+    """Normalize snapshot filter values for exporter routes."""
+    return {
+        "subject_id": subject_id,
+        "source_kind": source_kind,
+        "date_from": date_from,
+        "date_to": date_to,
+    }
+
+
+@app.get("/api/manage/snapshots/export.json")
+async def manage_snapshot_export_json(
+    request: Request,
+    subject_id: str = "",
+    source_kind: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> JSONResponse:
+    """Export filtered snapshot rows as JSON."""
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+
+    filters = _snapshot_export_filters(
+        subject_id=subject_id,
+        source_kind=source_kind,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    snapshots = list_subject_metric_snapshots(
+        request.app.state.db_path,
+        subject_id=subject_id or None,
+        source_kind=source_kind or None,
+        date_from=date_from or None,
+        date_to=date_to or None,
+        limit=1000,
+        include_payload=True,
+    )
+    return JSONResponse({
+        "count": len(snapshots),
+        "filters": filters,
+        "snapshots": snapshots,
+    })
+
+
+@app.get("/api/manage/snapshots/export.csv")
+async def manage_snapshot_export_csv(
+    request: Request,
+    subject_id: str = "",
+    source_kind: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> Response:
+    """Export filtered snapshot rows as CSV."""
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+
+    snapshots = list_subject_metric_snapshots(
+        request.app.state.db_path,
+        subject_id=subject_id or None,
+        source_kind=source_kind or None,
+        date_from=date_from or None,
+        date_to=date_to or None,
+        limit=1000,
+    )
+    fieldnames = [
+        "snapshot_id",
+        "subject_id",
+        "subject_name",
+        "source_kind",
+        "source_ref_id",
+        "submission_id",
+        "measured_at",
+        "protocol_type",
+        "vo2max_ml",
+        "vo2max_rel",
+        "lt1_power_w",
+        "lt2_power_w",
+        "fatmax_power_w",
+        "fatmax_gmin",
+        "vlamax",
+        "at_power_w",
+        "carbmax_w",
+        "glycogen_g",
+        "extraction_version",
+        "quality_flags_json",
+        "payload_json",
+    ]
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in snapshots:
+        writer.writerow({name: row.get(name) for name in fieldnames})
+
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": "attachment; filename=subject-metric-snapshots.csv"
+        },
     )
 
 

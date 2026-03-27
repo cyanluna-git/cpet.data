@@ -1159,6 +1159,18 @@ _SNAPSHOT_BASE_COLUMNS = (
     "payload_json",
 )
 _SNAPSHOT_MUTABLE_COLUMNS = _SNAPSHOT_BASE_COLUMNS + _SNAPSHOT_METRIC_COLUMNS
+_SNAPSHOT_COMPARE_METRICS: list[tuple[str, str, str]] = [
+    ("vo2max_ml", "VO2max", "mL/min"),
+    ("vo2max_rel", "VO2max", "mL/kg/min"),
+    ("lt1_power_w", "LT1", "W"),
+    ("lt2_power_w", "LT2", "W"),
+    ("fatmax_power_w", "FatMax", "W"),
+    ("fatmax_gmin", "FatMax Ox", "g/min"),
+    ("vlamax", "VLamax", "mmol/L/s"),
+    ("at_power_w", "AT", "W"),
+    ("carbmax_w", "CarbMax", "W"),
+    ("glycogen_g", "Glycogen", "g"),
+]
 
 
 def _parse_analysis_result_value(raw_value: str | None) -> float | int | None:
@@ -1561,6 +1573,25 @@ def backfill_subject_metric_snapshots(
     return summary
 
 
+def _deserialize_snapshot_row(
+    item: dict,
+    include_payload: bool = False,
+) -> dict:
+    """Parse JSON columns on a snapshot row dict."""
+    try:
+        item["quality_flags"] = json.loads(item.get("quality_flags_json") or "[]")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        item["quality_flags"] = []
+    item["quality_flag_count"] = len(item["quality_flags"])
+
+    if include_payload:
+        try:
+            item["payload"] = json.loads(item.get("payload_json") or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            item["payload"] = {}
+    return item
+
+
 def list_subject_metric_snapshots(
     db_path: Path,
     subject_id: str | None = None,
@@ -1568,6 +1599,7 @@ def list_subject_metric_snapshots(
     date_from: str | None = None,
     date_to: str | None = None,
     limit: int = 200,
+    include_payload: bool = False,
 ) -> list[dict]:
     """List snapshot rows with optional filters for explorer UIs."""
     conn = _connect(db_path)
@@ -1608,12 +1640,7 @@ def list_subject_metric_snapshots(
     results: list[dict] = []
     for row in rows:
         item = dict(row)
-        try:
-            item["quality_flags"] = json.loads(item.get("quality_flags_json") or "[]")
-        except (TypeError, ValueError, json.JSONDecodeError):
-            item["quality_flags"] = []
-        item["quality_flag_count"] = len(item["quality_flags"])
-        results.append(item)
+        results.append(_deserialize_snapshot_row(item, include_payload=include_payload))
     return results
 
 
@@ -1636,15 +1663,53 @@ def get_subject_metric_snapshot(db_path: Path, snapshot_id: str) -> dict | None:
         return None
 
     item = dict(row)
-    try:
-        item["quality_flags"] = json.loads(item.get("quality_flags_json") or "[]")
-    except (TypeError, ValueError, json.JSONDecodeError):
-        item["quality_flags"] = []
-    try:
-        item["payload"] = json.loads(item.get("payload_json") or "{}")
-    except (TypeError, ValueError, json.JSONDecodeError):
-        item["payload"] = {}
-    return item
+    return _deserialize_snapshot_row(item, include_payload=True)
+
+
+def build_subject_metric_snapshot_compare(
+    db_path: Path,
+    baseline_snapshot_id: str,
+    current_snapshot_id: str,
+) -> dict:
+    """Build a two-snapshot comparison payload for explorer UIs."""
+    baseline = get_subject_metric_snapshot(db_path, baseline_snapshot_id)
+    if baseline is None:
+        raise ValueError("invalid baseline snapshot")
+
+    current = get_subject_metric_snapshot(db_path, current_snapshot_id)
+    if current is None:
+        raise ValueError("invalid current snapshot")
+
+    if baseline["snapshot_id"] == current["snapshot_id"]:
+        raise ValueError("baseline and current snapshots must differ")
+
+    metrics: list[dict] = []
+    for key, label, unit in _SNAPSHOT_COMPARE_METRICS:
+        if baseline.get(key) is None or current.get(key) is None:
+            continue
+
+        before = baseline[key]
+        after = current[key]
+        try:
+            delta = round(float(after) - float(before), 2)
+        except (TypeError, ValueError):
+            continue
+
+        metrics.append({
+            "key": key,
+            "label": label,
+            "unit": unit,
+            "before_value": before,
+            "after_value": after,
+            "delta": delta,
+        })
+
+    return {
+        "enabled": True,
+        "baseline": baseline,
+        "current": current,
+        "metrics": metrics,
+    }
 
 
 def _read_analysis_metrics(analysis_db_path: Path) -> dict:
