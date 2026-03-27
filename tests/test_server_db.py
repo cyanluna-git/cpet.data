@@ -76,9 +76,10 @@ class TestInitDb:
             "AND name NOT LIKE 'sqlite_%'"
         ).fetchall()
         conn.close()
-        # 7 tables: subjects, users, submissions, jobs,
-        #           report_user_links, report_name_overrides, user_profiles
-        assert len(tables) == 7
+        # 8 tables: subjects, users, submissions, jobs,
+        #           report_user_links, report_name_overrides,
+        #           report_notes, user_profiles
+        assert len(tables) == 8
 
 
 # ── Submissions ──────────────────────────────────────────────────────

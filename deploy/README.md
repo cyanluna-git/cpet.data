@@ -34,16 +34,16 @@ Certbot auto-installs a systemd timer for renewal. Verify:
 sudo systemctl list-timers | grep certbot
 ```
 
-## 4. Create Published Directory
+## 4. Create Runtime Directories
 
 ```bash
-mkdir -p /home/ubuntu/cpet.db/published
+mkdir -p /home/ubuntu/cpet.db/data /home/ubuntu/cpet.db/published
 ```
 
-Place static HTML reports here. They become accessible at:
+Generated reports are published here and become accessible at:
 
 ```
-https://cpet.cyanluna.com/report/<filename>.html
+https://cpet.cyanluna.com/report/<slug>/
 ```
 
 ## 5. FastAPI Systemd Service
@@ -57,8 +57,9 @@ After=network.target
 
 [Service]
 User=ubuntu
-WorkingDirectory=/home/ubuntu/cpet.db/backend
-ExecStart=/home/ubuntu/cpet.db/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8100
+WorkingDirectory=/home/ubuntu/cpet.db
+EnvironmentFile=/home/ubuntu/cpet.db/.env
+ExecStart=/home/ubuntu/cpet.db/.venv/bin/python -m uvicorn server.main:app --host 127.0.0.1 --port 8100
 Restart=always
 RestartSec=3
 
@@ -71,7 +72,33 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now cpet-api
 ```
 
-## 6. Claude Code tmux Session
+## 6. Channel Webhook Systemd Service
+
+Create `/etc/systemd/system/cpet-channel.service`:
+
+```ini
+[Unit]
+Description=CPET Claude Channel Webhook
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/cpet.db/channel
+EnvironmentFile=/home/ubuntu/cpet.db/.env
+ExecStart=/home/ubuntu/.bun/bin/bun run webhook.ts
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now cpet-channel
+```
+
+## 7. Claude Code tmux Session
 
 For interactive Claude Code sessions on the VM:
 
@@ -83,7 +110,7 @@ claude
 # Reattach: tmux attach -t claude
 ```
 
-## 7. Verify
+## 8. Verify
 
 ```bash
 # HTTP redirect
@@ -92,11 +119,11 @@ curl -I http://cpet.cyanluna.com
 # HTTPS API
 curl -s https://cpet.cyanluna.com/docs | head -5
 
-# Static report
-curl -I https://cpet.cyanluna.com/report/
+# Channel health
+curl -s http://127.0.0.1:8788/health
 ```
 
-## 8. Maintenance
+## 9. Maintenance
 
 ### Log locations
 
@@ -104,6 +131,7 @@ curl -I https://cpet.cyanluna.com/report/
 sudo tail -f /var/log/nginx/access.log
 sudo tail -f /var/log/nginx/error.log
 sudo journalctl -u cpet-api -f
+sudo journalctl -u cpet-channel -f
 ```
 
 ### SSL auto-renewal

@@ -1,172 +1,96 @@
 # CLAUDE.md
 
-Guidance for Claude Code (claude.ai/code) when working with this repository.
+Guidance for Claude Code when working in this repository.
 
 ## Project Overview
 
-CPET (Cardiopulmonary Exercise Test) Platform — Web application for metabolic data collection, analysis, and visualization from COSMED K5 equipment. Features: automated CPET processing, FATMAX/VO2MAX analysis, breath-by-breath visualization.
+CPET v2 is a SQLite-based ingestion and publishing platform. The active stack on `main` is:
 
-## Repository Structure
+- `server/`: FastAPI, Jinja2, HTMX, cookie session auth
+- `pipeline/`: parsers, analysis, SQLite schema, report generation
+- `channel/`: Bun webhook server that forwards submission events to Claude Code
+- `data/` and `published/`: runtime artifacts, not source of truth
 
-- `backend/` — Python 3.11 FastAPI + SQLAlchemy Async
-- `frontend/` — React 18 + TypeScript 5 + Vite + Shadcn UI
-- `docker-compose.yml` — PostgreSQL 15 + TimescaleDB
-- `run.sh` — Dev launcher (DB via Docker, Backend + Frontend local)
-- `.claude/rules/` — Shared coding conventions
-
-## Tech Stack & Key Dependencies
-
-**Backend**: FastAPI, SQLAlchemy (async), Pydantic, pytest, PostgreSQL, TimescaleDB, openpyxl  
-**Frontend**: React 18, TypeScript, Vite, Tailwind, Shadcn UI, Recharts, React Query  
-**Infrastructure**: Docker, docker-compose, Python 3.11
+Legacy `backend/`, `frontend/`, and Docker/PostgreSQL code are intentionally not part of `main`.
 
 ## Architecture
 
-```
-Browser → React (port 3100, Vite proxy /api)
-       → FastAPI (port 8100, JWT auth)
-       → PostgreSQL 15 + TimescaleDB (port 5100)
+```text
+Browser
+  → FastAPI (`server.main`, port 8100)
+  → SQLite platform DB (`data/cpet_platform.db`)
+  → workspace SQLite DB (`data/workspaces/<uuid>/analysis.db`)
+  → static published report (`published/<slug>/index.html`)
+
+Optional async path:
+FastAPI submit
+  → POST to Bun webhook (`channel/webhook.ts`, port 8788)
+  → Claude Code channel event
+  → `python -m pipeline --workspace <path>`
 ```
 
-**Key modules:**
-- **Backend**: `app/api/`, `app/services/` (COSMEDParser, MetabolismAnalyzer), `app/models/`
-- **Frontend**: `pages/`, `hooks/` (useAuth, useFetch), `components/`, `lib/api.ts`
-- **Data flow**: Excel → Parser → breath_data → Analyzer → visualization
+## Dependency Direction
+
+```text
+server/main.py, server/auth.py
+  → server/api.py, server/db.py, server/workspace.py, server/publish.py
+  → pipeline/* via subprocess / generated artifacts
+```
+
+- Keep `pipeline/` deterministic and reusable from CLI.
+- Keep `server/` responsible for upload, job tracking, auth, and presentation.
+- Do not embed report-generation logic directly into FastAPI routes.
 
 ## Commands
 
-### Database
+Setup:
+
 ```bash
-docker-compose up -d && docker-compose down
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-server.txt -r requirements-pipeline.txt
+cp .env.example .env
 ```
 
-### Backend
+Run:
+
 ```bash
-cd backend && source .venv/bin/activate
-uvicorn app.main:app --reload --port 8100
-pytest && black . && flake8 . && mypy .
+./run.sh server
+./run.sh channel
+./run.sh all
 ```
 
-### Frontend
+Tests:
+
 ```bash
-cd frontend
-npm run dev && npm run build && npm run lint
-pnpm test && pnpm test:e2e
+pytest tests -q
+python -m pipeline --help
 ```
 
-### Full Stack
-```bash
-./run.sh              # 모든 서비스 (DB + Backend + Frontend)
-./run.sh db           # DB만 (Docker)
-./run.sh backend      # Backend만
-./run.sh frontend     # Frontend만
-```
+## Environment
 
-## Environment Setup
+Important variables:
 
-Backend `.env`: `DATABASE_URL`, `SECRET_KEY`, `CORS_ORIGINS`  
-Frontend `.env`: `VITE_API_URL=http://localhost:8100`
+- `BACKEND_HOST`, `BACKEND_PORT`
+- `CPET_DATA_DIR`
+- `CPET_CHANNEL_URL`, `CPET_CHANNEL_PORT`
+- `SESSION_SECRET`
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 
-## Database
+## Repository Rules
 
-- **breath_data**: TimescaleDB hypertable (time-series)
-- **cpet_tests**: Metadata + calculated metrics
-- **subjects**: encrypted_name, birth_year
-- All IDs: UUID
+- New upload/job behavior belongs in `server/`.
+- New parsing or analysis behavior belongs in `pipeline/`.
+- Prefer storing derived artifacts in workspace directories, not in git-tracked paths.
+- Avoid introducing service dependencies that bypass the SQLite-first v2 design.
+- Do not edit `published/` by hand unless the task is explicitly about fixture/output regeneration.
 
-## API Documentation
+## Memory & Shared Rules
 
-http://localhost:8100/docs (Swagger UI)
+See `.claude/rules/` for shared coding conventions:
 
-## Dependency Direction (Must Not Violate)
-
-```
-Router (api/) → Service (services/) → Model (models/)
-Frontend (pages/) → Hooks → lib/api.ts → Backend API
-```
-
-- Routers must not write SQLAlchemy queries directly — only through Services
-- A Service must not directly manipulate another Service's Models
-- Frontend must not access DB directly (Vite proxy → FastAPI → PostgreSQL)
-
-## Forbidden Patterns
-
-- ❌ Direct INSERT into breath_data hypertable (use COSMEDParser only)
-- ❌ Using TimescaleDB functions as plain PostgreSQL queries
-- ❌ Logging patient personal information (names, birth years)
-- ❌ Writing Excel parsing logic in Routers
-- ❌ Storing JWT tokens outside localStorage on frontend
-
-## Required Patterns
-
-- ✅ New analysis metrics must be implemented in MetabolismAnalyzer + tests
-- ✅ DB schema changes require Alembic migration
-- ✅ CPET data uses UUID-based identification (no auto-increment)
-- ✅ Time-series queries must use TimescaleDB time_bucket functions
-- ✅ Medical data precision: explicitly specify decimal handling in float operations
-
-## Memory & Rules
-
-### Imports
-See `.claude/rules/` (auto-loaded, path-scoped):
-- **code-style.md** — Python/TypeScript conventions
-- **testing.md** — pytest/Vitest patterns
-- **api-conventions.md** — REST API standards
-- **commit-workflow.md** — Git conventions (all files)
-- **security.md** — Secrets & validation
-
-### Project-specific Rules
-- **backend/.claude/CLAUDE.md** — FastAPI service config
-- **frontend/.claude/CLAUDE.md** — React SPA config
-
-### Auto Memory
-To enable auto memory learning across sessions:
-```bash
-export CLAUDE_CODE_DISABLE_AUTO_MEMORY=0
-/memory  # View/edit memory files
-```
-Auto memory stores patterns, debugging insights, and architecture notes in `~/.claude/projects/cpet.db/memory/`
-
-## Model Selection Guide
-
-Automatically route tasks to appropriate Claude models based on complexity.
-
-**Status:** ✅ Fully automated with proactive skill detection (`.claude/skills/model-router/`)
-- No explicit slash command needed—just state your task
-- Skill auto-detects complexity and routes to Haiku/Sonnet/Opus
-- Optional: `[Opus] Design the new...` to force specific model
-
-### Haiku (Fast responses)
-**Use for:** Basic questions, queries, file searches, simple modifications
-- "What files contain FATMAX logic?"
-- "Explain this function"
-- "Fix this typo in README"
-- "List database tables"
-- **Time:** <30 seconds
-
-### Sonnet (Balanced performance)
-**Use for:** Detailed analysis, exploration, planning, medium-scale code changes (3–5 files)
-- "Analyze COSMED parser efficiency"
-- "Design caching strategy for breath_data"
-- "Refactor authentication flow"
-- "Implement new API endpoint"
-- "Debug performance issue"
-- **Time:** 30s–2 minutes
-
-### Opus (Deep reasoning)
-**Use for:** Complex reasoning, architecture design, large refactoring (5+ files), comprehensive implementations
-- "Plan full-stack VO2MAX calculation redesign"
-- "Refactor entire data pipeline"
-- "Optimize database query performance"
-- "Implement real-time data processing"
-- "Design new testing framework"
-- **Time:** 2–10 minutes
-
-**Quick Reference:**
-```
-/ask "what is..."              → Haiku
-/analyze "improve this..."     → Sonnet
-/design "architect..."         → Opus
-```
-
-Explicitly specify model when needed: `[Opus] Design the new...`
+- `code-style.md`
+- `testing.md`
+- `api-conventions.md`
+- `commit-workflow.md`
+- `security.md`

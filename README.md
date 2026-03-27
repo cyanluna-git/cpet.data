@@ -1,235 +1,91 @@
-# CPET Database and Visualization Platform
+# CPET Platform v2
 
-대사 분석 데이터베이스 및 시각화 플랫폼 - COSMED K5 CPET 데이터 수집, 분석 및 시각화
+CPET, FIT, ZWO, lactate 데이터를 업로드하면 SQLite 기반 파이프라인으로 분석하고 정적 HTML 리포트를 발행하는 플랫폼입니다. 현재 `main` 브랜치는 `server/ + pipeline/ + channel/` 구조만 유지합니다.
 
-## 프로젝트 개요
+## Current Stack
 
-COSMED K5 장비에서 추출된 호흡 가스 분석 데이터(CPET)를 자동 수집하고 데이터베이스화하여, 피험자의 대사 프로파일(FATMAX, VO2MAX 등)을 분석하고 시각화하는 웹 기반 플랫폼입니다.
+- `server/`: FastAPI + Jinja2 + HTMX
+- `pipeline/`: 파싱, SQLite 적재, 분석, 리포트 생성
+- `channel/`: Bun webhook server for Claude Code channels
+- Storage: `data/cpet_platform.db` + submission별 `analysis.db`
+- Publish: `published/<slug>/index.html`
 
-## 기술 스택
+## Quick Start
 
-### Backend
+사전 요구사항:
+
 - Python 3.11+
-- FastAPI
-- PostgreSQL 15+ with TimescaleDB Extension
-- SQLAlchemy (Async)
-- Pandas, NumPy, SciPy
+- Bun 1.0+ (channel server를 사용할 때)
 
-### Frontend
-- React 18+
-- TypeScript
-- Vite
-- Recharts
-- Axios
-
-### Infrastructure
-- Docker & Docker Compose
-- PostgreSQL with TimescaleDB (Docker)
-
-## 시작하기
-
-### 사전 요구사항
-
-- Python 3.11 이상
-- Node.js 18 이상
-- Docker & Docker Compose
-
-### 설치 및 실행
-
-#### 1. 데이터베이스 시작 (PostgreSQL + TimescaleDB)
+설치:
 
 ```bash
-docker-compose up -d
-```
-
-데이터베이스가 정상적으로 실행되었는지 확인:
-```bash
-docker ps
-docker logs cpet-db
-```
-
-#### 2. Backend 설정 및 실행
-
-```bash
-# 백엔드 디렉토리로 이동
-cd backend
-
-# 가상환경 활성화
-source venv/bin/activate  # macOS/Linux
-# 또는
-.\venv\Scripts\activate  # Windows
-
-# 환경 변수 설정
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-server.txt -r requirements-pipeline.txt
 cp .env.example .env
-# .env 파일을 편집하여 필요한 설정 변경
-
-# 서버 실행
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-API 문서: http://localhost:8000/docs
-
-#### 3. Frontend 설정 및 실행
+채널 서버까지 사용할 경우:
 
 ```bash
-# 프론트엔드 디렉토리로 이동
-cd frontend
-
-# 환경 변수 설정
-cp .env.example .env
-
-# 개발 서버 실행
-npm run dev
+cd channel
+bun install
+cd ..
 ```
 
-애플리케이션: http://localhost:5173
+실행:
 
-## 프로젝트 구조
-
+```bash
+./run.sh server   # FastAPI만
+./run.sh channel  # Bun webhook만
+./run.sh all      # 둘 다
 ```
+
+기본 주소:
+
+- App: `http://127.0.0.1:8100`
+- Docs: `http://127.0.0.1:8100/docs`
+- Channel health: `http://127.0.0.1:8788/health`
+
+## Repository Layout
+
+```text
 cpet.db/
-├── backend/
-│   ├── app/
-│   │   ├── api/          # API 라우터
-│   │   ├── core/         # 핵심 설정 (config, database)
-│   │   ├── models/       # 데이터베이스 모델
-│   │   ├── services/     # 비즈니스 로직
-│   │   ├── utils/        # 유틸리티 함수
-│   │   └── main.py       # FastAPI 엔트리포인트
-│   ├── tests/            # 테스트
-│   ├── venv/             # Python 가상환경
-│   └── requirements.txt  # Python 패키지
-├── frontend/
-│   ├── src/
-│   │   ├── components/   # React 컴포넌트
-│   │   ├── pages/        # 페이지
-│   │   ├── services/     # API 서비스
-│   │   └── App.tsx       # 메인 앱
-│   └── package.json      # Node 패키지
-├── scripts/
-│   └── init-db.sql       # 데이터베이스 초기화 스크립트
-├── doc/
-│   └── srs.md            # 요구사항 정의서
-├── CPET_data/            # 샘플 데이터
-└── docker-compose.yml    # Docker Compose 설정
+├── server/                  # FastAPI app, templates, auth, dashboard
+├── pipeline/                # Parser + analysis + HTML report generation
+├── channel/                 # Bun webhook entrypoint
+├── tests/                   # v2 test suite
+├── data/                    # runtime DB/workspaces (gitignored)
+├── published/               # published HTML reports (gitignored)
+├── docs/                    # active specs and operational notes
+├── deploy/                  # nginx/systemd deployment notes
+├── requirements-server.txt
+├── requirements-pipeline.txt
+└── run.sh
 ```
 
-## 주요 기능
+## Main Flow
 
-- ✅ COSMED K5 Excel 파일 업로드 및 자동 파싱
-- ✅ Breath-by-Breath (BxB) 및 Mixed (MIX) 프로토콜 지원
-- ✅ 자동 구간 감지 (Rest, Warm-up, Exercise, Peak, Recovery)
-- ✅ FATMAX 및 VO2MAX 자동 계산
-- ✅ 지방/탄수화물 연소율 계산 (Frayn 공식)
-- ✅ 인터랙티브 차트 시각화
-- ✅ 시계열 데이터 비교
-- ✅ 코호트 분석 및 통계
-- ✅ Raw Data Viewer (피험자/테스트 필터, 컬럼 선택, CSV 다운로드)
-- ✅ Raw Data 차트 프리셋 (FATMAX, RER, VO2 Kinetics, VT Analysis)
+1. 사용자가 파일과 설명을 업로드합니다.
+2. `server/api.py`가 `data/workspaces/<uuid>/raw/`에 저장하고 job을 생성합니다.
+3. `channel/webhook.ts`가 Claude Code 세션으로 submission 이벤트를 전달합니다.
+4. `python -m pipeline --workspace <path>`가 `analysis.db`와 `report/index.html`을 생성합니다.
+5. 리포트가 `published/<slug>/`로 복사되고 대시보드에 노출됩니다.
 
-## 개발 상태
+## Verification
 
-### 완료된 작업 ✅
-- [x] 프로젝트 스켈레톤 구조 생성
-- [x] Backend: FastAPI 기본 구조 및 설정
-- [x] Frontend: React + TypeScript + Vite 초기화
-- [x] Docker Compose: PostgreSQL + TimescaleDB 설정
-- [x] Database 스키마 설계 (init-db.sql)
-- [x] Git 저장소 초기화 및 GitHub 연결
-- [x] 기본 문서 작성 (README, SRS)
-
-### 진행 중인 작업 🚧
-- 분석 전용 **정제/보간 데이터셋**(Processed Series) 설계
-- 메타볼릭 차트용 전처리 파이프라인(구간 자르기, 파워 빈닝, 보간)
-- 테스트 유형 자동 태깅
-
-### 다음 단계
-자세한 개발 로드맵은 [TODOS.md](./TODOS.md) 참조
-
-## 데이터베이스 스키마
-
-현재 구현된 테이블:
-- `subjects`: 피험자/사용자 정보
-- `cpet_tests`: 실험 메타데이터
-- `breath_data`: 호흡 데이터 (TimescaleDB Hypertable)
-- `cohort_stats`: 코호트 통계
-- `users`: 사용자 계정 및 인증
-
-추가 예정 (분석/차트 최적화용):
-- `breath_data_processed`: 차트 전용 정제 데이터셋 (구간 자르기/빈닝/보간 결과)
-- `analysis_tags`: 테스트 유형 및 분석 태깅 (cpet_tests 확장)
-
-자세한 스키마는 [scripts/init-db.sql](./scripts/init-db.sql) 참조
-
-## 주요 알고리즘
-
-### 1. COSMED K5 파일 파싱
-- Excel 파일 구조 자동 감지 (BxB vs MIX)
-- 메타데이터 추출 (Row 1-10)
-- 시계열 데이터 추출 (Row 12~)
-
-### 2. 자동 구간 감지
-Bike Power 기반:
-- Rest: Power < 20W
-- Warm-up: 일정한 낮은 부하
-- Exercise: 계단식/선형 증가
-- Peak: 최대 부하
-- Recovery: 부하 급감
-
-### 3. 대사 지표 계산
-- RER = VCO2 / VO2
-- Fat Oxidation (Frayn): 1.67 × VO2 - 1.67 × VCO2
-- CHO Oxidation (Frayn): 4.55 × VCO2 - 3.21 × VO2
-- FATMAX: 지방 연소량 최대 지점
-- VO2MAX: 산소 섭취량 최대값
-
-### 4. 차트 전처리 (계획)
-- Phase trimming (Rest/Warm-up/Recovery 제거)
-- Power binning (5–10W, median/trimmed mean)
-- Shape-preserving interpolation (PCHIP/Akima) 또는 LOESS
-
-## 📚 문서
-
-### 빠른 링크
-- [개발 TODO 리스트](./TODOS.md) - 현재 진행 중인 작업
-- [API 문서](http://localhost:8000/docs) - 서버 실행 시 확인
-
-### 전체 문서는 `docs/` 폴더에서 확인하세요
-- **[📖 문서 홈](./docs/)** - 모든 문서 인덱스
-- **[🏗️ 가이드](./docs/guides/)** - 아키텍처, 기여 방법, 테스트 전략
-- **[📊 작업 보고서](./docs/reports/)** - 완료된 작업 및 개선 사항
-
-더 자세한 정보는 [docs/README.md](./docs/README.md) 참고
-
-## 기여 가이드
-
-### 개발 환경 설정
-1. 저장소 클론
 ```bash
-git clone https://github.com/cyanluna-git/cpet.data.git
-cd cpet.data
+pytest tests -q
+python -m pipeline --help
 ```
 
-2. Backend 설정
-```bash
-cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-```
+## Docs
 
-3. Frontend 설정
-```bash
-cd frontend
-npm install
-cp .env.example .env
-```
-
-4. Database 시작
-```bash
-docker-compose up -d
-```
+- [docs/README.md](./docs/README.md)
+- [docs/specs/REBUILD_PLAN.md](./docs/specs/REBUILD_PLAN.md)
+- [deploy/README.md](./deploy/README.md)
+- [scripts/README.md](./scripts/README.md)
 
 ### 커밋 메시지 규칙
 - `feat:` 새로운 기능
