@@ -12,8 +12,8 @@
     </div>
   </div>
 
-  <div class="mt-4 grid gap-3 lg:grid-cols-2">
-    <div class="rounded-xl border border-white bg-white px-4 py-3 shadow-sm">
+  <div class="mt-4 grid gap-3 xl:grid-cols-3">
+    <div class="rounded-2xl border border-white bg-white px-4 py-4 shadow-sm">
       <h4 class="text-sm font-semibold text-gray-900">Current State</h4>
       <dl class="mt-3 space-y-2 text-sm text-gray-700">
         <div class="flex items-center justify-between">
@@ -31,45 +31,106 @@
       </dl>
     </div>
 
-    <div class="rounded-xl border border-white bg-white px-4 py-3 shadow-sm">
-      <h4 class="text-sm font-semibold text-gray-900">Cohort Positioning</h4>
-      <dl class="mt-3 space-y-2 text-sm text-gray-700">
-        <div class="flex items-center justify-between">
-          <dt>VO2max rank</dt>
-          <dd class="font-medium">
-            {% if detail.cohort_positioning.vo2max_rel %}
-            {{ detail.cohort_positioning.vo2max_rel.rank }}/{{ detail.cohort_positioning.vo2max_rel.total }}
-            {% else %}-{% endif %}
-          </dd>
+    <div class="rounded-2xl border border-white bg-white px-4 py-4 shadow-sm">
+      <div class="flex items-center justify-between">
+        <h4 class="text-sm font-semibold text-gray-900">Cohort Positioning</h4>
+        <span class="text-xs text-gray-500">
+          {{ detail.timeline_window.first_anchor_measured_at }} to {{ detail.timeline_window.latest_anchor_measured_at }}
+        </span>
+      </div>
+      <div class="mt-3 space-y-3">
+        {% for label, widget in [('VO2max', detail.positioning_widgets.vo2max_rel), ('FatMax', detail.positioning_widgets.fatmax_power_w)] %}
+        <div class="rounded-xl border border-gray-100 bg-gray-50 px-3 py-3">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-xs uppercase tracking-wide text-gray-500">{{ label }}</p>
+              {% if widget %}
+              <p class="mt-1 text-base font-semibold text-gray-900">{{ widget.band_label }}</p>
+              {% else %}
+              <p class="mt-1 text-base font-semibold text-gray-400">Unavailable</p>
+              {% endif %}
+            </div>
+            {% if widget %}
+            <div class="text-right text-sm text-gray-700">
+              <p class="font-semibold">{{ widget.rank }}/{{ widget.total }}</p>
+              <p>{{ widget.percentile }}th pct</p>
+            </div>
+            {% endif %}
+          </div>
+          {% if widget %}
+          <div class="mt-3 h-2 rounded-full bg-white">
+            <div
+              class="h-2 rounded-full {% if widget.band_key == 'front_pack' %}bg-emerald-500{% elif widget.band_key == 'mid_pack' %}bg-sky-500{% else %}bg-amber-500{% endif %}"
+              style="width: {{ widget.percentile }}%;"
+            ></div>
+          </div>
+          {% endif %}
         </div>
-        <div class="flex items-center justify-between">
-          <dt>FatMax rank</dt>
-          <dd class="font-medium">
-            {% if detail.cohort_positioning.fatmax_power_w %}
-            {{ detail.cohort_positioning.fatmax_power_w.rank }}/{{ detail.cohort_positioning.fatmax_power_w.total }}
-            {% else %}-{% endif %}
-          </dd>
-        </div>
-      </dl>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="rounded-2xl border border-white bg-white px-4 py-4 shadow-sm">
+      <h4 class="text-sm font-semibold text-gray-900">Trend Signal</h4>
+      {% if detail.latest_trend.state == 'delta_ready' %}
+      <p class="mt-2 text-sm text-gray-600">
+        vs {{ detail.latest_trend.comparison_anchor_measured_at }}
+      </p>
+      <div class="mt-3 flex flex-wrap gap-2 text-sm text-gray-700">
+        {% if detail.latest_trend.delta_metrics.get('delta_vo2max_rel') is not none %}
+        <span class="rounded-full bg-emerald-50 px-3 py-1">
+          ΔVO2 {{ detail.latest_trend.delta_metrics.delta_vo2max_rel }}
+        </span>
+        {% endif %}
+        {% if detail.latest_trend.delta_metrics.get('pct_delta_vo2max_rel') is not none %}
+        <span class="rounded-full bg-sky-50 px-3 py-1">
+          {{ detail.latest_trend.delta_metrics.pct_delta_vo2max_rel }}%
+        </span>
+        {% endif %}
+        {% if detail.latest_trend.delta_metrics.get('delta_fatmax_power_w') is not none %}
+        <span class="rounded-full bg-amber-50 px-3 py-1">
+          ΔFatMax {{ detail.latest_trend.delta_metrics.delta_fatmax_power_w }}
+        </span>
+        {% endif %}
+      </div>
+      {% else %}
+      <p class="mt-2 text-sm text-gray-600">
+        A second usable CPET anchor is needed before this subject gets a dashboard delta signal.
+      </p>
+      {% if detail.latest_trend.comparison_anchor_measured_at %}
+      <p class="mt-2 text-xs text-gray-500">
+        Latest comparison anchor: {{ detail.latest_trend.comparison_anchor_measured_at }}
+      </p>
+      {% endif %}
+      {% endif %}
     </div>
   </div>
 
-  <div class="mt-4 rounded-xl border border-white bg-white px-4 py-3 shadow-sm">
+  <div class="mt-4 rounded-2xl border border-white bg-white px-4 py-4 shadow-sm">
     <h4 class="text-sm font-semibold text-gray-900">Timeline</h4>
-    <div class="mt-3 space-y-2">
+    <div class="mt-3 space-y-3">
       {% for point in detail.timeline %}
-      <div class="rounded-lg border border-gray-200 px-3 py-3">
+      <div class="rounded-xl border border-gray-200 px-4 py-4">
         <div class="flex items-center justify-between gap-3">
-          <p class="text-sm font-medium text-gray-900">{{ point.anchor_measured_at }}</p>
-          <span class="text-xs text-gray-500">
+          <div>
+            <p class="text-sm font-medium text-gray-900">{{ point.anchor_measured_at }}</p>
+            <p class="text-xs text-gray-500">
+              {% if loop.last %}latest anchor{% else %}history point{% endif %}
+            </p>
+          </div>
+          <span class="rounded-full px-2 py-1 text-xs {% if point.has_usable_delta %}bg-emerald-50 text-emerald-700{% else %}bg-gray-100 text-gray-500{% endif %}">
             {% if point.has_usable_delta %}usable delta{% else %}current state only{% endif %}
           </span>
         </div>
-        <div class="mt-2 flex flex-wrap gap-2 text-xs text-gray-600">
+        <div class="mt-3 flex flex-wrap gap-2 text-xs text-gray-600">
           <span class="rounded-full bg-sky-50 px-2 py-1">VO2max {{ point.vo2max_rel if point.vo2max_rel is not none else "-" }}</span>
           <span class="rounded-full bg-amber-50 px-2 py-1">FatMax {{ point.fatmax_power_w if point.fatmax_power_w is not none else "-" }}</span>
+          <span class="rounded-full bg-violet-50 px-2 py-1">LT1 {{ point.lt1_power_w if point.lt1_power_w is not none else "-" }}</span>
           {% if point.has_usable_delta and point.delta_metrics.get('delta_vo2max_rel') is not none %}
           <span class="rounded-full bg-emerald-50 px-2 py-1">ΔVO2 {{ point.delta_metrics.delta_vo2max_rel }}</span>
+          {% endif %}
+          {% if point.has_usable_delta and point.delta_metrics.get('delta_fatmax_power_w') is not none %}
+          <span class="rounded-full bg-orange-50 px-2 py-1">ΔFatMax {{ point.delta_metrics.delta_fatmax_power_w }}</span>
           {% endif %}
         </div>
       </div>

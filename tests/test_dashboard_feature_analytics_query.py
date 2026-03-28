@@ -199,11 +199,31 @@ class TestDashboardFeatureAnalyticsQuery:
         assert alpha["timeline"][1]["has_usable_delta"] is True
         assert alpha["timeline"][1]["delta_metrics"]["delta_vo2max_rel"] == 5.0
         assert alpha["timeline"][1]["delta_metrics"]["pct_delta_vo2max_rel"] == 10.0
+        assert alpha["latest_trend"] == {
+            "state": "delta_ready",
+            "comparison_anchor_measured_at": "2026-01-10",
+            "delta_metrics": {
+                "delta_fatmax_power_w": 15.0,
+                "delta_lt1_power_w": 15.0,
+                "delta_vo2max_rel": 5.0,
+                "pct_delta_lt1_power_w": 7.32,
+                "pct_delta_vo2max_rel": 10.0,
+            },
+            "delta_quality_flags": ["missing_anchor_vlamax", "missing_previous_vlamax"],
+        }
+        assert alpha["positioning_widgets"]["vo2max_rel"]["band_key"] == "mid_pack"
+        assert alpha["positioning_widgets"]["fatmax_power_w"]["band_label"] == "Mid Pack"
+        assert alpha["timeline_window"] == {
+            "first_anchor_measured_at": "2026-01-10",
+            "latest_anchor_measured_at": "2026-02-10",
+        }
 
         assert gamma is not None
         assert gamma["history_state"] == "single_anchor"
         assert len(gamma["timeline"]) == 1
         assert gamma["timeline"][0]["has_usable_delta"] is False
+        assert gamma["latest_trend"]["state"] == "baseline_only"
+        assert gamma["positioning_widgets"]["vo2max_rel"]["band_key"] == "front_pack"
 
     def test_detail_returns_none_for_missing_subject(self, tmp_path: Path) -> None:
         db_path = _init_platform_db(tmp_path)

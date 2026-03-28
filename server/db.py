@@ -1971,6 +1971,59 @@ def _build_dashboard_timeline_point(
     }
 
 
+def _build_positioning_widget(position: dict | None) -> dict | None:
+    """Normalize a cohort position into a dashboard-friendly band."""
+    if not position:
+        return None
+
+    percentile = float(position.get("percentile") or 0.0)
+    if percentile >= 75.0:
+        band_key = "front_pack"
+        band_label = "Front Pack"
+    elif percentile >= 40.0:
+        band_key = "mid_pack"
+        band_label = "Mid Pack"
+    else:
+        band_key = "building"
+        band_label = "Building"
+
+    return {
+        "value": position.get("value"),
+        "rank": position.get("rank"),
+        "total": position.get("total"),
+        "percentile": percentile,
+        "band_key": band_key,
+        "band_label": band_label,
+    }
+
+
+def _build_latest_trend_summary(timeline: list[dict]) -> dict:
+    """Summarize the most recent subject trend for dashboard drill-in widgets."""
+    if not timeline:
+        return {
+            "state": "empty",
+            "comparison_anchor_measured_at": "",
+            "delta_metrics": {},
+        }
+
+    latest = timeline[-1]
+    previous = timeline[-2] if len(timeline) >= 2 else None
+    if latest.get("has_usable_delta"):
+        return {
+            "state": "delta_ready",
+            "comparison_anchor_measured_at": previous["anchor_measured_at"] if previous else "",
+            "delta_metrics": latest.get("delta_metrics", {}),
+            "delta_quality_flags": latest.get("delta_quality_flags", []),
+        }
+
+    return {
+        "state": "baseline_only",
+        "comparison_anchor_measured_at": previous["anchor_measured_at"] if previous else "",
+        "delta_metrics": {},
+        "delta_quality_flags": latest.get("delta_quality_flags", []),
+    }
+
+
 def summarize_dashboard_feature_analytics(db_path: Path) -> dict:
     """Build a cohort-level overview for dashboard analytics."""
     all_rows = list_subject_feature_sets(db_path, include_payload=False, limit=5000)
@@ -2200,6 +2253,11 @@ def get_dashboard_subject_analytics(
         )
         for row in sorted(cpet_endurance_rows, key=lambda item: item["anchor_measured_at"])
     ]
+    latest_trend = _build_latest_trend_summary(timeline)
+    positioning_widgets = {
+        "vo2max_rel": _build_positioning_widget(target["cohort_positioning"].get("vo2max_rel")),
+        "fatmax_power_w": _build_positioning_widget(target["cohort_positioning"].get("fatmax_power_w")),
+    }
 
     return {
         "subject": {
@@ -2212,6 +2270,12 @@ def get_dashboard_subject_analytics(
         "usable_delta_count": target["usable_delta_count"],
         "current_state": target["current_state"],
         "cohort_positioning": target["cohort_positioning"],
+        "positioning_widgets": positioning_widgets,
+        "latest_trend": latest_trend,
+        "timeline_window": {
+            "first_anchor_measured_at": timeline[0]["anchor_measured_at"] if timeline else "",
+            "latest_anchor_measured_at": timeline[-1]["anchor_measured_at"] if timeline else "",
+        },
         "timeline": timeline,
     }
 

@@ -190,6 +190,10 @@ class TestDashboardFeatureAnalyticsPartial:
         assert "Alpha Rider" in resp.text
         assert "Current State" in resp.text
         assert "Cohort Positioning" in resp.text
+        assert "Trend Signal" in resp.text
+        assert "Front Pack" in resp.text
+        assert "vs 2026-01-10" in resp.text
+        assert "ΔFatMax 15.0" in resp.text
         assert "2026-01-10" in resp.text
         assert "2026-02-10" in resp.text
 
