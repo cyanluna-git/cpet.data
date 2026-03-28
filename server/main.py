@@ -23,6 +23,9 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from server.db import (
+    backfill_endurance_core_feature_sets,
+    backfill_longitudinal_delta_feature_sets,
+    backfill_subject_metric_snapshots,
     build_subject_feature_set_compare,
     build_fitness_trend_compare,
     build_fitness_trend_options,
@@ -50,6 +53,7 @@ from server.db import (
     list_subjects,
     list_subject_metric_snapshots,
     list_dashboard_subject_analytics,
+    list_submissions_by_user,
     list_subject_feature_sets,
     set_report_name_override,
     summarize_dashboard_feature_analytics,
@@ -253,21 +257,45 @@ async def dashboard_page(request: Request) -> HTMLResponse:
 
 def _render_dashboard_analytics(
     request: Request,
+    session_user: dict,
     selected_subject_id: str = "",
 ) -> HTMLResponse:
     """Render the dashboard analytics overview partial."""
     db_path = request.app.state.db_path
-    overview = summarize_dashboard_feature_analytics(db_path)
-    dashboard_subjects = list_dashboard_subject_analytics(db_path, limit=100)
+    subject_scope = _get_dashboard_subject_scope(db_path, session_user)
+    _ensure_dashboard_feature_analytics_materialized(
+        request,
+        subject_scope if session_user.get("role") == "user" else None,
+    )
+    overview = summarize_dashboard_feature_analytics(db_path, subject_ids=subject_scope or None)
+    dashboard_subjects = list_dashboard_subject_analytics(
+        db_path,
+        limit=100,
+        subject_ids=subject_scope or None,
+    )
+    if selected_subject_id and dashboard_subjects:
+        allowed_ids = {row["subject_id"] for row in dashboard_subjects}
+        if selected_subject_id not in allowed_ids:
+            selected_subject_id = ""
     if not selected_subject_id and dashboard_subjects:
         selected_subject_id = dashboard_subjects[0]["subject_id"]
+    selected_subject_name = next(
+        (
+            row["subject_name"]
+            for row in dashboard_subjects
+            if row["subject_id"] == selected_subject_id
+        ),
+        "",
+    )
     return templates.TemplateResponse(
         request,
         "partials/dashboard_feature_analytics.html",
         {
             "overview": overview,
             "dashboard_subjects": dashboard_subjects,
+            "dashboard_scope_locked": session_user.get("role") == "user",
             "selected_subject_id": selected_subject_id,
+            "selected_subject_name": selected_subject_name,
         },
     )
 
@@ -278,10 +306,14 @@ async def dashboard_analytics_partial(
     subject_id: str = "",
 ) -> HTMLResponse:
     """Render the dashboard analytics overview partial."""
-    auth_result = _require_manage_access(request)
+    auth_result = _require_dashboard_access(request)
     if isinstance(auth_result, Response):
         return auth_result
-    return _render_dashboard_analytics(request, selected_subject_id=subject_id)
+    return _render_dashboard_analytics(
+        request,
+        session_user=auth_result,
+        selected_subject_id=subject_id,
+    )
 
 
 @app.get("/api/dashboard/analytics/subject", response_class=HTMLResponse)
@@ -290,12 +322,30 @@ async def dashboard_analytics_subject_partial(
     subject_id: str = "",
 ) -> HTMLResponse:
     """Render one subject's dashboard analytics drill-in partial."""
-    auth_result = _require_manage_access(request)
+    auth_result = _require_dashboard_access(request)
     if isinstance(auth_result, Response):
         return auth_result
 
+    db_path = request.app.state.db_path
+    subject_scope = _get_dashboard_subject_scope(db_path, auth_result)
+    _ensure_dashboard_feature_analytics_materialized(
+        request,
+        subject_scope if auth_result.get("role") == "user" else None,
+    )
+    if not subject_id:
+        dashboard_subjects = list_dashboard_subject_analytics(
+            db_path,
+            limit=1,
+            subject_ids=subject_scope or None,
+        )
+        subject_id = dashboard_subjects[0]["subject_id"] if dashboard_subjects else ""
+
     detail = (
-        get_dashboard_subject_analytics(request.app.state.db_path, subject_id)
+        get_dashboard_subject_analytics(
+            db_path,
+            subject_id,
+            subject_ids=subject_scope or None,
+        )
         if subject_id
         else None
     )
@@ -565,6 +615,60 @@ def _require_manage_access(request: Request) -> dict | RedirectResponse:
             status_code=403,
         )
     return session_user
+
+
+def _require_dashboard_access(request: Request) -> dict | RedirectResponse:
+    """Allow any authenticated user to access dashboard analytics."""
+    session_user = _get_session_user(request)
+    if session_user is None:
+        return RedirectResponse(url="/auth/google/login", status_code=302)
+    return session_user
+
+
+def _get_dashboard_subject_scope(db_path: Path, session_user: dict) -> list[str]:
+    """Return subject IDs the current user is allowed to inspect on dashboard."""
+    role = session_user.get("role", "user")
+    if role in ("researcher", "admin"):
+        return []
+
+    subject_ids: list[str] = []
+    seen: set[str] = set()
+    user = get_user(db_path, session_user["id"]) or {}
+
+    def _append(subject_id: str | None) -> None:
+        if subject_id and subject_id not in seen:
+            seen.add(subject_id)
+            subject_ids.append(subject_id)
+
+    _append(user.get("subject_id"))
+    for submission in list_submissions_by_user(db_path, session_user["id"]):
+        _append(submission.get("subject_id"))
+    return subject_ids
+
+
+def _ensure_dashboard_feature_analytics_materialized(
+    request: Request,
+    subject_scope: list[str] | None = None,
+) -> None:
+    """Lazily backfill dashboard analytics tables when feature rows are absent."""
+    db_path = request.app.state.db_path
+    if subject_scope:
+        has_rows = any(
+            list_subject_feature_sets(db_path, subject_id=subject_id, limit=1)
+            for subject_id in subject_scope
+        )
+    else:
+        has_rows = bool(list_subject_feature_sets(db_path, limit=1))
+
+    if has_rows:
+        return
+
+    backfill_subject_metric_snapshots(
+        db_path,
+        data_dir=request.app.state.data_dir,
+    )
+    backfill_endurance_core_feature_sets(db_path)
+    backfill_longitudinal_delta_feature_sets(db_path)
 
 
 def _suggest_user_for_submission(

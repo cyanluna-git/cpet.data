@@ -2024,22 +2024,45 @@ def _build_latest_trend_summary(timeline: list[dict]) -> dict:
     }
 
 
-def summarize_dashboard_feature_analytics(db_path: Path) -> dict:
+def _filter_dashboard_rows_by_subject_ids(
+    rows: list[dict],
+    subject_ids: list[str] | None = None,
+) -> list[dict]:
+    """Restrict dashboard analytics rows to a subject scope when provided."""
+    if not subject_ids:
+        return rows
+    allowed = set(subject_ids)
+    return [row for row in rows if row.get("subject_id") in allowed]
+
+
+def summarize_dashboard_feature_analytics(
+    db_path: Path,
+    subject_ids: list[str] | None = None,
+) -> dict:
     """Build a cohort-level overview for dashboard analytics."""
-    all_rows = list_subject_feature_sets(db_path, include_payload=False, limit=5000)
-    cpet_endurance_rows = list_subject_feature_sets(
+    all_rows = _filter_dashboard_rows_by_subject_ids(
+        list_subject_feature_sets(db_path, include_payload=False, limit=5000),
+        subject_ids=subject_ids,
+    )
+    cpet_endurance_rows = _filter_dashboard_rows_by_subject_ids(
+        list_subject_feature_sets(
         db_path,
         feature_spec_key="endurance_core",
         anchor_source_kind="cpet_submission",
         include_payload=True,
         limit=5000,
+        ),
+        subject_ids=subject_ids,
     )
-    cpet_delta_rows = list_subject_feature_sets(
+    cpet_delta_rows = _filter_dashboard_rows_by_subject_ids(
+        list_subject_feature_sets(
         db_path,
         feature_spec_key="longitudinal_delta",
         anchor_source_kind="cpet_submission",
         include_payload=True,
         limit=5000,
+        ),
+        subject_ids=subject_ids,
     )
 
     latest_by_subject: dict[str, dict] = {}
@@ -2145,21 +2168,28 @@ def summarize_dashboard_feature_analytics(db_path: Path) -> dict:
 def list_dashboard_subject_analytics(
     db_path: Path,
     limit: int = 100,
+    subject_ids: list[str] | None = None,
 ) -> list[dict]:
     """List latest dashboard subject cards with history state and cohort ranks."""
-    cpet_endurance_rows = list_subject_feature_sets(
+    cpet_endurance_rows = _filter_dashboard_rows_by_subject_ids(
+        list_subject_feature_sets(
         db_path,
         feature_spec_key="endurance_core",
         anchor_source_kind="cpet_submission",
         include_payload=True,
         limit=5000,
+        ),
+        subject_ids=subject_ids,
     )
-    cpet_delta_rows = list_subject_feature_sets(
+    cpet_delta_rows = _filter_dashboard_rows_by_subject_ids(
+        list_subject_feature_sets(
         db_path,
         feature_spec_key="longitudinal_delta",
         anchor_source_kind="cpet_submission",
         include_payload=True,
         limit=5000,
+        ),
+        subject_ids=subject_ids,
     )
     delta_by_anchor_snapshot_id = {
         row.get("anchor_snapshot_id"): row
@@ -2219,9 +2249,17 @@ def list_dashboard_subject_analytics(
 def get_dashboard_subject_analytics(
     db_path: Path,
     subject_id: str,
+    subject_ids: list[str] | None = None,
 ) -> dict | None:
     """Return one subject's dashboard analytics detail."""
-    subject_cards = list_dashboard_subject_analytics(db_path, limit=5000)
+    if subject_ids and subject_id not in set(subject_ids):
+        return None
+
+    subject_cards = list_dashboard_subject_analytics(
+        db_path,
+        limit=5000,
+        subject_ids=subject_ids,
+    )
     target = next((row for row in subject_cards if row["subject_id"] == subject_id), None)
     if target is None:
         return None

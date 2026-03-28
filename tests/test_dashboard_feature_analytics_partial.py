@@ -13,6 +13,7 @@ from server.db import (
     complete_onboarding,
     create_subject,
     init_db,
+    link_user_to_subject,
     upsert_subject_metric_snapshot,
     upsert_user,
 )
@@ -104,7 +105,7 @@ def _seed_feature_rows(db_path: Path) -> dict:
     return {"alpha": alpha, "beta": beta}
 
 
-def _login_as(client: TestClient, role: str, google_id: str = "dashboard-analytics-gid") -> None:
+def _login_as(client: TestClient, role: str, google_id: str = "dashboard-analytics-gid") -> dict:
     db_path = app.state.db_path
     user = upsert_user(
         db_path,
@@ -132,6 +133,7 @@ def _login_as(client: TestClient, role: str, google_id: str = "dashboard-analyti
             }
         }
         client.get("/auth/google/callback", follow_redirects=False)
+    return user
 
 
 class TestDashboardFeatureAnalyticsPartial:
@@ -147,7 +149,7 @@ class TestDashboardFeatureAnalyticsPartial:
         assert 'id="dashboard-analytics-region"' in resp.text
         assert '/api/dashboard/analytics' in resp.text
 
-    def test_dashboard_page_hides_analytics_region_for_regular_user(self, tmp_path: Path) -> None:
+    def test_dashboard_page_mounts_analytics_region_for_regular_user(self, tmp_path: Path) -> None:
         db_path = _setup_app(tmp_path)
         _seed_feature_rows(db_path)
         client = TestClient(app, raise_server_exceptions=False)
@@ -156,7 +158,7 @@ class TestDashboardFeatureAnalyticsPartial:
         resp = client.get("/dashboard")
 
         assert resp.status_code == 200
-        assert 'id="dashboard-analytics-region"' not in resp.text
+        assert 'id="dashboard-analytics-region"' in resp.text
 
     def test_dashboard_analytics_overview_partial_renders_summary(self, tmp_path: Path) -> None:
         db_path = _setup_app(tmp_path)
@@ -174,6 +176,21 @@ class TestDashboardFeatureAnalyticsPartial:
         assert "Top VO2max" in resp.text
         assert "Alpha Rider" in resp.text
         assert seeded["alpha"]["id"] in resp.text
+
+    def test_dashboard_analytics_overview_scopes_regular_user_to_own_subject(self, tmp_path: Path) -> None:
+        db_path = _setup_app(tmp_path)
+        seeded = _seed_feature_rows(db_path)
+        client = TestClient(app, raise_server_exceptions=False)
+        user = _login_as(client, "user")
+        link_user_to_subject(db_path, user["id"], seeded["alpha"]["id"])
+
+        resp = client.get("/api/dashboard/analytics")
+
+        assert resp.status_code == 200
+        assert "My Dashboard" in resp.text
+        assert "Alpha Rider" in resp.text
+        assert "Beta Rider" not in resp.text
+        assert "Current Cohort" in resp.text
 
     def test_dashboard_analytics_subject_partial_renders_drill_in(self, tmp_path: Path) -> None:
         db_path = _setup_app(tmp_path)
@@ -197,13 +214,17 @@ class TestDashboardFeatureAnalyticsPartial:
         assert "2026-01-10" in resp.text
         assert "2026-02-10" in resp.text
 
-    def test_dashboard_analytics_partial_rejects_regular_user(self, tmp_path: Path) -> None:
+    def test_dashboard_analytics_subject_partial_blocks_regular_user_from_other_subject(self, tmp_path: Path) -> None:
         db_path = _setup_app(tmp_path)
-        _seed_feature_rows(db_path)
+        seeded = _seed_feature_rows(db_path)
         client = TestClient(app, raise_server_exceptions=False)
-        _login_as(client, "user")
+        user = _login_as(client, "user")
+        link_user_to_subject(db_path, user["id"], seeded["alpha"]["id"])
 
-        resp = client.get("/api/dashboard/analytics")
+        resp = client.get(
+            "/api/dashboard/analytics/subject",
+            params={"subject_id": seeded["beta"]["id"]},
+        )
 
-        assert resp.status_code == 403
-        assert "권한이 없습니다" in resp.text
+        assert resp.status_code == 200
+        assert "선택한 피험자의 대시보드 분석 상세를 불러올 수 없습니다." in resp.text

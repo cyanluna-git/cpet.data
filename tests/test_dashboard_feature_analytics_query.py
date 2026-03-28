@@ -231,6 +231,39 @@ class TestDashboardFeatureAnalyticsQuery:
 
         assert get_dashboard_subject_analytics(db_path, "missing-subject") is None
 
+    def test_summary_and_list_can_be_scoped_to_specific_subjects(self, tmp_path: Path) -> None:
+        db_path = _init_platform_db(tmp_path)
+        seeded = _seed_dashboard_feature_rows(db_path)
+
+        summary = summarize_dashboard_feature_analytics(
+            db_path,
+            subject_ids=[seeded["alpha"]["id"]],
+        )
+        rows = list_dashboard_subject_analytics(
+            db_path,
+            subject_ids=[seeded["alpha"]["id"]],
+        )
+
+        assert summary["total_subjects"] == 1
+        assert summary["subjects_with_current_state"] == 1
+        assert summary["subjects_with_multi_date_cpet_history"] == 1
+        assert summary["single_anchor_subjects"] == 0
+        assert summary["leaders"]["vo2max_rel"]["subject_name"] == "Alpha Rider"
+        assert [row["subject_name"] for row in rows] == ["Alpha Rider"]
+
+    def test_detail_respects_subject_scope(self, tmp_path: Path) -> None:
+        db_path = _init_platform_db(tmp_path)
+        seeded = _seed_dashboard_feature_rows(db_path)
+
+        assert (
+            get_dashboard_subject_analytics(
+                db_path,
+                seeded["beta"]["id"],
+                subject_ids=[seeded["alpha"]["id"]],
+            )
+            is None
+        )
+
     def test_detail_handles_sparse_subject_with_missing_metrics(self, tmp_path: Path) -> None:
         db_path = _init_platform_db(tmp_path)
         sparse = create_subject(db_path, name="Sparse Rider")
