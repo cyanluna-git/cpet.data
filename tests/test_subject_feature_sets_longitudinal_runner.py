@@ -135,8 +135,10 @@ class TestLongitudinalDeltaFeatureRunner:
             "snapshots_scanned": 2,
             "feature_rows_built": 2,
             "inserted": 2,
+            "updated": 0,
             "skipped": 0,
             "would_insert": 0,
+            "would_update": 0,
             "errors": [],
         }
         assert second == {
@@ -144,8 +146,10 @@ class TestLongitudinalDeltaFeatureRunner:
             "snapshots_scanned": 2,
             "feature_rows_built": 2,
             "inserted": 0,
+            "updated": 0,
             "skipped": 2,
             "would_insert": 0,
+            "would_update": 0,
             "errors": [],
         }
 
@@ -179,8 +183,10 @@ class TestLongitudinalDeltaFeatureRunner:
             "snapshots_scanned": 1,
             "feature_rows_built": 1,
             "inserted": 0,
+            "updated": 0,
             "skipped": 0,
             "would_insert": 1,
+            "would_update": 0,
             "errors": [],
         }
         assert _fetch_feature_rows(db_path) == []
@@ -230,8 +236,10 @@ class TestLongitudinalDeltaFeatureRunner:
             "snapshots_scanned": 1,
             "feature_rows_built": 1,
             "inserted": 1,
+            "updated": 0,
             "skipped": 0,
             "would_insert": 0,
+            "would_update": 0,
             "errors": [],
         }
         assert len(rows) == 1

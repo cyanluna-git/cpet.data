@@ -127,7 +127,7 @@ class TestDashboardFeatureAnalyticsQuery:
         assert summary["subjects_with_current_state"] == 3
         assert summary["subjects_with_multi_date_cpet_history"] == 1
         assert summary["single_anchor_subjects"] == 2
-        assert summary["subjects_with_usable_delta"] == 2
+        assert summary["subjects_with_usable_delta"] == 1
         assert summary["spec_counts"] == {"endurance_core": 5, "longitudinal_delta": 5}
         assert summary["available_metrics"]["vo2max_rel_rows"] == 4
         assert summary["available_metrics"]["fatmax_power_w_rows"] == 4

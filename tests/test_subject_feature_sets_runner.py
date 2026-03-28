@@ -127,8 +127,10 @@ class TestSubjectFeatureSetsRunner:
             "snapshots_scanned": 2,
             "feature_rows_built": 2,
             "inserted": 2,
+            "updated": 0,
             "skipped": 0,
             "would_insert": 0,
+            "would_update": 0,
             "errors": [],
         }
         assert second == {
@@ -136,8 +138,10 @@ class TestSubjectFeatureSetsRunner:
             "snapshots_scanned": 2,
             "feature_rows_built": 2,
             "inserted": 0,
+            "updated": 0,
             "skipped": 2,
             "would_insert": 0,
+            "would_update": 0,
             "errors": [],
         }
 
@@ -166,8 +170,10 @@ class TestSubjectFeatureSetsRunner:
             "snapshots_scanned": 1,
             "feature_rows_built": 1,
             "inserted": 0,
+            "updated": 0,
             "skipped": 0,
             "would_insert": 1,
+            "would_update": 0,
             "errors": [],
         }
         assert _fetch_feature_rows(db_path) == []
@@ -218,9 +224,62 @@ class TestSubjectFeatureSetsRunner:
             "snapshots_scanned": 1,
             "feature_rows_built": 1,
             "inserted": 1,
+            "updated": 0,
             "skipped": 0,
             "would_insert": 0,
+            "would_update": 0,
             "errors": [],
         }
         assert len(rows) == 1
         assert rows[0]["anchor_snapshot_id"] == snapshot_ids[1]
+
+    def test_backfill_updates_existing_row_when_anchor_snapshot_changes(self, tmp_path: Path) -> None:
+        db_path = _init_platform_db(tmp_path)
+        subject = create_subject(db_path, name="Refresh Subject")
+
+        workspace = tmp_path / "workspaces" / "refresh-1"
+        _create_analysis_db(
+            workspace,
+            "2026-03-20",
+            metrics={"vo2max": {"vo2max_rel": 60.7}},
+        )
+        create_submission(
+            db_path,
+            "refresh feature",
+            [{"name": "refresh.fit"}],
+            str(workspace),
+            subject_id=subject["id"],
+        )
+
+        backfill_subject_metric_snapshots(db_path)
+        first = backfill_endurance_core_feature_sets(db_path)
+        rows = _fetch_feature_rows(db_path)
+        assert len(rows) == 1
+
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            """UPDATE subject_metric_snapshots
+               SET vo2max_rel = ?, extraction_version = ?
+               WHERE snapshot_id = ?""",
+            (63.1, "manual-refresh-v2", rows[0]["anchor_snapshot_id"]),
+        )
+        conn.commit()
+        conn.close()
+
+        second = backfill_endurance_core_feature_sets(db_path)
+        refreshed = _fetch_feature_rows(db_path)
+        payload = json.loads(refreshed[0]["feature_payload_json"])
+
+        assert first["inserted"] == 1
+        assert second == {
+            "dry_run": False,
+            "snapshots_scanned": 1,
+            "feature_rows_built": 1,
+            "inserted": 0,
+            "updated": 1,
+            "skipped": 0,
+            "would_insert": 0,
+            "would_update": 0,
+            "errors": [],
+        }
+        assert payload["features"]["vo2max_rel"] == 63.1

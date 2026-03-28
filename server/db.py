@@ -2092,6 +2092,7 @@ def summarize_dashboard_feature_analytics(db_path: Path) -> dict:
             row["subject_id"]
             for row in cpet_delta_rows
             if "missing_previous_snapshot" not in row.get("quality_flags", [])
+            and "mixed_source_compare" not in row.get("quality_flags", [])
         }
     )
     single_anchor_subjects = max(len(latest_by_subject) - subjects_with_multi_date_history, 0)
@@ -2599,7 +2600,7 @@ def upsert_subject_feature_set(
     feature_row: dict,
     dry_run: bool = False,
 ) -> dict:
-    """Insert a derived feature row unless the same spec anchor already exists."""
+    """Insert or refresh a derived feature row by its spec/anchor identity."""
     conn = _connect(db_path)
     existing = conn.execute(
         """SELECT * FROM subject_feature_sets
@@ -2617,19 +2618,7 @@ def upsert_subject_feature_set(
         ),
     ).fetchone()
 
-    if existing is not None:
-        conn.close()
-        return {"action": "skipped", "feature_row_id": existing["feature_row_id"]}
-
-    if dry_run:
-        conn.close()
-        return {"action": "would_insert", "feature_row_id": feature_row.get("feature_row_id")}
-
-    now = _now_utc()
     payload = {
-        "feature_row_id": feature_row.get("feature_row_id") or str(uuid.uuid4()),
-        "created_at": now,
-        "updated_at": now,
         "subject_id": feature_row["subject_id"],
         "feature_spec_key": feature_row["feature_spec_key"],
         "feature_spec_version": feature_row["feature_spec_version"],
@@ -2641,15 +2630,68 @@ def upsert_subject_feature_set(
         "feature_payload_json": feature_row.get("feature_payload_json", "{}"),
         "quality_flags_json": feature_row.get("quality_flags_json", "[]"),
     }
-    columns = list(payload.keys())
+
+    if existing is not None:
+        existing_dict = dict(existing)
+        mutable_columns = (
+            "anchor_measured_at",
+            "input_snapshot_ids_json",
+            "input_source_kinds_json",
+            "feature_payload_json",
+            "quality_flags_json",
+        )
+        if all(existing_dict.get(column) == payload.get(column) for column in mutable_columns):
+            conn.close()
+            return {"action": "skipped", "feature_row_id": existing["feature_row_id"]}
+
+        if dry_run:
+            conn.close()
+            return {"action": "would_update", "feature_row_id": existing["feature_row_id"]}
+
+        now = _now_utc()
+        conn.execute(
+            """UPDATE subject_feature_sets
+               SET anchor_measured_at = ?,
+                   input_snapshot_ids_json = ?,
+                   input_source_kinds_json = ?,
+                   feature_payload_json = ?,
+                   quality_flags_json = ?,
+                   updated_at = ?
+               WHERE feature_row_id = ?""",
+            (
+                payload["anchor_measured_at"],
+                payload["input_snapshot_ids_json"],
+                payload["input_source_kinds_json"],
+                payload["feature_payload_json"],
+                payload["quality_flags_json"],
+                now,
+                existing["feature_row_id"],
+            ),
+        )
+        conn.commit()
+        conn.close()
+        return {"action": "updated", "feature_row_id": existing["feature_row_id"]}
+
+    if dry_run:
+        conn.close()
+        return {"action": "would_insert", "feature_row_id": feature_row.get("feature_row_id")}
+
+    now = _now_utc()
+    insert_payload = {
+        "feature_row_id": feature_row.get("feature_row_id") or str(uuid.uuid4()),
+        "created_at": now,
+        "updated_at": now,
+        **payload,
+    }
+    columns = list(insert_payload.keys())
     placeholders = ", ".join("?" for _ in columns)
     conn.execute(
         f"INSERT INTO subject_feature_sets ({', '.join(columns)}) VALUES ({placeholders})",
-        [payload[column] for column in columns],
+        [insert_payload[column] for column in columns],
     )
     conn.commit()
     conn.close()
-    return {"action": "inserted", "feature_row_id": payload["feature_row_id"]}
+    return {"action": "inserted", "feature_row_id": insert_payload["feature_row_id"]}
 
 
 def backfill_endurance_core_feature_sets(
@@ -2664,8 +2706,10 @@ def backfill_endurance_core_feature_sets(
         "snapshots_scanned": len(anchors),
         "feature_rows_built": 0,
         "inserted": 0,
+        "updated": 0,
         "skipped": 0,
         "would_insert": 0,
+        "would_update": 0,
         "errors": [],
     }
 
@@ -2689,10 +2733,14 @@ def backfill_endurance_core_feature_sets(
         action = result["action"]
         if action == "inserted":
             summary["inserted"] += 1
+        elif action == "updated":
+            summary["updated"] += 1
         elif action == "skipped":
             summary["skipped"] += 1
         elif action == "would_insert":
             summary["would_insert"] += 1
+        elif action == "would_update":
+            summary["would_update"] += 1
 
     return summary
 
@@ -2709,8 +2757,10 @@ def backfill_longitudinal_delta_feature_sets(
         "snapshots_scanned": len(anchors),
         "feature_rows_built": 0,
         "inserted": 0,
+        "updated": 0,
         "skipped": 0,
         "would_insert": 0,
+        "would_update": 0,
         "errors": [],
     }
 
@@ -2734,10 +2784,14 @@ def backfill_longitudinal_delta_feature_sets(
         action = result["action"]
         if action == "inserted":
             summary["inserted"] += 1
+        elif action == "updated":
+            summary["updated"] += 1
         elif action == "skipped":
             summary["skipped"] += 1
         elif action == "would_insert":
             summary["would_insert"] += 1
+        elif action == "would_update":
+            summary["would_update"] += 1
 
     return summary
 
