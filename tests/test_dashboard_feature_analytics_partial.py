@@ -168,7 +168,10 @@ class TestDashboardFeatureAnalyticsPartial:
 
         assert resp.status_code == 200
         assert "Dashboard Analytics" in resp.text
-        assert "Usable CPET Anchors" in resp.text
+        assert "Single-Anchor Watchlist" in resp.text
+        assert "Repeat-Test Ready" in resp.text
+        assert "Cohort Leaders" in resp.text
+        assert "Top VO2max" in resp.text
         assert "Alpha Rider" in resp.text
         assert seeded["alpha"]["id"] in resp.text
 

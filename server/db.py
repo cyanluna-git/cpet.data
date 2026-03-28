@@ -2014,6 +2014,42 @@ def summarize_dashboard_feature_analytics(db_path: Path) -> dict:
         if isinstance(features.get("fatmax_power_w"), (int, float)):
             available_fatmax += 1
 
+    latest_rows = list(latest_by_subject.values())
+
+    def _build_leader(metric_key: str) -> dict | None:
+        ranked: list[tuple[float, dict]] = []
+        for row in latest_rows:
+            features = _feature_payload_features(row)
+            value = features.get(metric_key)
+            if isinstance(value, (int, float)):
+                ranked.append((float(value), row))
+        if not ranked:
+            return None
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        value, leader_row = ranked[0]
+        return {
+            "subject_id": leader_row["subject_id"],
+            "subject_name": leader_row.get("subject_name", ""),
+            "value": value,
+            "total": len(ranked),
+        }
+
+    subjects_with_usable_delta = len(
+        {
+            row["subject_id"]
+            for row in cpet_delta_rows
+            if "missing_previous_snapshot" not in row.get("quality_flags", [])
+        }
+    )
+    single_anchor_subjects = max(len(latest_by_subject) - subjects_with_multi_date_history, 0)
+    sparse_subject_preview = sorted(
+        [
+            row.get("subject_name", "")
+            for row in latest_rows
+            if len(rows_by_subject.get(row["subject_id"], [])) < 2
+        ]
+    )[:3]
+
     base_summary = summarize_subject_feature_sets(db_path)
     quality_flag_counts = _count_quality_flags(cpet_endurance_rows + cpet_delta_rows)
 
@@ -2024,11 +2060,30 @@ def summarize_dashboard_feature_analytics(db_path: Path) -> dict:
         "usable_cpet_anchor_rows": len(cpet_endurance_rows),
         "subjects_with_current_state": len(latest_by_subject),
         "subjects_with_multi_date_cpet_history": subjects_with_multi_date_history,
+        "single_anchor_subjects": single_anchor_subjects,
+        "subjects_with_usable_delta": subjects_with_usable_delta,
         "spec_counts": base_summary["by_spec"],
         "available_metrics": {
             "vo2max_rel_rows": available_vo2,
             "fatmax_power_w_rows": available_fatmax,
         },
+        "metric_coverage": {
+            "vo2max_rel_pct": round((available_vo2 / len(cpet_endurance_rows)) * 100, 1)
+            if cpet_endurance_rows
+            else 0.0,
+            "fatmax_power_w_pct": round((available_fatmax / len(cpet_endurance_rows)) * 100, 1)
+            if cpet_endurance_rows
+            else 0.0,
+        },
+        "anchor_window": {
+            "earliest_measured_at": cpet_endurance_rows[-1]["anchor_measured_at"] if cpet_endurance_rows else "",
+            "latest_measured_at": latest_anchor_measured_at,
+        },
+        "leaders": {
+            "vo2max_rel": _build_leader("vo2max_rel"),
+            "fatmax_power_w": _build_leader("fatmax_power_w"),
+        },
+        "sparse_subject_preview": sparse_subject_preview,
         "quality_flag_counts": quality_flag_counts,
     }
 

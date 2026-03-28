@@ -116,7 +116,7 @@ def _seed_dashboard_feature_rows(db_path: Path) -> dict:
 class TestDashboardFeatureAnalyticsQuery:
     def test_summary_reports_realistic_overview_counts(self, tmp_path: Path) -> None:
         db_path = _init_platform_db(tmp_path)
-        _seed_dashboard_feature_rows(db_path)
+        seeded = _seed_dashboard_feature_rows(db_path)
 
         summary = summarize_dashboard_feature_analytics(db_path)
 
@@ -126,9 +126,30 @@ class TestDashboardFeatureAnalyticsQuery:
         assert summary["usable_cpet_anchor_rows"] == 4
         assert summary["subjects_with_current_state"] == 3
         assert summary["subjects_with_multi_date_cpet_history"] == 1
+        assert summary["single_anchor_subjects"] == 2
+        assert summary["subjects_with_usable_delta"] == 2
         assert summary["spec_counts"] == {"endurance_core": 5, "longitudinal_delta": 5}
         assert summary["available_metrics"]["vo2max_rel_rows"] == 4
         assert summary["available_metrics"]["fatmax_power_w_rows"] == 4
+        assert summary["metric_coverage"]["vo2max_rel_pct"] == 100.0
+        assert summary["metric_coverage"]["fatmax_power_w_pct"] == 100.0
+        assert summary["anchor_window"] == {
+            "earliest_measured_at": "2026-01-10",
+            "latest_measured_at": "2026-03-01",
+        }
+        assert summary["leaders"]["vo2max_rel"] == {
+            "subject_id": seeded["gamma"]["id"],
+            "subject_name": "Gamma Rider",
+            "value": 60.0,
+            "total": 3,
+        }
+        assert summary["leaders"]["fatmax_power_w"] == {
+            "subject_id": seeded["gamma"]["id"],
+            "subject_name": "Gamma Rider",
+            "value": 210.0,
+            "total": 3,
+        }
+        assert summary["sparse_subject_preview"] == ["Beta Rider", "Gamma Rider"]
         assert summary["quality_flag_counts"]["mixed_source_compare"] == 1
         assert summary["quality_flag_counts"]["missing_previous_snapshot"] == 2
 
