@@ -230,3 +230,32 @@ class TestDashboardFeatureAnalyticsQuery:
         _seed_dashboard_feature_rows(db_path)
 
         assert get_dashboard_subject_analytics(db_path, "missing-subject") is None
+
+    def test_detail_handles_sparse_subject_with_missing_metrics(self, tmp_path: Path) -> None:
+        db_path = _init_platform_db(tmp_path)
+        sparse = create_subject(db_path, name="Sparse Rider")
+        upsert_subject_metric_snapshot(
+            db_path,
+            _snapshot(
+                subject_id=sparse["id"],
+                source_kind="cpet_submission",
+                source_ref_id="sparse-cpet-1",
+                measured_at="2026-02-20",
+            ),
+        )
+
+        backfill_endurance_core_feature_sets(db_path)
+        backfill_longitudinal_delta_feature_sets(db_path)
+
+        detail = get_dashboard_subject_analytics(db_path, sparse["id"])
+
+        assert detail is not None
+        assert detail["current_state"]["vo2max_rel"] is None
+        assert detail["current_state"]["fatmax_power_w"] is None
+        assert detail["positioning_widgets"]["vo2max_rel"] is None
+        assert detail["positioning_widgets"]["fatmax_power_w"] is None
+        assert detail["latest_trend"]["state"] == "baseline_only"
+        assert detail["timeline_window"] == {
+            "first_anchor_measured_at": "2026-02-20",
+            "latest_anchor_measured_at": "2026-02-20",
+        }

@@ -12,6 +12,7 @@ Usage:
 import base64
 import json
 import os
+import sqlite3
 import sys
 import tempfile
 from pathlib import Path
@@ -32,7 +33,16 @@ os.environ["CPET_DATA_DIR"] = str(TEST_DATA_DIR)
 
 from itsdangerous import TimestampSigner  # noqa: E402
 
-from server.db import init_db, upsert_user, upsert_user_profile  # noqa: E402
+from server.db import (  # noqa: E402
+    backfill_endurance_core_feature_sets,
+    backfill_longitudinal_delta_feature_sets,
+    complete_onboarding,
+    create_subject,
+    init_db,
+    upsert_subject_metric_snapshot,
+    upsert_user,
+    upsert_user_profile,
+)
 
 
 def _create_signed_cookie(session_data: dict, secret: str) -> str:
@@ -67,6 +77,74 @@ def seed_test_data() -> None:
         training_level="advanced",
         measured_at="2026-03-20",
     )
+    complete_onboarding(DB_PATH, user["id"], user["display_name"])
+
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("UPDATE users SET role = 'researcher' WHERE id = ?", (user["id"],))
+    conn.commit()
+    conn.close()
+
+    alpha = create_subject(DB_PATH, name="Alpha Rider")
+    beta = create_subject(DB_PATH, name="Sparse Rider")
+
+    def _snapshot(
+        *,
+        subject_id: str,
+        source_ref_id: str,
+        measured_at: str,
+        vo2max_rel: float | None = None,
+        fatmax_power_w: float | None = None,
+        lt1_power_w: float | None = None,
+    ) -> dict:
+        return {
+            "subject_id": subject_id,
+            "source_kind": "cpet_submission",
+            "source_ref_id": source_ref_id,
+            "submission_id": None,
+            "measured_at": measured_at,
+            "protocol_type": "Belgium Lactate Test Elite",
+            "vo2max_ml": None,
+            "vo2max_rel": vo2max_rel,
+            "lt1_power_w": lt1_power_w,
+            "lt2_power_w": None,
+            "fatmax_power_w": fatmax_power_w,
+            "fatmax_gmin": None,
+            "vlamax": None,
+            "at_power_w": None,
+            "carbmax_w": None,
+            "glycogen_g": None,
+            "extraction_version": "e2e-seed-v1",
+            "quality_flags_json": "[]",
+            "payload_json": "{}",
+        }
+
+    for row in (
+        _snapshot(
+            subject_id=alpha["id"],
+            source_ref_id="alpha-cpet-1",
+            measured_at="2026-01-10",
+            vo2max_rel=50.0,
+            fatmax_power_w=180.0,
+            lt1_power_w=205.0,
+        ),
+        _snapshot(
+            subject_id=alpha["id"],
+            source_ref_id="alpha-cpet-2",
+            measured_at="2026-02-10",
+            vo2max_rel=55.0,
+            fatmax_power_w=195.0,
+            lt1_power_w=220.0,
+        ),
+        _snapshot(
+            subject_id=beta["id"],
+            source_ref_id="sparse-cpet-1",
+            measured_at="2026-02-20",
+        ),
+    ):
+        upsert_subject_metric_snapshot(DB_PATH, row)
+
+    backfill_endurance_core_feature_sets(DB_PATH)
+    backfill_longitudinal_delta_feature_sets(DB_PATH)
 
     # Generate signed session cookie and write to file
     session_data = {
@@ -74,6 +152,8 @@ def seed_test_data() -> None:
         "display_name": user["display_name"],
         "avatar_url": user["avatar_url"],
         "email": user["email"],
+        "role": "researcher",
+        "onboarding_completed": 1,
     }
     cookie_value = _create_signed_cookie(session_data, "e2e-test-secret-key")
 
