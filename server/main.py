@@ -35,6 +35,7 @@ from server.db import (
     get_report_user_links,
     get_subject,
     get_subject_feature_set,
+    get_dashboard_subject_analytics,
     get_submission,
     get_user,
     get_user_profile,
@@ -48,8 +49,10 @@ from server.db import (
     set_report_note,
     list_subjects,
     list_subject_metric_snapshots,
+    list_dashboard_subject_analytics,
     list_subject_feature_sets,
     set_report_name_override,
+    summarize_dashboard_feature_analytics,
     summarize_subject_feature_sets,
     update_subject,
     update_submission_subject_name,
@@ -246,6 +249,63 @@ async def dashboard_page(request: Request) -> HTMLResponse:
     if guard:
         return guard
     return _template_response(request, "dashboard.html")
+
+
+def _render_dashboard_analytics(
+    request: Request,
+    selected_subject_id: str = "",
+) -> HTMLResponse:
+    """Render the dashboard analytics overview partial."""
+    db_path = request.app.state.db_path
+    overview = summarize_dashboard_feature_analytics(db_path)
+    dashboard_subjects = list_dashboard_subject_analytics(db_path, limit=100)
+    if not selected_subject_id and dashboard_subjects:
+        selected_subject_id = dashboard_subjects[0]["subject_id"]
+    return templates.TemplateResponse(
+        request,
+        "partials/dashboard_feature_analytics.html",
+        {
+            "overview": overview,
+            "dashboard_subjects": dashboard_subjects,
+            "selected_subject_id": selected_subject_id,
+        },
+    )
+
+
+@app.get("/api/dashboard/analytics", response_class=HTMLResponse)
+async def dashboard_analytics_partial(
+    request: Request,
+    subject_id: str = "",
+) -> HTMLResponse:
+    """Render the dashboard analytics overview partial."""
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, Response):
+        return auth_result
+    return _render_dashboard_analytics(request, selected_subject_id=subject_id)
+
+
+@app.get("/api/dashboard/analytics/subject", response_class=HTMLResponse)
+async def dashboard_analytics_subject_partial(
+    request: Request,
+    subject_id: str = "",
+) -> HTMLResponse:
+    """Render one subject's dashboard analytics drill-in partial."""
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, Response):
+        return auth_result
+
+    detail = (
+        get_dashboard_subject_analytics(request.app.state.db_path, subject_id)
+        if subject_id
+        else None
+    )
+    return templates.TemplateResponse(
+        request,
+        "partials/dashboard_feature_analytics_subject.html",
+        {
+            "detail": detail,
+        },
+    )
 
 
 @app.get("/profile", response_class=HTMLResponse)
