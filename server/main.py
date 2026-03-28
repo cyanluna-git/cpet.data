@@ -674,6 +674,7 @@ def _ensure_dashboard_feature_analytics_materialized(
     backfill_subject_metric_snapshots(
         db_path,
         data_dir=request.app.state.data_dir,
+        published_dir=request.app.state.published_dir,
     )
     backfill_endurance_core_feature_sets(db_path)
     backfill_longitudinal_delta_feature_sets(db_path)

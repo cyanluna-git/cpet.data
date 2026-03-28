@@ -1144,6 +1144,7 @@ _TREND_COMPARE_METRICS: list[tuple[str, str, str]] = [
 ]
 
 _CPET_SNAPSHOT_EXTRACTION_VERSION = "cpet_snapshot_v1"
+_PUBLISHED_CPET_SNAPSHOT_EXTRACTION_VERSION = "published_cpet_snapshot_v1"
 _CPET_SNAPSHOT_METRIC_KEYS = (
     "vo2max_ml",
     "vo2max_rel",
@@ -1389,8 +1390,8 @@ def _find_inscyd_report_html(workspace: Path) -> Path | None:
     return None
 
 
-def _read_inscyd_report_data(report_html_path: Path) -> dict:
-    """Read embedded report-data JSON from a rendered INSCYD report."""
+def _read_embedded_report_data(report_html_path: Path) -> dict:
+    """Read embedded report-data JSON from a rendered report HTML."""
     try:
         text = report_html_path.read_text(encoding="utf-8")
     except OSError:
@@ -1410,6 +1411,11 @@ def _read_inscyd_report_data(report_html_path: Path) -> dict:
     except (TypeError, ValueError, json.JSONDecodeError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def _read_inscyd_report_data(report_html_path: Path) -> dict:
+    """Read embedded report-data JSON from a rendered INSCYD report."""
+    return _read_embedded_report_data(report_html_path)
 
 
 def _build_inscyd_report_data_from_workspace(workspace: Path) -> dict:
@@ -1575,6 +1581,153 @@ def extract_inscyd_snapshot(
     )
 
 
+def _build_cpet_snapshot_from_report_data(
+    subject_id: str,
+    report_slug: str,
+    report_data: dict,
+) -> dict | None:
+    """Build a CPET snapshot from embedded report-data in a published report."""
+    session = report_data.get("session") if isinstance(report_data.get("session"), dict) else {}
+    analysis = report_data.get("analysis") if isinstance(report_data.get("analysis"), dict) else {}
+    vo2max = analysis.get("vo2max") if isinstance(analysis.get("vo2max"), dict) else {}
+    lactate = analysis.get("lactate") if isinstance(analysis.get("lactate"), dict) else {}
+    substrate = analysis.get("substrate") if isinstance(analysis.get("substrate"), dict) else {}
+    ventilatory = (
+        analysis.get("ventilatory_thresholds")
+        if isinstance(analysis.get("ventilatory_thresholds"), dict)
+        else {}
+    )
+
+    measured_at = str(session.get("test_date") or "").strip()
+    if not measured_at:
+        return None
+
+    protocol_type = str(session.get("protocol_name") or "").strip()
+    quality_flags: list[str] = []
+    if not protocol_type:
+        quality_flags.append("missing_protocol_type")
+
+    present_metrics: dict[str, float | int] = {}
+    metric_values = {
+        "vo2max_ml": vo2max.get("vo2max_ml"),
+        "vo2max_rel": vo2max.get("vo2max_rel"),
+        "lt1_power_w": lactate.get("lt1_fixed_power_w") or ventilatory.get("vt1_power_w"),
+        "lt2_power_w": lactate.get("lt1_dmax_power_w") or ventilatory.get("vt2_power_w"),
+        "fatmax_power_w": substrate.get("fatmax_power_w"),
+        "fatmax_gmin": substrate.get("fatmax_gmin"),
+    }
+    for key, value in metric_values.items():
+        if isinstance(value, (int, float)):
+            present_metrics[key] = value
+
+    missing_metrics = sorted(
+        key for key in _CPET_SNAPSHOT_METRIC_KEYS if key not in present_metrics
+    )
+    quality_flags.extend(f"missing_{key}" for key in missing_metrics)
+    quality_flags.sort()
+
+    payload = {
+        "source": {
+            "report_slug": report_slug,
+            "published_mode": "standalone_report",
+        },
+        "subject": report_data.get("subject", {}),
+        "session": session,
+        "analysis": {
+            "vo2max": vo2max,
+            "lactate": lactate,
+            "substrate": substrate,
+            "ventilatory_thresholds": ventilatory,
+        },
+        "missing_metrics": missing_metrics,
+    }
+
+    snapshot = {
+        "snapshot_id": str(uuid.uuid4()),
+        "subject_id": subject_id,
+        "source_kind": "published_cpet_report",
+        "source_ref_id": report_slug,
+        "submission_id": None,
+        "measured_at": measured_at,
+        "protocol_type": protocol_type or None,
+        "extraction_version": _PUBLISHED_CPET_SNAPSHOT_EXTRACTION_VERSION,
+        "quality_flags_json": json.dumps(quality_flags),
+        "payload_json": json.dumps(payload, ensure_ascii=True, sort_keys=True),
+    }
+    snapshot.update(present_metrics)
+    return snapshot
+
+
+def _list_linked_published_report_candidates(
+    db_path: Path,
+    published_dir: Path,
+) -> list[dict]:
+    """List standalone published reports linked to users with a subject_id."""
+    if not published_dir.exists():
+        return []
+
+    conn = _connect(db_path)
+    rows = conn.execute(
+        """SELECT rul.report_slug,
+                  rul.user_id,
+                  u.subject_id
+           FROM report_user_links rul
+           JOIN users u ON u.id = rul.user_id
+           LEFT JOIN jobs j ON j.report_slug = rul.report_slug
+           WHERE u.subject_id IS NOT NULL
+             AND j.report_slug IS NULL
+           ORDER BY rul.linked_at ASC, rul.report_slug ASC"""
+    ).fetchall()
+    conn.close()
+
+    candidates = []
+    for row in rows:
+        report_slug = str(row["report_slug"])
+        index_file = published_dir / report_slug / "index.html"
+        if not index_file.is_file():
+            continue
+        candidates.append({
+            "report_slug": report_slug,
+            "user_id": str(row["user_id"]),
+            "subject_id": str(row["subject_id"]),
+            "index_file": index_file,
+        })
+    return candidates
+
+
+def extract_published_report_snapshot(
+    db_path: Path,
+    report_slug: str,
+    published_dir: Path,
+) -> dict | None:
+    """Build a standalone published report snapshot when linked to a subject."""
+    candidate = next(
+        (
+            item
+            for item in _list_linked_published_report_candidates(db_path, published_dir)
+            if item["report_slug"] == report_slug
+        ),
+        None,
+    )
+    if candidate is None:
+        return None
+
+    report_data = _read_embedded_report_data(candidate["index_file"])
+    if not report_data:
+        return None
+
+    meta = report_data.get("meta") if isinstance(report_data.get("meta"), dict) else {}
+    report_type = str(meta.get("report_type") or "").strip().lower()
+    if report_type == "inscyd":
+        return None
+
+    return _build_cpet_snapshot_from_report_data(
+        candidate["subject_id"],
+        report_slug,
+        report_data,
+    )
+
+
 def _list_snapshot_candidate_submissions(
     db_path: Path,
     submission_ids: list[str] | None = None,
@@ -1669,6 +1822,7 @@ def backfill_subject_metric_snapshots(
     db_path: Path,
     submission_ids: list[str] | None = None,
     data_dir: Path | None = None,
+    published_dir: Path | None = None,
     dry_run: bool = False,
 ) -> dict:
     """Scan submissions, extract snapshot rows, and upsert them into the platform DB."""
@@ -1686,6 +1840,8 @@ def backfill_subject_metric_snapshots(
         "would_update": 0,
         "errors": [],
     }
+    if published_dir is not None:
+        summary["published_reports_scanned"] = 0
 
     for submission in submissions:
         submission_id = submission["id"]
@@ -1697,6 +1853,43 @@ def backfill_subject_metric_snapshots(
                     {
                         "submission_id": submission_id,
                         "extractor": extractor.__name__,
+                        "error": str(exc),
+                    }
+                )
+                continue
+
+            if snapshot is None:
+                continue
+
+            summary["snapshots_found"] += 1
+            result = upsert_subject_metric_snapshot(db_path, snapshot, dry_run=dry_run)
+            action = result["action"]
+            if action == "inserted":
+                summary["inserted"] += 1
+            elif action == "updated":
+                summary["updated"] += 1
+            elif action == "skipped":
+                summary["skipped"] += 1
+            elif action == "would_insert":
+                summary["would_insert"] += 1
+            elif action == "would_update":
+                summary["would_update"] += 1
+
+    if published_dir is not None:
+        published_candidates = _list_linked_published_report_candidates(db_path, published_dir)
+        summary["published_reports_scanned"] = len(published_candidates)
+        for candidate in published_candidates:
+            try:
+                snapshot = extract_published_report_snapshot(
+                    db_path,
+                    candidate["report_slug"],
+                    published_dir=published_dir,
+                )
+            except Exception as exc:  # pragma: no cover - defensive runner guard
+                summary["errors"].append(
+                    {
+                        "report_slug": candidate["report_slug"],
+                        "extractor": "extract_published_report_snapshot",
                         "error": str(exc),
                     }
                 )

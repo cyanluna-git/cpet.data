@@ -4,13 +4,18 @@ tests/test_subject_metric_snapshots_cpet.py — Contract tests for CPET snapshot
 
 import json
 import sqlite3
+import shutil
 from pathlib import Path
 
 from server.db import (
     create_submission,
     create_subject,
+    extract_published_report_snapshot,
     extract_cpet_snapshot,
     init_db,
+    link_user_to_subject,
+    link_report_to_user,
+    upsert_user,
 )
 
 
@@ -231,3 +236,47 @@ class TestExtractCpetSnapshot:
             "lt2_power_w",
             "vo2max_ml",
         ]
+
+    def test_extracts_linked_published_cpet_report_snapshot(self, tmp_path: Path) -> None:
+        db_path = _init_platform_db(tmp_path)
+        published_dir = tmp_path / "published"
+        report_slug = "geunyun-park-20260320-energy"
+        report_dir = published_dir / report_slug
+        report_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(
+            Path("tests/fixtures/cosmed_only/report/index.html"),
+            report_dir / "index.html",
+        )
+
+        subject = create_subject(db_path, name="Gerald Park")
+        user = upsert_user(
+            db_path,
+            google_id="park-google",
+            email="park@example.com",
+            display_name="Gerald Park",
+        )
+        link_user_to_subject(db_path, user["id"], subject["id"])
+        link_report_to_user(db_path, report_slug, user["id"])
+
+        snapshot = extract_published_report_snapshot(db_path, report_slug, published_dir)
+
+        assert snapshot is not None
+        assert snapshot["subject_id"] == subject["id"]
+        assert snapshot["source_kind"] == "published_cpet_report"
+        assert snapshot["source_ref_id"] == report_slug
+        assert snapshot["submission_id"] is None
+        assert snapshot["measured_at"] == "2026-03-20"
+        assert snapshot["protocol_type"] == "Belgium Lactate Test Elite"
+        assert snapshot["vo2max_ml"] == 4505.3
+        assert snapshot["vo2max_rel"] == 60.7
+        assert snapshot["lt1_power_w"] == 175
+        assert snapshot["lt2_power_w"] == 288
+        assert snapshot["fatmax_power_w"] == 175
+        assert snapshot["fatmax_gmin"] == 1.2
+        assert snapshot["extraction_version"] == "published_cpet_snapshot_v1"
+
+        payload = json.loads(snapshot["payload_json"])
+        assert payload["source"]["report_slug"] == report_slug
+        assert payload["source"]["published_mode"] == "standalone_report"
+        assert payload["subject"]["name"] == "Geunyun Park"
+        assert payload["session"]["test_date"] == "2026-03-20"

@@ -5,6 +5,7 @@ tests/test_subject_metric_snapshots_runner.py — Upsert/backfill regression tes
 import html
 import json
 import sqlite3
+import shutil
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,6 +14,9 @@ from server.db import (
     create_submission,
     create_subject,
     init_db,
+    link_user_to_subject,
+    link_report_to_user,
+    upsert_user,
 )
 
 
@@ -253,3 +257,44 @@ class TestSubjectMetricSnapshotsRunner:
         assert before["created_at"] == after["created_at"]
         assert after["extraction_version"] == "cpet_snapshot_v2"
         assert after["vo2max_rel"] == 61.2
+
+    def test_backfill_includes_linked_standalone_published_reports(self, tmp_path: Path) -> None:
+        db_path = _init_platform_db(tmp_path)
+        published_dir = tmp_path / "published"
+        report_slug = "geunyun-park-20260320-energy"
+        report_dir = published_dir / report_slug
+        report_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(
+            Path("tests/fixtures/cosmed_only/report/index.html"),
+            report_dir / "index.html",
+        )
+
+        subject = create_subject(db_path, name="Gerald Park")
+        user = upsert_user(
+            db_path,
+            google_id="park-google",
+            email="park@example.com",
+            display_name="Gerald Park",
+        )
+        link_user_to_subject(db_path, user["id"], subject["id"])
+        link_report_to_user(db_path, report_slug, user["id"])
+
+        result = backfill_subject_metric_snapshots(db_path, published_dir=published_dir)
+        rows = _fetch_snapshot_rows(db_path)
+
+        assert result == {
+            "dry_run": False,
+            "submissions_scanned": 0,
+            "snapshots_found": 1,
+            "inserted": 1,
+            "updated": 0,
+            "skipped": 0,
+            "would_insert": 0,
+            "would_update": 0,
+            "errors": [],
+            "published_reports_scanned": 1,
+        }
+        assert len(rows) == 1
+        assert rows[0]["source_kind"] == "published_cpet_report"
+        assert rows[0]["source_ref_id"] == report_slug
+        assert rows[0]["measured_at"] == "2026-03-20"
