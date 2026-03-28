@@ -70,7 +70,7 @@ test.describe("Dashboard analytics", () => {
     await expect(page.locator("text=Trend Signal")).toBeVisible();
     await expect(
       page.locator(
-        "text=A second usable CPET anchor is needed before this subject gets a dashboard delta signal.",
+        "text=A second usable anchor is needed before this subject gets a dashboard delta signal.",
       ),
     ).toBeVisible();
     await expect(page.locator("text=Unavailable")).toHaveCount(2);

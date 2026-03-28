@@ -2165,21 +2165,19 @@ def summarize_dashboard_feature_analytics(
         list_subject_feature_sets(db_path, include_payload=False, limit=5000),
         subject_ids=subject_ids,
     )
-    cpet_endurance_rows = _filter_dashboard_rows_by_subject_ids(
+    endurance_rows = _filter_dashboard_rows_by_subject_ids(
         list_subject_feature_sets(
         db_path,
         feature_spec_key="endurance_core",
-        anchor_source_kind="cpet_submission",
         include_payload=True,
         limit=5000,
         ),
         subject_ids=subject_ids,
     )
-    cpet_delta_rows = _filter_dashboard_rows_by_subject_ids(
+    delta_rows = _filter_dashboard_rows_by_subject_ids(
         list_subject_feature_sets(
         db_path,
         feature_spec_key="longitudinal_delta",
-        anchor_source_kind="cpet_submission",
         include_payload=True,
         limit=5000,
         ),
@@ -2188,23 +2186,23 @@ def summarize_dashboard_feature_analytics(
 
     latest_by_subject: dict[str, dict] = {}
     subjects_with_multi_date_history = 0
-    for row in cpet_endurance_rows:
+    for row in endurance_rows:
         latest_by_subject.setdefault(row["subject_id"], row)
 
     rows_by_subject: dict[str, list[dict]] = {}
-    for row in cpet_endurance_rows:
+    for row in endurance_rows:
         rows_by_subject.setdefault(row["subject_id"], []).append(row)
     for rows in rows_by_subject.values():
         if len(rows) >= 2:
             subjects_with_multi_date_history += 1
 
     latest_anchor_measured_at = ""
-    if cpet_endurance_rows:
-        latest_anchor_measured_at = cpet_endurance_rows[0]["anchor_measured_at"]
+    if endurance_rows:
+        latest_anchor_measured_at = endurance_rows[0]["anchor_measured_at"]
 
     available_vo2 = 0
     available_fatmax = 0
-    for row in cpet_endurance_rows:
+    for row in endurance_rows:
         features = _feature_payload_features(row)
         if isinstance(features.get("vo2max_rel"), (int, float)):
             available_vo2 += 1
@@ -2241,7 +2239,7 @@ def summarize_dashboard_feature_analytics(
     subjects_with_usable_delta = len(
         {
             row["subject_id"]
-            for row in cpet_delta_rows
+            for row in delta_rows
             if "missing_previous_snapshot" not in row.get("quality_flags", [])
             and "mixed_source_compare" not in row.get("quality_flags", [])
         }
@@ -2256,14 +2254,16 @@ def summarize_dashboard_feature_analytics(
     )[:3]
 
     base_summary = summarize_subject_feature_sets(db_path)
-    quality_flag_counts = _count_quality_flags(cpet_endurance_rows + cpet_delta_rows)
+    quality_flag_counts = _count_quality_flags(endurance_rows + delta_rows)
 
     return {
         "total_feature_rows": base_summary["total"],
         "total_subjects": len({row["subject_id"] for row in all_rows}),
         "latest_anchor_measured_at": latest_anchor_measured_at,
-        "usable_cpet_anchor_rows": len(cpet_endurance_rows),
+        "usable_anchor_rows": len(endurance_rows),
+        "usable_cpet_anchor_rows": len(endurance_rows),
         "subjects_with_current_state": len(latest_by_subject),
+        "subjects_with_multi_date_history": subjects_with_multi_date_history,
         "subjects_with_multi_date_cpet_history": subjects_with_multi_date_history,
         "single_anchor_subjects": single_anchor_subjects,
         "subjects_with_usable_delta": subjects_with_usable_delta,
@@ -2273,15 +2273,15 @@ def summarize_dashboard_feature_analytics(
             "fatmax_power_w_rows": available_fatmax,
         },
         "metric_coverage": {
-            "vo2max_rel_pct": round((available_vo2 / len(cpet_endurance_rows)) * 100, 1)
-            if cpet_endurance_rows
+            "vo2max_rel_pct": round((available_vo2 / len(endurance_rows)) * 100, 1)
+            if endurance_rows
             else 0.0,
-            "fatmax_power_w_pct": round((available_fatmax / len(cpet_endurance_rows)) * 100, 1)
-            if cpet_endurance_rows
+            "fatmax_power_w_pct": round((available_fatmax / len(endurance_rows)) * 100, 1)
+            if endurance_rows
             else 0.0,
         },
         "anchor_window": {
-            "earliest_measured_at": cpet_endurance_rows[-1]["anchor_measured_at"] if cpet_endurance_rows else "",
+            "earliest_measured_at": endurance_rows[-1]["anchor_measured_at"] if endurance_rows else "",
             "latest_measured_at": latest_anchor_measured_at,
         },
         "leaders": {
@@ -2299,21 +2299,19 @@ def list_dashboard_subject_analytics(
     subject_ids: list[str] | None = None,
 ) -> list[dict]:
     """List latest dashboard subject cards with history state and cohort ranks."""
-    cpet_endurance_rows = _filter_dashboard_rows_by_subject_ids(
+    endurance_rows = _filter_dashboard_rows_by_subject_ids(
         list_subject_feature_sets(
         db_path,
         feature_spec_key="endurance_core",
-        anchor_source_kind="cpet_submission",
         include_payload=True,
         limit=5000,
         ),
         subject_ids=subject_ids,
     )
-    cpet_delta_rows = _filter_dashboard_rows_by_subject_ids(
+    delta_rows = _filter_dashboard_rows_by_subject_ids(
         list_subject_feature_sets(
         db_path,
         feature_spec_key="longitudinal_delta",
-        anchor_source_kind="cpet_submission",
         include_payload=True,
         limit=5000,
         ),
@@ -2321,17 +2319,17 @@ def list_dashboard_subject_analytics(
     )
     delta_by_anchor_snapshot_id = {
         row.get("anchor_snapshot_id"): row
-        for row in cpet_delta_rows
+        for row in delta_rows
         if row.get("anchor_snapshot_id")
     }
     display_names = _get_dashboard_subject_display_names(
         db_path,
-        list({row["subject_id"] for row in cpet_endurance_rows}),
+        list({row["subject_id"] for row in endurance_rows}),
     )
 
     rows_by_subject: dict[str, list[dict]] = {}
     latest_rows: list[dict] = []
-    for row in cpet_endurance_rows:
+    for row in endurance_rows:
         rows_by_subject.setdefault(row["subject_id"], []).append(row)
         if row["subject_id"] not in {item["subject_id"] for item in latest_rows}:
             latest_rows.append(row)
@@ -2396,25 +2394,23 @@ def get_dashboard_subject_analytics(
     if target is None:
         return None
 
-    cpet_endurance_rows = list_subject_feature_sets(
+    endurance_rows = list_subject_feature_sets(
         db_path,
         subject_id=subject_id,
         feature_spec_key="endurance_core",
-        anchor_source_kind="cpet_submission",
         include_payload=True,
         limit=5000,
     )
-    cpet_delta_rows = list_subject_feature_sets(
+    delta_rows = list_subject_feature_sets(
         db_path,
         subject_id=subject_id,
         feature_spec_key="longitudinal_delta",
-        anchor_source_kind="cpet_submission",
         include_payload=True,
         limit=5000,
     )
     delta_by_anchor_snapshot_id = {
         row.get("anchor_snapshot_id"): row
-        for row in cpet_delta_rows
+        for row in delta_rows
         if row.get("anchor_snapshot_id")
     }
     timeline = [
@@ -2422,7 +2418,7 @@ def get_dashboard_subject_analytics(
             row,
             delta_by_anchor_snapshot_id.get(row.get("anchor_snapshot_id")),
         )
-        for row in sorted(cpet_endurance_rows, key=lambda item: item["anchor_measured_at"])
+        for row in sorted(endurance_rows, key=lambda item: item["anchor_measured_at"])
     ]
     latest_trend = _build_latest_trend_summary(timeline)
     positioning_widgets = {

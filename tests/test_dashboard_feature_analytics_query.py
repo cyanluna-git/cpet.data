@@ -124,16 +124,18 @@ class TestDashboardFeatureAnalyticsQuery:
         assert summary["total_feature_rows"] == 10
         assert summary["total_subjects"] == 3
         assert summary["latest_anchor_measured_at"] == "2026-03-01"
-        assert summary["usable_cpet_anchor_rows"] == 4
+        assert summary["usable_anchor_rows"] == 5
+        assert summary["usable_cpet_anchor_rows"] == 5
         assert summary["subjects_with_current_state"] == 3
-        assert summary["subjects_with_multi_date_cpet_history"] == 1
-        assert summary["single_anchor_subjects"] == 2
+        assert summary["subjects_with_multi_date_history"] == 2
+        assert summary["subjects_with_multi_date_cpet_history"] == 2
+        assert summary["single_anchor_subjects"] == 1
         assert summary["subjects_with_usable_delta"] == 1
         assert summary["spec_counts"] == {"endurance_core": 5, "longitudinal_delta": 5}
         assert summary["available_metrics"]["vo2max_rel_rows"] == 4
         assert summary["available_metrics"]["fatmax_power_w_rows"] == 4
-        assert summary["metric_coverage"]["vo2max_rel_pct"] == 100.0
-        assert summary["metric_coverage"]["fatmax_power_w_pct"] == 100.0
+        assert summary["metric_coverage"]["vo2max_rel_pct"] == 80.0
+        assert summary["metric_coverage"]["fatmax_power_w_pct"] == 80.0
         assert summary["anchor_window"] == {
             "earliest_measured_at": "2026-01-10",
             "latest_measured_at": "2026-03-01",
@@ -150,9 +152,9 @@ class TestDashboardFeatureAnalyticsQuery:
             "value": 210.0,
             "total": 3,
         }
-        assert summary["sparse_subject_preview"] == ["Beta Rider", "Gamma Rider"]
+        assert summary["sparse_subject_preview"] == ["Beta Rider"]
         assert summary["quality_flag_counts"]["mixed_source_compare"] == 1
-        assert summary["quality_flag_counts"]["missing_previous_snapshot"] == 2
+        assert summary["quality_flag_counts"]["missing_previous_snapshot"] == 3
 
     def test_list_returns_subject_cards_with_history_state_and_positioning(self, tmp_path: Path) -> None:
         db_path = _init_platform_db(tmp_path)
@@ -170,7 +172,9 @@ class TestDashboardFeatureAnalyticsQuery:
         beta = next(row for row in rows if row["subject_id"] == seeded["beta"]["id"])
         alpha = next(row for row in rows if row["subject_id"] == seeded["alpha"]["id"])
 
-        assert gamma["history_state"] == "single_anchor"
+        assert gamma["history_state"] == "timeline"
+        assert gamma["usable_history_count"] == 2
+        assert gamma["usable_delta_count"] == 0
         assert gamma["current_state"]["vo2max_rel"] == 60.0
         assert gamma["cohort_positioning"]["vo2max_rel"]["rank"] == 1
 
@@ -220,10 +224,19 @@ class TestDashboardFeatureAnalyticsQuery:
         }
 
         assert gamma is not None
-        assert gamma["history_state"] == "single_anchor"
-        assert len(gamma["timeline"]) == 1
+        assert gamma["history_state"] == "timeline"
+        assert [point["anchor_measured_at"] for point in gamma["timeline"]] == [
+            "2026-01-20",
+            "2026-03-01",
+        ]
+        assert len(gamma["timeline"]) == 2
         assert gamma["timeline"][0]["has_usable_delta"] is False
         assert gamma["latest_trend"]["state"] == "baseline_only"
+        assert gamma["latest_trend"]["comparison_anchor_measured_at"] == "2026-01-20"
+        assert gamma["timeline_window"] == {
+            "first_anchor_measured_at": "2026-01-20",
+            "latest_anchor_measured_at": "2026-03-01",
+        }
         assert gamma["positioning_widgets"]["vo2max_rel"]["band_key"] == "front_pack"
 
     def test_detail_returns_none_for_missing_subject(self, tmp_path: Path) -> None:
@@ -247,6 +260,7 @@ class TestDashboardFeatureAnalyticsQuery:
 
         assert summary["total_subjects"] == 1
         assert summary["subjects_with_current_state"] == 1
+        assert summary["subjects_with_multi_date_history"] == 1
         assert summary["subjects_with_multi_date_cpet_history"] == 1
         assert summary["single_anchor_subjects"] == 0
         assert summary["leaders"]["vo2max_rel"]["subject_name"] == "Alpha Rider"
@@ -287,7 +301,29 @@ class TestDashboardFeatureAnalyticsQuery:
         assert alpha["subject_name"] == "박근윤"
         assert detail is not None
         assert detail["subject"]["name"] == "박근윤"
-        assert summary["sparse_subject_preview"] == ["Beta Rider", "Gamma Rider"]
+        assert summary["sparse_subject_preview"] == ["Beta Rider"]
+
+    def test_dashboard_list_includes_inscyd_only_anchor_subjects(self, tmp_path: Path) -> None:
+        db_path = _init_platform_db(tmp_path)
+        _seed_dashboard_feature_rows(db_path)
+        inscyd_only = create_subject(db_path, name="Park Geunyun")
+        upsert_subject_metric_snapshot(
+            db_path,
+            _snapshot(
+                subject_id=inscyd_only["id"],
+                source_kind="inscyd_report",
+                source_ref_id="park-inscyd-1",
+                measured_at="2026-01-06",
+                vo2max_rel=51.7,
+                fatmax_power_w=150.0,
+            ),
+        )
+        backfill_endurance_core_feature_sets(db_path)
+        backfill_longitudinal_delta_feature_sets(db_path)
+
+        rows = list_dashboard_subject_analytics(db_path)
+
+        assert "Park Geunyun" in [row["subject_name"] for row in rows]
 
     def test_detail_handles_sparse_subject_with_missing_metrics(self, tmp_path: Path) -> None:
         db_path = _init_platform_db(tmp_path)

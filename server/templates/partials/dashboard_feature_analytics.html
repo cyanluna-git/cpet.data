@@ -150,7 +150,7 @@
         <div class="analytics-section-tag">Subject Feature Sets</div>
         <h2 class="mt-2 text-3xl font-semibold text-[var(--ink)]">주요 지표 대시보드</h2>
         <p class="analytics-note mt-3 max-w-3xl">
-          반복 제출된 CPET 기반 feature set을 바탕으로 코호트 상태와 개별 피험자 drill-in을
+          반복 제출된 anchor 기반 feature set을 바탕으로 코호트 상태와 개별 피험자 drill-in을
           리포트 카드 톤으로 먼저 확인합니다.
         </p>
       </div>
@@ -190,13 +190,13 @@
       <div class="analytics-kpi-label">Current Cohort</div>
       <div class="analytics-kpi-value">{{ overview.subjects_with_current_state }}</div>
       <div class="analytics-kpi-copy">
-        현재 usable CPET anchor가 있는 피험자 수입니다.
+        현재 usable anchor가 있는 피험자 수입니다.
         <div class="mt-2 text-sm text-[var(--accent)]">{{ overview.total_subjects }}명 전체 cohort 기준</div>
       </div>
     </div>
     <div class="analytics-kpi-card">
       <div class="analytics-kpi-label">Repeat-Test Ready</div>
-      <div class="analytics-kpi-value">{{ overview.subjects_with_multi_date_cpet_history }}</div>
+      <div class="analytics-kpi-value">{{ overview.subjects_with_multi_date_history }}</div>
       <div class="analytics-kpi-copy">
         두 번 이상 usable anchor가 쌓여 변화 해석이 가능한 피험자입니다.
       </div>
@@ -228,7 +228,7 @@
         <div class="flex items-center justify-between">
           <dt>VO2max rows</dt>
           <dd class="font-semibold">
-            {{ overview.available_metrics.vo2max_rel_rows }} / {{ overview.usable_cpet_anchor_rows }}
+            {{ overview.available_metrics.vo2max_rel_rows }} / {{ overview.usable_anchor_rows }}
           </dd>
         </div>
         <div class="analytics-meter">
@@ -237,7 +237,7 @@
         <div class="flex items-center justify-between">
           <dt>FatMax rows</dt>
           <dd class="font-semibold">
-            {{ overview.available_metrics.fatmax_power_w_rows }} / {{ overview.usable_cpet_anchor_rows }}
+            {{ overview.available_metrics.fatmax_power_w_rows }} / {{ overview.usable_anchor_rows }}
           </dd>
         </div>
         <div class="analytics-meter">
