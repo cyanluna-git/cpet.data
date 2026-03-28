@@ -21,16 +21,15 @@
   }
 
   function renderDashboardChart(root) {
-    const select = root.querySelector("[data-dashboard-chart-select]");
     const svg = root.querySelector("[data-dashboard-chart-svg]");
     const title = root.querySelector("[data-dashboard-chart-title]");
     const unit = root.querySelector("[data-dashboard-chart-unit]");
     const points = root.querySelector("[data-dashboard-chart-points]");
     const payload = root.querySelector("[data-dashboard-chart-data]");
-    if (!select || !svg || !title || !unit || !points || !payload) return;
+    if (!svg || !title || !unit || !points || !payload) return;
 
     const timeline = parseJson(payload, []);
-    const metricKey = select.value;
+    const metricKey = root.dataset.dashboardChartMetric || "vo2max_rel";
     const metric = CHART_METRICS[metricKey] || CHART_METRICS.vo2max_rel;
     const series = timeline
       .filter((entry) => entry[metricKey] !== null && entry[metricKey] !== undefined)
@@ -44,10 +43,28 @@
     title.textContent = metric.label;
     unit.textContent = metric.unit;
 
-    if (series.length < 2) {
+    if (series.length === 0) {
       svg.innerHTML = "";
       points.innerHTML =
-        '<p class="text-sm text-[var(--muted)] sm:col-span-2 xl:col-span-3">차트를 그리기 위한 반복 측정 이력이 아직 부족합니다.</p>';
+        '<p class="text-sm text-[var(--muted)] sm:col-span-2 xl:col-span-3">이 지표를 그릴 수 있는 anchor 데이터가 아직 부족합니다.</p>';
+      return;
+    }
+
+    if (series.length === 1) {
+      const only = series[0];
+      svg.innerHTML = [
+        '<rect x="0" y="0" width="640" height="240" rx="18" fill="rgba(244,239,230,0.55)"></rect>',
+        `<circle cx="320" cy="110" r="7" fill="${metric.color}" />`,
+        `<text x="320" y="146" text-anchor="middle" font-size="18" fill="#162028" font-weight="600">${roundValue(only.value)} ${metric.unit}</text>`,
+        `<text x="320" y="172" text-anchor="middle" font-size="12" fill="#5f6d74">${only.date}</text>`,
+      ].join("");
+      points.innerHTML = `
+        <article class="rounded-[18px] border px-4 py-3 sm:col-span-2 xl:col-span-3" style="border-color: rgba(22,32,40,0.08); background: rgba(255,255,255,0.72);">
+          <p class="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">Single Anchor</p>
+          <p class="mt-1 text-sm font-semibold text-[var(--ink)]">${only.date}</p>
+          <p class="text-sm text-[var(--muted)]">${roundValue(only.value)} ${metric.unit}</p>
+        </article>
+      `;
       return;
     }
 
@@ -172,13 +189,6 @@
   function init(scope) {
     const chartRoots = (scope || document).querySelectorAll("[data-dashboard-chart-root]");
     chartRoots.forEach((root) => {
-      if (root.dataset.dashboardChartBound !== "1") {
-        const select = root.querySelector("[data-dashboard-chart-select]");
-        if (select) {
-          select.addEventListener("change", () => renderDashboardChart(root));
-        }
-        root.dataset.dashboardChartBound = "1";
-      }
       renderDashboardChart(root);
     });
 

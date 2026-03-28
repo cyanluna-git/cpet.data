@@ -53,6 +53,10 @@ test.describe("Dashboard analytics", () => {
     await expect(detail.locator("text=Cohort Positioning")).toBeVisible();
     await expect(detail.locator("text=시계열 변화 차트")).toBeVisible();
     await expect(detail.locator("text=코호트 좌표계")).toBeVisible();
+    await expect(detail.locator("[data-dashboard-chart-select]")).toHaveCount(0);
+    await expect(detail.locator("[data-dashboard-chart-root]")).toHaveCount(3);
+    await expect(detail.locator("text=핵심 지표가 anchor마다 어떻게 움직였는지 먼저 곡선으로 확인합니다.")).toHaveCount(0);
+    await expect(detail.locator("text=익명 점 군집 안에서 현재 기반 체력과 최근 변화 방향을 함께 읽습니다.")).toHaveCount(0);
     await expect(detail.locator("text=상위")).toHaveCount(2);
     await expect(detail.getByText("ΔFatMax 15.0")).toHaveCount(2);
     await expect(detail.getByText(/\d+\/\d+/)).toHaveCount(0);
@@ -79,5 +83,7 @@ test.describe("Dashboard analytics", () => {
       ),
     ).toBeVisible();
     await expect(page.locator("text=Unavailable")).toHaveCount(2);
+    await expect(page.locator("[data-dashboard-chart-select]")).toHaveCount(0);
+    await expect(page.locator("[data-dashboard-chart-root]")).toHaveCount(3);
   });
 });

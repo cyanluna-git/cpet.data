@@ -227,8 +227,14 @@ class TestDashboardFeatureAnalyticsPartial:
         assert "ΔFatMax 15.0" in resp.text
         assert "시계열 변화 차트" in resp.text
         assert "코호트 좌표계" in resp.text
+        assert "VO2max" in resp.text
+        assert "LT1" in resp.text
+        assert "FatMax" in resp.text
         assert "2026-01-10" in resp.text
         assert "2026-02-10" in resp.text
+        assert "핵심 지표가 anchor마다 어떻게 움직였는지 먼저 곡선으로 확인합니다." not in resp.text
+        assert "익명 점 군집 안에서 현재 기반 체력과 최근 변화 방향을 함께 읽습니다." not in resp.text
+        assert "data-dashboard-chart-select" not in resp.text
 
     def test_dashboard_analytics_subject_partial_blocks_regular_user_from_other_subject(self, tmp_path: Path) -> None:
         db_path = _setup_app(tmp_path)
@@ -244,3 +250,23 @@ class TestDashboardFeatureAnalyticsPartial:
 
         assert resp.status_code == 200
         assert "선택한 피험자의 대시보드 분석 상세를 불러올 수 없습니다." in resp.text
+
+    def test_dashboard_analytics_subject_partial_keeps_metric_cards_without_dropdown_for_sparse_subject(
+        self, tmp_path: Path
+    ) -> None:
+        db_path = _setup_app(tmp_path)
+        seeded = _seed_feature_rows(db_path)
+        client = TestClient(app, raise_server_exceptions=False)
+        _login_as(client, "admin")
+
+        resp = client.get(
+            "/api/dashboard/analytics/subject",
+            params={"subject_id": seeded["beta"]["id"]},
+        )
+
+        assert resp.status_code == 200
+        assert "VO2max" in resp.text
+        assert "LT1" in resp.text
+        assert "FatMax" in resp.text
+        assert "data-dashboard-chart-select" not in resp.text
+        assert resp.text.count("data-dashboard-chart-root") == 3
