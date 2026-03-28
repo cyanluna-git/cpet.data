@@ -186,9 +186,9 @@ class TestDashboardFeatureAnalyticsPartial:
         assert "주요 지표 대시보드" in resp.text
         assert "Single-Anchor Watchlist" in resp.text
         assert "Repeat-Test Ready" in resp.text
-        assert "Cohort Leaders" in resp.text
-        assert "Top VO2max" in resp.text
-        assert "Alpha Rider" in resp.text
+        assert "Cohort Areas" in resp.text
+        assert "개별 이름 없이 전체 분포와 변화 영역만 익명으로 집계합니다." in resp.text
+        assert "Top VO2max" not in resp.text
         assert seeded["alpha"]["id"] in resp.text
 
     def test_dashboard_analytics_overview_scopes_regular_user_to_own_subject(self, tmp_path: Path) -> None:
@@ -222,9 +222,11 @@ class TestDashboardFeatureAnalyticsPartial:
         assert "Current State" in resp.text
         assert "Cohort Positioning" in resp.text
         assert "Trend Signal" in resp.text
-        assert "Front Pack" in resp.text
+        assert "상위 50%권" in resp.text
         assert "vs 2026-01-10" in resp.text
         assert "ΔFatMax 15.0" in resp.text
+        assert "시계열 변화 차트" in resp.text
+        assert "코호트 좌표계" in resp.text
         assert "2026-01-10" in resp.text
         assert "2026-02-10" in resp.text
 

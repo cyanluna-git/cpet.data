@@ -73,14 +73,15 @@
               <div class="analytics-panel-label">{{ label }}</div>
               {% if widget %}
               <div class="mt-2 text-xl font-semibold text-[var(--ink)]">{{ widget.band_label }}</div>
+              <div class="mt-1 text-sm text-[var(--muted)]">{{ widget.relative_label }}</div>
               {% else %}
               <div class="mt-2 text-lg font-semibold text-[var(--muted)]">Unavailable</div>
               {% endif %}
             </div>
             {% if widget %}
             <div class="text-right text-sm text-[var(--muted)]">
-              <div class="font-semibold text-[var(--ink)]">{{ widget.rank }}/{{ widget.total }}</div>
-              <div>{{ widget.percentile }}th pct</div>
+              <div class="font-semibold text-[var(--ink)]">{{ widget.percentile }} pct</div>
+              <div>{{ widget.comparison_copy }}</div>
             </div>
             {% endif %}
           </div>
@@ -134,6 +135,86 @@
       </div>
       {% endif %}
       {% endif %}
+    </div>
+  </div>
+
+  <div class="grid gap-4 xl:grid-cols-[1.15fr,0.85fr]">
+    <div
+      class="analytics-panel-card"
+      data-dashboard-chart-root
+    >
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div class="analytics-section-tag">Change Story</div>
+          <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">시계열 변화 차트</h4>
+          <p class="analytics-note mt-2">핵심 지표가 anchor마다 어떻게 움직였는지 먼저 곡선으로 확인합니다.</p>
+        </div>
+        <label class="text-sm text-[var(--muted)]">
+          <span class="sr-only">차트 지표 선택</span>
+          <select
+            class="min-w-[180px] rounded-2xl border border-[rgba(22,32,40,0.12)] bg-[rgba(255,255,255,0.82)] px-4 py-3 text-sm text-[var(--ink)] shadow-sm outline-none"
+            data-dashboard-chart-select
+          >
+            <option value="vo2max_rel">VO2max</option>
+            <option value="lt1_power_w">LT1</option>
+            <option value="fatmax_power_w">FatMax</option>
+          </select>
+        </label>
+      </div>
+      <div class="mt-5 rounded-[22px] border p-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <div class="analytics-panel-label" data-dashboard-chart-title>VO2max</div>
+          <div class="text-xs text-[var(--muted)]" data-dashboard-chart-unit>mL/kg/min</div>
+        </div>
+        <svg
+          viewBox="0 0 640 240"
+          class="h-64 w-full"
+          preserveAspectRatio="none"
+          aria-label="대시보드 시계열 차트"
+          data-dashboard-chart-svg
+        ></svg>
+        <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-dashboard-chart-points></div>
+      </div>
+      <script type="application/json" data-dashboard-chart-data>{{ detail.timeline|tojson }}</script>
+    </div>
+
+    <div
+      class="analytics-panel-card"
+      data-dashboard-map-root
+    >
+      <div class="analytics-section-tag">Cohort Map</div>
+      <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">코호트 좌표계</h4>
+      <p class="analytics-note mt-2">익명 점 군집 안에서 현재 기반 체력과 최근 변화 방향을 함께 읽습니다.</p>
+      <div class="mt-5 rounded-[22px] border p-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+        <svg
+          viewBox="0 0 360 280"
+          class="h-72 w-full"
+          preserveAspectRatio="xMidYMid meet"
+          aria-label="코호트 위치 지도"
+          data-dashboard-map-svg
+        ></svg>
+      </div>
+      {% if detail.cohort_map.highlighted %}
+      <div class="mt-4 grid gap-3 sm:grid-cols-2">
+        <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          <div class="analytics-panel-label">현재 영역</div>
+          <div class="mt-2 text-lg font-semibold text-[var(--ink)]">{{ detail.cohort_map.highlighted.area_label }}</div>
+          <div class="mt-1 text-sm text-[var(--muted)]">{{ detail.cohort_map.highlighted.capacity_label }}</div>
+        </div>
+        <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          <div class="analytics-panel-label">변화 신호</div>
+          <div class="mt-2 text-lg font-semibold text-[var(--ink)]">{{ detail.cohort_map.highlighted.momentum_label }}</div>
+          <div class="mt-1 text-sm text-[var(--muted)]">
+            {% if detail.cohort_map.highlighted.history_ready %}
+            최근 변화 이력이 좌표에 반영되었습니다.
+            {% else %}
+            반복 측정이 더 쌓이면 변화 축이 더 또렷해집니다.
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% endif %}
+      <script type="application/json" data-dashboard-map-data>{{ detail.cohort_map|tojson }}</script>
     </div>
   </div>
 

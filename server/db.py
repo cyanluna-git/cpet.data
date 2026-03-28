@@ -2226,6 +2226,58 @@ def _build_metric_position(
     return None
 
 
+def _build_delta_metric_position(
+    delta_rows: list[dict],
+    subject_id: str,
+    metric_key: str,
+) -> dict | None:
+    """Return percentile info for one delta metric among usable latest delta rows."""
+    values = []
+    for row in delta_rows:
+        quality_flags = row.get("quality_flags", [])
+        if "missing_previous_snapshot" in quality_flags or "mixed_source_compare" in quality_flags:
+            continue
+        features = _feature_payload_features(row)
+        value = features.get(metric_key)
+        if isinstance(value, (int, float)):
+            values.append({
+                "subject_id": row["subject_id"],
+                "value": float(value),
+            })
+
+    if not values:
+        return None
+
+    values.sort(key=lambda item: item["value"], reverse=True)
+    for index, item in enumerate(values, start=1):
+        if item["subject_id"] != subject_id:
+            continue
+        total = len(values)
+        percentile = 100.0 if total == 1 else round(((total - index) / (total - 1)) * 100, 1)
+        return {
+            "value": item["value"],
+            "rank": index,
+            "total": total,
+            "percentile": percentile,
+        }
+    return None
+
+
+def _average_score(values: list[float]) -> float | None:
+    """Return an average rounded to one decimal place when values exist."""
+    if not values:
+        return None
+    return round(sum(values) / len(values), 1)
+
+
+def _format_top_share_label(rank: int | None, total: int | None) -> str:
+    """Describe relative placement without exposing raw rank numbers."""
+    if not rank or not total or total <= 0:
+        return "코호트 기준점"
+    share = max(1, min(100, round((rank / total) * 100)))
+    return f"상위 {share}%권"
+
+
 def _build_dashboard_timeline_point(
     row: dict,
     delta_row: dict | None,
@@ -2274,11 +2326,11 @@ def _build_positioning_widget(position: dict | None) -> dict | None:
 
     return {
         "value": position.get("value"),
-        "rank": position.get("rank"),
-        "total": position.get("total"),
         "percentile": percentile,
         "band_key": band_key,
         "band_label": band_label,
+        "relative_label": _format_top_share_label(position.get("rank"), position.get("total")),
+        "comparison_copy": f"코호트 대비 {round(percentile)} 퍼센타일 영역",
     }
 
 
@@ -2349,6 +2401,155 @@ def _filter_dashboard_rows_by_subject_ids(
     return [row for row in rows if row.get("subject_id") in allowed]
 
 
+def _classify_capacity_band(score: float | None) -> str:
+    """Convert a capacity score to a narrative label."""
+    if score is None:
+        return "기준점 부족"
+    if score >= 70.0:
+        return "높은 지구력 기반"
+    if score >= 45.0:
+        return "중간 지구력 기반"
+    return "기반 형성 구간"
+
+
+def _classify_momentum_band(score: float | None, *, history_ready: bool) -> str:
+    """Convert a momentum score to a narrative label."""
+    if not history_ready or score is None:
+        return "변화 이력 보강 필요"
+    if score >= 70.0:
+        return "상승 신호"
+    if score >= 45.0:
+        return "안정 신호"
+    return "관찰 구간"
+
+
+def _build_cohort_map_point(
+    latest_rows: list[dict],
+    latest_delta_rows: list[dict],
+    latest_row: dict,
+    latest_delta_row: dict | None,
+) -> dict:
+    """Build one anonymous cohort-map point from current feature rows."""
+    subject_id = latest_row["subject_id"]
+    capacity_positions = [
+        _build_metric_position(latest_rows, subject_id, "vo2max_rel"),
+        _build_metric_position(latest_rows, subject_id, "lt1_power_w"),
+        _build_metric_position(latest_rows, subject_id, "fatmax_power_w"),
+    ]
+    capacity_score = _average_score(
+        [
+            float(position["percentile"])
+            for position in capacity_positions
+            if position is not None
+        ]
+    )
+
+    momentum_positions = [
+        _build_delta_metric_position(latest_delta_rows, subject_id, "pct_delta_vo2max_rel"),
+        _build_delta_metric_position(latest_delta_rows, subject_id, "delta_fatmax_power_w"),
+        _build_delta_metric_position(latest_delta_rows, subject_id, "delta_lt1_power_w"),
+    ]
+    momentum_score = _average_score(
+        [
+            float(position["percentile"])
+            for position in momentum_positions
+            if position is not None
+        ]
+    )
+    history_ready = latest_delta_row is not None and momentum_score is not None
+
+    x = capacity_score if capacity_score is not None else 50.0
+    y = momentum_score if momentum_score is not None else 18.0
+
+    if not history_ready:
+        area_key = "history_needed"
+        area_label = "이력 보강 필요"
+    elif x >= 66.0 and y >= 60.0:
+        area_key = "rising_endurance"
+        area_label = "상승 지구력 구간"
+    elif x >= 66.0:
+        area_key = "established_base"
+        area_label = "안정 기반 구간"
+    elif y >= 60.0:
+        area_key = "building_momentum"
+        area_label = "상승 전환 구간"
+    else:
+        area_key = "base_building"
+        area_label = "기반 형성 구간"
+
+    return {
+        "subject_id": subject_id,
+        "x": round(x, 1),
+        "y": round(y, 1),
+        "capacity_score": capacity_score,
+        "momentum_score": momentum_score,
+        "history_ready": history_ready,
+        "capacity_label": _classify_capacity_band(capacity_score),
+        "momentum_label": _classify_momentum_band(momentum_score, history_ready=history_ready),
+        "area_key": area_key,
+        "area_label": area_label,
+    }
+
+
+def _build_cohort_map(
+    latest_rows: list[dict],
+    latest_delta_by_subject: dict[str, dict],
+    selected_subject_id: str | None = None,
+) -> dict:
+    """Build anonymized cohort-map coordinates and summary counts."""
+    latest_delta_rows = list(latest_delta_by_subject.values())
+    points = []
+    area_counts: dict[str, int] = {}
+    highlighted = None
+
+    for latest_row in latest_rows:
+        subject_id = latest_row["subject_id"]
+        point = _build_cohort_map_point(
+            latest_rows,
+            latest_delta_rows,
+            latest_row,
+            latest_delta_by_subject.get(subject_id),
+        )
+        point["is_selected"] = subject_id == selected_subject_id
+        points.append(point)
+        area_counts[point["area_key"]] = area_counts.get(point["area_key"], 0) + 1
+        if point["is_selected"]:
+            highlighted = point
+
+    total = len(points)
+    area_order = [
+        ("rising_endurance", "상승 지구력 구간"),
+        ("established_base", "안정 기반 구간"),
+        ("building_momentum", "상승 전환 구간"),
+        ("base_building", "기반 형성 구간"),
+        ("history_needed", "이력 보강 필요"),
+    ]
+    area_cards = []
+    for key, label in area_order:
+        count = area_counts.get(key, 0)
+        area_cards.append({
+            "key": key,
+            "label": label,
+            "count": count,
+            "share_pct": round((count / total) * 100, 1) if total else 0.0,
+        })
+
+    return {
+        "axes": {
+            "x_label": "Aerobic Capacity",
+            "y_label": "Change Momentum",
+        },
+        "points": points,
+        "highlighted": highlighted,
+        "summary": {
+            "total_subjects": total,
+            "history_ready_count": len([point for point in points if point["history_ready"]]),
+            "history_needed_count": len([point for point in points if not point["history_ready"]]),
+            "area_cards": area_cards,
+        },
+    }
+
+
 def summarize_dashboard_feature_analytics(
     db_path: Path,
     subject_ids: list[str] | None = None,
@@ -2403,31 +2604,22 @@ def summarize_dashboard_feature_analytics(
             available_fatmax += 1
 
     latest_rows = list(latest_by_subject.values())
+    latest_delta_by_subject = {
+        row["subject_id"]: delta_row
+        for row in latest_rows
+        if (delta_row := next(
+            (
+                item for item in delta_rows
+                if item.get("anchor_snapshot_id") == row.get("anchor_snapshot_id")
+            ),
+            None,
+        )) is not None
+    }
+    cohort_map = _build_cohort_map(latest_rows, latest_delta_by_subject)
     display_names = _get_dashboard_subject_display_names(
         db_path,
         list({row["subject_id"] for row in latest_rows}),
     )
-
-    def _build_leader(metric_key: str) -> dict | None:
-        ranked: list[tuple[float, dict]] = []
-        for row in latest_rows:
-            features = _feature_payload_features(row)
-            value = features.get(metric_key)
-            if isinstance(value, (int, float)):
-                ranked.append((float(value), row))
-        if not ranked:
-            return None
-        ranked.sort(key=lambda item: item[0], reverse=True)
-        value, leader_row = ranked[0]
-        return {
-            "subject_id": leader_row["subject_id"],
-            "subject_name": display_names.get(
-                leader_row["subject_id"],
-                leader_row.get("subject_name", ""),
-            ),
-            "value": value,
-            "total": len(ranked),
-        }
 
     subjects_with_usable_delta = len(
         {
@@ -2477,12 +2669,9 @@ def summarize_dashboard_feature_analytics(
             "earliest_measured_at": endurance_rows[-1]["anchor_measured_at"] if endurance_rows else "",
             "latest_measured_at": latest_anchor_measured_at,
         },
-        "leaders": {
-            "vo2max_rel": _build_leader("vo2max_rel"),
-            "fatmax_power_w": _build_leader("fatmax_power_w"),
-        },
         "sparse_subject_preview": sparse_subject_preview,
         "quality_flag_counts": quality_flag_counts,
+        "cohort_map_summary": cohort_map["summary"],
     }
 
 
@@ -2491,7 +2680,7 @@ def list_dashboard_subject_analytics(
     limit: int = 100,
     subject_ids: list[str] | None = None,
 ) -> list[dict]:
-    """List latest dashboard subject cards with history state and cohort ranks."""
+    """List latest dashboard subject cards with history state and privacy-safe positioning."""
     endurance_rows = _filter_dashboard_rows_by_subject_ids(
         list_subject_feature_sets(
         db_path,
@@ -2527,6 +2716,12 @@ def list_dashboard_subject_analytics(
         if row["subject_id"] not in {item["subject_id"] for item in latest_rows}:
             latest_rows.append(row)
 
+    latest_delta_by_subject = {
+        row["subject_id"]: delta_by_anchor_snapshot_id.get(row.get("anchor_snapshot_id"))
+        for row in latest_rows
+        if delta_by_anchor_snapshot_id.get(row.get("anchor_snapshot_id")) is not None
+    }
+
     subject_cards: list[dict] = []
     for subject_id, rows in rows_by_subject.items():
         latest = rows[0]
@@ -2541,6 +2736,14 @@ def list_dashboard_subject_analytics(
             if point["has_usable_delta"]:
                 usable_delta_count += 1
             timeline.append(point)
+
+        latest_delta_row = latest_delta_by_subject.get(subject_id)
+        cohort_map_point = _build_cohort_map_point(
+            latest_rows,
+            list(latest_delta_by_subject.values()),
+            latest,
+            latest_delta_row,
+        )
 
         subject_cards.append({
             "subject_id": subject_id,
@@ -2559,6 +2762,7 @@ def list_dashboard_subject_analytics(
                 "vo2max_rel": _build_metric_position(latest_rows, subject_id, "vo2max_rel"),
                 "fatmax_power_w": _build_metric_position(latest_rows, subject_id, "fatmax_power_w"),
             },
+            "cohort_map_point": cohort_map_point,
             "timeline_preview": timeline[-3:],
         })
 
@@ -2587,6 +2791,32 @@ def get_dashboard_subject_analytics(
     if target is None:
         return None
 
+    all_endurance_rows = _filter_dashboard_rows_by_subject_ids(
+        list_subject_feature_sets(
+            db_path,
+            feature_spec_key="endurance_core",
+            include_payload=True,
+            limit=5000,
+        ),
+        subject_ids=subject_ids,
+    )
+    all_delta_rows = _filter_dashboard_rows_by_subject_ids(
+        list_subject_feature_sets(
+            db_path,
+            feature_spec_key="longitudinal_delta",
+            include_payload=True,
+            limit=5000,
+        ),
+        subject_ids=subject_ids,
+    )
+    latest_endurance_rows: list[dict] = []
+    seen_subject_ids: set[str] = set()
+    for row in all_endurance_rows:
+        if row["subject_id"] in seen_subject_ids:
+            continue
+        latest_endurance_rows.append(row)
+        seen_subject_ids.add(row["subject_id"])
+
     endurance_rows = list_subject_feature_sets(
         db_path,
         subject_id=subject_id,
@@ -2606,6 +2836,20 @@ def get_dashboard_subject_analytics(
         for row in delta_rows
         if row.get("anchor_snapshot_id")
     }
+    latest_rows = [row for row in subject_cards]
+    latest_delta_by_subject = {}
+    all_delta_by_anchor_snapshot_id = {
+        row.get("anchor_snapshot_id"): row
+        for row in all_delta_rows
+        if row.get("anchor_snapshot_id")
+    }
+    for row in subject_cards:
+        endurance_anchor = next((item for item in latest_endurance_rows if item["subject_id"] == row["subject_id"]), None)
+        if endurance_anchor is None:
+            continue
+        delta_row = all_delta_by_anchor_snapshot_id.get(endurance_anchor.get("anchor_snapshot_id"))
+        if delta_row is not None:
+            latest_delta_by_subject[row["subject_id"]] = delta_row
     timeline = [
         _build_dashboard_timeline_point(
             row,
@@ -2618,6 +2862,11 @@ def get_dashboard_subject_analytics(
         "vo2max_rel": _build_positioning_widget(target["cohort_positioning"].get("vo2max_rel")),
         "fatmax_power_w": _build_positioning_widget(target["cohort_positioning"].get("fatmax_power_w")),
     }
+    cohort_map = _build_cohort_map(
+        latest_endurance_rows,
+        latest_delta_by_subject,
+        selected_subject_id=subject_id,
+    )
 
     return {
         "subject": {
@@ -2631,6 +2880,8 @@ def get_dashboard_subject_analytics(
         "current_state": target["current_state"],
         "cohort_positioning": target["cohort_positioning"],
         "positioning_widgets": positioning_widgets,
+        "cohort_map_point": target.get("cohort_map_point"),
+        "cohort_map": cohort_map,
         "latest_trend": latest_trend,
         "timeline_window": {
             "first_anchor_measured_at": timeline[0]["anchor_measured_at"] if timeline else "",

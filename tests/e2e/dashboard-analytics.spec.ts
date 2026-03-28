@@ -27,10 +27,11 @@ test.describe("Dashboard analytics", () => {
     await expect(page.locator("text=주요 지표 대시보드")).toBeVisible();
     await expect(page.locator("text=Current Cohort")).toBeVisible();
     await expect(page.locator("text=Repeat-Test Ready")).toBeVisible();
-    await expect(page.locator("text=Cohort Leaders")).toBeVisible();
+    await expect(page.locator("text=Cohort Areas")).toBeVisible();
+    await expect(page.locator("text=Top VO2max")).toHaveCount(0);
   });
 
-  test("subject drill-in renders trend signal and cohort positioning", async ({
+  test("subject drill-in renders trend signal, chart, and privacy-safe positioning", async ({
     page,
   }) => {
     await navigateAndWait(page, "/dashboard");
@@ -50,8 +51,11 @@ test.describe("Dashboard analytics", () => {
     await expect(detail.locator("text=Trend Signal")).toBeVisible();
     await expect(detail.locator("text=vs 2026-01-10")).toBeVisible();
     await expect(detail.locator("text=Cohort Positioning")).toBeVisible();
-    await expect(detail.getByText("Front Pack")).toHaveCount(2);
+    await expect(detail.locator("text=시계열 변화 차트")).toBeVisible();
+    await expect(detail.locator("text=코호트 좌표계")).toBeVisible();
+    await expect(detail.locator("text=상위")).toHaveCount(2);
     await expect(detail.getByText("ΔFatMax 15.0")).toHaveCount(2);
+    await expect(detail.getByText(/\d+\/\d+/)).toHaveCount(0);
   });
 
   test("sparse subject shows stable empty-state messaging", async ({ page }) => {

@@ -140,23 +140,16 @@ class TestDashboardFeatureAnalyticsQuery:
             "earliest_measured_at": "2026-01-10",
             "latest_measured_at": "2026-03-01",
         }
-        assert summary["leaders"]["vo2max_rel"] == {
-            "subject_id": seeded["gamma"]["id"],
-            "subject_name": "Gamma Rider",
-            "value": 60.0,
-            "total": 3,
-        }
-        assert summary["leaders"]["fatmax_power_w"] == {
-            "subject_id": seeded["gamma"]["id"],
-            "subject_name": "Gamma Rider",
-            "value": 210.0,
-            "total": 3,
-        }
         assert summary["sparse_subject_preview"] == ["Beta Rider"]
         assert summary["quality_flag_counts"]["mixed_source_compare"] == 1
         assert summary["quality_flag_counts"]["missing_previous_snapshot"] == 3
+        assert summary["cohort_map_summary"]["total_subjects"] == 3
+        assert summary["cohort_map_summary"]["history_ready_count"] == 1
+        area_cards = {card["key"]: card for card in summary["cohort_map_summary"]["area_cards"]}
+        assert area_cards["building_momentum"]["count"] == 1
+        assert area_cards["history_needed"]["count"] == 2
 
-    def test_list_returns_subject_cards_with_history_state_and_positioning(self, tmp_path: Path) -> None:
+    def test_list_returns_subject_cards_with_history_state_and_privacy_safe_positioning(self, tmp_path: Path) -> None:
         db_path = _init_platform_db(tmp_path)
         seeded = _seed_dashboard_feature_rows(db_path)
 
@@ -176,15 +169,17 @@ class TestDashboardFeatureAnalyticsQuery:
         assert gamma["usable_history_count"] == 2
         assert gamma["usable_delta_count"] == 0
         assert gamma["current_state"]["vo2max_rel"] == 60.0
-        assert gamma["cohort_positioning"]["vo2max_rel"]["rank"] == 1
+        assert gamma["cohort_positioning"]["vo2max_rel"]["percentile"] == 100.0
+        assert gamma["cohort_map_point"]["area_key"] == "history_needed"
 
         assert beta["history_state"] == "single_anchor"
-        assert beta["cohort_positioning"]["fatmax_power_w"]["rank"] == 3
+        assert beta["cohort_positioning"]["fatmax_power_w"]["percentile"] == 0.0
 
         assert alpha["history_state"] == "timeline"
         assert alpha["usable_history_count"] == 2
         assert alpha["usable_delta_count"] == 1
-        assert alpha["cohort_positioning"]["vo2max_rel"]["rank"] == 2
+        assert alpha["cohort_positioning"]["vo2max_rel"]["percentile"] == 50.0
+        assert alpha["cohort_map_point"]["area_key"] == "building_momentum"
 
     def test_detail_returns_timeline_points_and_delta_state(self, tmp_path: Path) -> None:
         db_path = _init_platform_db(tmp_path)
@@ -217,11 +212,14 @@ class TestDashboardFeatureAnalyticsQuery:
             "delta_quality_flags": ["missing_anchor_vlamax", "missing_previous_vlamax"],
         }
         assert alpha["positioning_widgets"]["vo2max_rel"]["band_key"] == "mid_pack"
+        assert alpha["positioning_widgets"]["vo2max_rel"]["relative_label"] == "상위 67%권"
         assert alpha["positioning_widgets"]["fatmax_power_w"]["band_label"] == "Mid Pack"
         assert alpha["timeline_window"] == {
             "first_anchor_measured_at": "2026-01-10",
             "latest_anchor_measured_at": "2026-02-10",
         }
+        assert alpha["cohort_map"]["highlighted"]["area_key"] == "building_momentum"
+        assert alpha["cohort_map"]["highlighted"]["history_ready"] is True
 
         assert gamma is not None
         assert gamma["history_state"] == "timeline"
@@ -238,6 +236,7 @@ class TestDashboardFeatureAnalyticsQuery:
             "latest_anchor_measured_at": "2026-03-01",
         }
         assert gamma["positioning_widgets"]["vo2max_rel"]["band_key"] == "front_pack"
+        assert gamma["cohort_map"]["highlighted"]["area_key"] == "history_needed"
 
     def test_detail_returns_none_for_missing_subject(self, tmp_path: Path) -> None:
         db_path = _init_platform_db(tmp_path)
@@ -263,7 +262,7 @@ class TestDashboardFeatureAnalyticsQuery:
         assert summary["subjects_with_multi_date_history"] == 1
         assert summary["subjects_with_multi_date_cpet_history"] == 1
         assert summary["single_anchor_subjects"] == 0
-        assert summary["leaders"]["vo2max_rel"]["subject_name"] == "Alpha Rider"
+        assert summary["cohort_map_summary"]["total_subjects"] == 1
         assert [row["subject_name"] for row in rows] == ["Alpha Rider"]
 
     def test_detail_respects_subject_scope(self, tmp_path: Path) -> None:
