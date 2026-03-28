@@ -9,7 +9,26 @@
   <!-- Row 1: Name + linked user + actions -->
   <div class="flex items-center justify-between gap-2">
     <div class="flex items-center gap-2 min-w-0">
+      {% if session_user.role == 'admin' %}
+      <div class="flex items-center gap-2 min-w-0">
+        <input
+          id="subj-name-{{ subj.id }}"
+          name="name"
+          type="text"
+          value="{{ subj.name or '' }}"
+          class="min-w-[140px] max-w-[240px] rounded border border-gray-300 bg-white px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"
+        />
+        <button
+          class="px-2 py-1 rounded text-[10px] font-medium bg-gray-900 text-white hover:bg-gray-800"
+          hx-patch="/api/manage/subjects/{{ subj.id }}"
+          hx-target="#manage-subjects-body"
+          hx-swap="innerHTML"
+          hx-include="#subj-name-{{ subj.id }}"
+        >저장</button>
+      </div>
+      {% else %}
       <span class="font-medium text-sm text-gray-900">{{ subj.name or "—" }}</span>
+      {% endif %}
       {% if subj.gender %}<span class="text-xs text-gray-400">{{ subj.gender }}</span>{% endif %}
       {% if subj.birth_year %}<span class="text-xs text-gray-400">{{ subj.birth_year }}</span>{% endif %}
     </div>

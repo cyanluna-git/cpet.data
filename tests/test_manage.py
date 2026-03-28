@@ -23,6 +23,8 @@ from server.db import (
     _connect,
     complete_onboarding,
     create_submission,
+    create_subject,
+    get_subject,
     get_user,
     init_db,
     link_submission_user,
@@ -330,6 +332,19 @@ class TestManagePage:
         assert resp.status_code == 200
         assert "유저 관리" in resp.text
 
+    def test_subjects_tab_shows_name_edit_controls_for_admin(self, client: TestClient) -> None:
+        """Admin can inline-edit subject names from the subjects tab."""
+        _login_as(client, role="admin", google_id="subject-admin", email="subject-admin@test.com")
+        db_path = app.state.db_path
+        subject = create_subject(db_path, name="Old Subject Name")
+
+        resp = client.get("/manage?tab=subjects")
+
+        assert resp.status_code == 200
+        assert f'id="subj-name-{subject["id"]}"' in resp.text
+        assert f'hx-patch="/api/manage/subjects/{subject["id"]}"' in resp.text
+        assert "저장" in resp.text
+
 
 # ── Role Update API Tests ────────────────────────────────────────────
 
@@ -351,6 +366,41 @@ class TestRoleUpdateAPI:
         updated = get_user(db_path, target["id"])
         assert updated is not None
         assert updated["role"] == "admin"
+
+
+class TestManageSubjectsAPI:
+    def test_admin_can_rename_subject_from_manage_api(self, client: TestClient) -> None:
+        """Admin can update subject names through the manage subjects PATCH API."""
+        _login_as(client, role="admin", google_id="subject-edit-gid", email="subject-edit@test.com")
+        db_path = app.state.db_path
+        subject = create_subject(db_path, name="Before Rename")
+
+        resp = client.patch(
+            f"/api/manage/subjects/{subject['id']}",
+            data={"name": "After Rename"},
+        )
+
+        assert resp.status_code == 200
+        updated = get_subject(db_path, subject["id"])
+        assert updated is not None
+        assert updated["name"] == "After Rename"
+        assert "After Rename" in resp.text
+
+    def test_researcher_cannot_rename_subject_from_manage_api(self, client: TestClient) -> None:
+        """Only admins can rename subjects through the manage subjects PATCH API."""
+        _login_as(client, role="researcher", google_id="subject-researcher-gid", email="subject-researcher@test.com")
+        db_path = app.state.db_path
+        subject = create_subject(db_path, name="Before Rename")
+
+        resp = client.patch(
+            f"/api/manage/subjects/{subject['id']}",
+            data={"name": "After Rename"},
+        )
+
+        assert resp.status_code == 403
+        updated = get_subject(db_path, subject["id"])
+        assert updated is not None
+        assert updated["name"] == "Before Rename"
 
     def test_researcher_can_toggle_user_researcher(self, client: TestClient) -> None:
         """Researcher can change between user and researcher roles."""

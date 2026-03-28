@@ -1675,6 +1675,8 @@ async def manage_update_subject(request: Request, subject_id: str) -> HTMLRespon
     if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
         return auth_result
     session_user = auth_result
+    if session_user.get("role") != "admin":
+        return JSONResponse(status_code=403, content={"error": "admin only"})
 
     form = await request.form()
     db_path = request.app.state.db_path
