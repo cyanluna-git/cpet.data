@@ -2078,6 +2078,51 @@ def backfill_endurance_core_feature_sets(
     return summary
 
 
+def backfill_longitudinal_delta_feature_sets(
+    db_path: Path,
+    snapshot_ids: list[str] | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Build and upsert longitudinal_delta_v1 rows from snapshot anchors."""
+    anchors = _list_feature_anchor_snapshots(db_path, snapshot_ids=snapshot_ids)
+    summary = {
+        "dry_run": dry_run,
+        "snapshots_scanned": len(anchors),
+        "feature_rows_built": 0,
+        "inserted": 0,
+        "skipped": 0,
+        "would_insert": 0,
+        "errors": [],
+    }
+
+    for anchor in anchors:
+        snapshot_id = anchor["snapshot_id"]
+        try:
+            feature_row = build_longitudinal_delta_feature_set(db_path, snapshot_id)
+        except Exception as exc:  # pragma: no cover - defensive runner guard
+            summary["errors"].append({
+                "snapshot_id": snapshot_id,
+                "builder": "build_longitudinal_delta_feature_set",
+                "error": str(exc),
+            })
+            continue
+
+        if feature_row is None:
+            continue
+
+        summary["feature_rows_built"] += 1
+        result = upsert_subject_feature_set(db_path, feature_row, dry_run=dry_run)
+        action = result["action"]
+        if action == "inserted":
+            summary["inserted"] += 1
+        elif action == "skipped":
+            summary["skipped"] += 1
+        elif action == "would_insert":
+            summary["would_insert"] += 1
+
+    return summary
+
+
 def _read_analysis_metrics(analysis_db_path: Path) -> dict:
     """Read key metrics from a single workspace analysis.db file.
 
