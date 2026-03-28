@@ -70,7 +70,7 @@
         hx-patch="/api/manage/link/{{ sub.submission_id or sub.id }}"
         hx-target="#manage-submissions-body"
         hx-swap="innerHTML"
-        hx-include="#link-select-{{ sub.id }}"
+        hx-include="#link-select-{{ sub.id }}, #manage-submissions-filters"
         hx-vals='{"report_slug": "{{ sub.report_slug or '' }}"}'
       >연결</button>
 
@@ -80,8 +80,17 @@
         hx-delete="/api/manage/link/{{ sub.submission_id or sub.id }}"
         hx-target="#manage-submissions-body"
         hx-swap="innerHTML"
+        hx-include="#manage-submissions-filters"
         hx-vals='{"report_slug": "{{ sub.report_slug or '' }}"}'
       >해제</button>
+      {% endif %}
+
+      {% if session_user.role == 'admin' %}
+      <button
+        type="button"
+        class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition"
+        onclick="openManageNameModal({ mode: 'submission', submissionId: '{{ sub.submission_id or '' }}', reportSlug: '{{ sub.report_slug or '' }}', currentName: {{ (sub.subject_name or '')|tojson }} })"
+      >변경</button>
       {% endif %}
     </div>
   </td>

@@ -718,7 +718,13 @@ def _suggest_user_for_submission(
     return best_id
 
 
-def _get_manage_submissions(request: Request, users: list[dict]) -> tuple[list[dict], dict[str, str]]:
+def _get_manage_submissions(
+    request: Request,
+    users: list[dict],
+    *,
+    unlinked_only: str = "",
+    sort_by: str = "recent_desc",
+) -> tuple[list[dict], dict[str, str]]:
     """Build the full submissions list for manage page (DB + published/ scan)."""
     db_path = request.app.state.db_path
     all_entries = _list_dashboard_entries(request)
@@ -775,10 +781,39 @@ def _get_manage_submissions(request: Request, users: list[dict]) -> tuple[list[d
         entry["linked_user_name"] = linked_user_name
         submissions.append(entry)
 
-    submissions.sort(
-        key=lambda row: str(row.get("test_date") or row.get("created_at") or ""),
-        reverse=True,
-    )
+    if unlinked_only == "1":
+        submissions = [row for row in submissions if not row.get("user_id")]
+
+    if sort_by == "recent_asc":
+        submissions.sort(
+            key=lambda row: (
+                str(row.get("test_date") or row.get("created_at") or ""),
+                str(row.get("subject_name") or "").lower(),
+            ),
+        )
+    elif sort_by == "name_asc":
+        submissions.sort(
+            key=lambda row: (
+                str(row.get("subject_name") or "").lower(),
+                str(row.get("test_date") or row.get("created_at") or ""),
+            ),
+        )
+    elif sort_by == "name_desc":
+        submissions.sort(
+            key=lambda row: (
+                str(row.get("subject_name") or "").lower(),
+                str(row.get("test_date") or row.get("created_at") or ""),
+            ),
+            reverse=True,
+        )
+    else:
+        submissions.sort(
+            key=lambda row: (
+                str(row.get("test_date") or row.get("created_at") or ""),
+                str(row.get("subject_name") or "").lower(),
+            ),
+            reverse=True,
+        )
 
     # Build suggestion map
     suggestions: dict[str, str] = {}
@@ -797,6 +832,8 @@ def _get_manage_submissions(request: Request, users: list[dict]) -> tuple[list[d
 async def manage_page(
     request: Request,
     tab: str = "users",
+    submissions_unlinked_only: str = "",
+    submissions_sort_by: str = "recent_desc",
     subject_id: str = "",
     source_kind: str = "",
     date_from: str = "",
@@ -815,7 +852,12 @@ async def manage_page(
     db_path = request.app.state.db_path
     users = list_users(db_path)
     subjects = list_subjects(db_path)
-    submissions, suggestions = _get_manage_submissions(request, users)
+    submissions, suggestions = _get_manage_submissions(
+        request,
+        users,
+        unlinked_only=submissions_unlinked_only,
+        sort_by=submissions_sort_by,
+    )
     snapshots = list_subject_metric_snapshots(
         db_path,
         subject_id=subject_id or None,
@@ -854,6 +896,10 @@ async def manage_page(
         "suggestions": suggestions,
         "active_tab": active_tab,
         "session_user": session_user,
+        "submission_filters": {
+            "unlinked_only": submissions_unlinked_only,
+            "sort_by": submissions_sort_by,
+        },
         "snapshot_compare_defaults": snapshot_compare_defaults,
         "snapshot_filters": {
             "subject_id": subject_id,
@@ -918,11 +964,22 @@ async def manage_update_user_role(
     )
 
 
-def _render_manage_submissions(request: Request, session_user: dict) -> HTMLResponse:
+def _render_manage_submissions(
+    request: Request,
+    session_user: dict,
+    *,
+    unlinked_only: str = "",
+    sort_by: str = "recent_desc",
+) -> HTMLResponse:
     """Helper to render the submissions partial after a link/unlink operation."""
     db_path = request.app.state.db_path
     users = list_users(db_path)
-    submissions, suggestions = _get_manage_submissions(request, users)
+    submissions, suggestions = _get_manage_submissions(
+        request,
+        users,
+        unlinked_only=unlinked_only,
+        sort_by=sort_by,
+    )
     return templates.TemplateResponse(
         request,
         "partials/manage_submissions.html",
@@ -930,6 +987,10 @@ def _render_manage_submissions(request: Request, session_user: dict) -> HTMLResp
             "submissions": submissions,
             "users": users,
             "suggestions": suggestions,
+            "submission_filters": {
+                "unlinked_only": unlinked_only,
+                "sort_by": sort_by,
+            },
             "session_user": session_user,
             "current_user": session_user,
         },
@@ -1036,6 +1097,8 @@ async def manage_link_entry(
     form = await request.form()
     link_user_id = str(form.get("user_id", "")).strip()
     report_slug = str(form.get("report_slug", "")).strip()
+    submissions_unlinked_only = str(form.get("submissions_unlinked_only", "")).strip()
+    submissions_sort_by = str(form.get("submissions_sort_by", "recent_desc")).strip() or "recent_desc"
 
     if not link_user_id:
         return JSONResponse(status_code=400, content={"error": "user_id is required"})
@@ -1054,7 +1117,12 @@ async def manage_link_entry(
     if report_slug:
         link_report_to_user(db_path, report_slug, link_user_id)
 
-    return _render_manage_submissions(request, session_user)
+    return _render_manage_submissions(
+        request,
+        session_user,
+        unlinked_only=submissions_unlinked_only,
+        sort_by=submissions_sort_by,
+    )
 
 
 @app.get("/api/manage/snapshots", response_class=HTMLResponse)
@@ -1100,6 +1168,25 @@ async def manage_feature_sets_partial(
         feature_spec_key=feature_spec_key,
         feature_window_label=feature_window_label,
         feature_anchor_source_kind=feature_anchor_source_kind,
+    )
+
+
+@app.get("/api/manage/submissions", response_class=HTMLResponse)
+async def manage_submissions_partial(
+    request: Request,
+    submissions_unlinked_only: str = "",
+    submissions_sort_by: str = "recent_desc",
+) -> HTMLResponse:
+    """Render the filtered submissions partial for HTMX swaps."""
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+    return _render_manage_submissions(
+        request,
+        session_user,
+        unlinked_only=submissions_unlinked_only,
+        sort_by=submissions_sort_by,
     )
 
 
@@ -1456,6 +1543,8 @@ async def manage_unlink_entry(
 
     form = await request.form()
     report_slug = str(form.get("report_slug", "")).strip()
+    submissions_unlinked_only = str(form.get("submissions_unlinked_only", "")).strip()
+    submissions_sort_by = str(form.get("submissions_sort_by", "recent_desc")).strip() or "recent_desc"
 
     db_path = request.app.state.db_path
 
@@ -1468,7 +1557,12 @@ async def manage_unlink_entry(
     if report_slug:
         unlink_report_from_user(db_path, report_slug)
 
-    return _render_manage_submissions(request, session_user)
+    return _render_manage_submissions(
+        request,
+        session_user,
+        unlinked_only=submissions_unlinked_only,
+        sort_by=submissions_sort_by,
+    )
 
 
 @app.post("/api/manage/preview-mode")
@@ -1483,12 +1577,15 @@ async def toggle_preview_mode(request: Request) -> HTMLResponse:
 
 @app.patch("/api/manage/rename-subject", response_class=HTMLResponse)
 async def manage_rename_subject(request: Request) -> HTMLResponse:
-    """Update subject_name for any entry. Researcher/admin only."""
+    """Update subject_name for any entry. Admin only."""
     from fastapi.responses import JSONResponse
 
     auth_result = _require_manage_access(request)
     if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
         return auth_result
+    session_user = auth_result
+    if session_user.get("role") != "admin":
+        return JSONResponse(status_code=403, content={"error": "admin only"})
 
     form = await request.form()
     new_name = str(form.get("subject_name", "")).strip()

@@ -324,6 +324,10 @@ class TestManagePage:
         assert "Test Subject" in resp.text
         assert '<table class="min-w-full divide-y divide-gray-200">' in resp.text
         assert 'id="manage-submissions-body"' in resp.text
+        assert 'id="manage-submissions-filters"' in resp.text
+        assert 'name="submissions_unlinked_only"' in resp.text
+        assert 'name="submissions_sort_by"' in resp.text
+        assert "변경" in resp.text
 
     def test_default_tab_is_users(self, client: TestClient) -> None:
         """GET /manage defaults to the users tab."""
@@ -333,7 +337,7 @@ class TestManagePage:
         assert "유저 관리" in resp.text
 
     def test_subjects_tab_shows_name_edit_controls_for_admin(self, client: TestClient) -> None:
-        """Admin can inline-edit subject names from the subjects tab."""
+        """Admin sees modal-based subject rename controls on the subjects tab."""
         _login_as(client, role="admin", google_id="subject-admin", email="subject-admin@test.com")
         db_path = app.state.db_path
         subject = create_subject(db_path, name="Old Subject Name")
@@ -341,9 +345,9 @@ class TestManagePage:
         resp = client.get("/manage?tab=subjects")
 
         assert resp.status_code == 200
-        assert f'id="subj-name-{subject["id"]}"' in resp.text
-        assert f'hx-patch="/api/manage/subjects/{subject["id"]}"' in resp.text
-        assert "저장" in resp.text
+        assert f"openManageNameModal({{ mode: 'subject', subjectId: '{subject['id']}'" in resp.text
+        assert "변경" in resp.text
+        assert f'id="subj-name-{subject["id"]}"' not in resp.text
 
 
 # ── Role Update API Tests ────────────────────────────────────────────
@@ -401,6 +405,60 @@ class TestManageSubjectsAPI:
         updated = get_subject(db_path, subject["id"])
         assert updated is not None
         assert updated["name"] == "Before Rename"
+
+    def test_admin_can_rename_submission_subject_name(self, client: TestClient) -> None:
+        """Admin can rename a submission/report subject label through the rename API."""
+        _login_as(client, role="admin", google_id="submission-rename-gid", email="submission-rename@test.com")
+        db_path = app.state.db_path
+        submission_id = _create_test_submission(db_path, subject_name="Before Subject")
+
+        resp = client.patch(
+            "/api/manage/rename-subject",
+            data={"submission_id": submission_id, "subject_name": "After Subject"},
+        )
+
+        assert resp.status_code == 200
+        from server.db import get_submission
+        submission = get_submission(db_path, submission_id)
+        assert submission is not None
+        assert submission["subject_name"] == "After Subject"
+
+    def test_researcher_cannot_rename_submission_subject_name(self, client: TestClient) -> None:
+        """Only admins can rename submission/report subject labels."""
+        _login_as(client, role="researcher", google_id="submission-rename-res-gid", email="submission-rename-res@test.com")
+        db_path = app.state.db_path
+        submission_id = _create_test_submission(db_path, subject_name="Before Subject")
+
+        resp = client.patch(
+            "/api/manage/rename-subject",
+            data={"submission_id": submission_id, "subject_name": "After Subject"},
+        )
+
+        assert resp.status_code == 403
+        from server.db import get_submission
+        submission = get_submission(db_path, submission_id)
+        assert submission is not None
+        assert submission["subject_name"] == "Before Subject"
+
+    def test_submissions_partial_can_filter_unlinked_only_and_sort_by_name(self, client: TestClient) -> None:
+        """Submissions partial supports unlinked-only filter and sort controls."""
+        _login_as(client, role="admin", google_id="submission-filter-gid", email="submission-filter@test.com")
+        db_path = app.state.db_path
+        linked_user = upsert_user(db_path, google_id="linked-filter-user", email="linked-filter@test.com", display_name="Linked User")
+        _create_test_submission(db_path, subject_name="Bravo Subject", test_date="2026-03-01", user_id=linked_user["id"])
+        _create_test_submission(db_path, subject_name="Alpha Subject", test_date="2026-03-02", user_id=None)
+        _create_test_submission(db_path, subject_name="Charlie Subject", test_date="2026-03-03", user_id=None)
+
+        resp = client.get(
+            "/api/manage/submissions",
+            params={"submissions_unlinked_only": "1", "submissions_sort_by": "name_asc"},
+        )
+
+        assert resp.status_code == 200
+        assert "Bravo Subject" not in resp.text
+        alpha_idx = resp.text.index("Alpha Subject")
+        charlie_idx = resp.text.index("Charlie Subject")
+        assert alpha_idx < charlie_idx
 
     def test_researcher_can_toggle_user_researcher(self, client: TestClient) -> None:
         """Researcher can change between user and researcher roles."""
