@@ -1711,6 +1711,99 @@ def get_subject_metric_snapshot(db_path: Path, snapshot_id: str) -> dict | None:
     return _deserialize_snapshot_row(item, include_payload=True)
 
 
+def _deserialize_feature_set_row(row: dict, include_payload: bool = False) -> dict:
+    """Normalize JSON columns on subject_feature_sets rows for UI/query helpers."""
+    quality_flags = row.get("quality_flags_json") or "[]"
+    input_snapshot_ids = row.get("input_snapshot_ids_json") or "[]"
+    input_source_kinds = row.get("input_source_kinds_json") or "[]"
+
+    try:
+        row["quality_flags"] = json.loads(quality_flags)
+    except json.JSONDecodeError:
+        row["quality_flags"] = []
+
+    try:
+        row["input_snapshot_ids"] = json.loads(input_snapshot_ids)
+    except json.JSONDecodeError:
+        row["input_snapshot_ids"] = []
+
+    try:
+        row["input_source_kinds"] = json.loads(input_source_kinds)
+    except json.JSONDecodeError:
+        row["input_source_kinds"] = []
+
+    if include_payload:
+        try:
+            row["feature_payload"] = json.loads(row.get("feature_payload_json") or "{}")
+        except json.JSONDecodeError:
+            row["feature_payload"] = {}
+
+    return row
+
+
+def list_subject_feature_sets(
+    db_path: Path,
+    subject_id: str | None = None,
+    feature_spec_key: str | None = None,
+    limit: int = 200,
+    include_payload: bool = False,
+) -> list[dict]:
+    """List subject_feature_sets rows with stable filters for future explorer UIs."""
+    conn = _connect(db_path)
+    conditions = []
+    params: list[str | int] = []
+
+    if subject_id:
+        conditions.append("sfs.subject_id = ?")
+        params.append(subject_id)
+    if feature_spec_key:
+        conditions.append("sfs.feature_spec_key = ?")
+        params.append(feature_spec_key)
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    params.append(limit)
+
+    rows = conn.execute(
+        f"""SELECT sfs.*,
+                   subj.name AS subject_name,
+                   sms.source_kind AS anchor_source_kind,
+                   sms.extraction_version AS anchor_extraction_version
+            FROM subject_feature_sets sfs
+            LEFT JOIN subjects subj ON sfs.subject_id = subj.id
+            LEFT JOIN subject_metric_snapshots sms ON sfs.anchor_snapshot_id = sms.snapshot_id
+            {where_clause}
+            ORDER BY sfs.anchor_measured_at DESC, sfs.created_at DESC
+            LIMIT ?""",
+        params,
+    ).fetchall()
+    conn.close()
+
+    results: list[dict] = []
+    for row in rows:
+        results.append(_deserialize_feature_set_row(dict(row), include_payload=include_payload))
+    return results
+
+
+def get_subject_feature_set(db_path: Path, feature_row_id: str) -> dict | None:
+    """Fetch a single subject_feature_sets row for detail views."""
+    conn = _connect(db_path)
+    row = conn.execute(
+        """SELECT sfs.*,
+                  subj.name AS subject_name,
+                  sms.source_kind AS anchor_source_kind,
+                  sms.extraction_version AS anchor_extraction_version
+           FROM subject_feature_sets sfs
+           LEFT JOIN subjects subj ON sfs.subject_id = subj.id
+           LEFT JOIN subject_metric_snapshots sms ON sfs.anchor_snapshot_id = sms.snapshot_id
+           WHERE sfs.feature_row_id = ?""",
+        (feature_row_id,),
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return _deserialize_feature_set_row(dict(row), include_payload=True)
+
+
 def build_subject_metric_snapshot_compare(
     db_path: Path,
     baseline_snapshot_id: str,
