@@ -1880,6 +1880,287 @@ def get_subject_feature_set(db_path: Path, feature_row_id: str) -> dict | None:
     return _deserialize_feature_set_row(dict(row), include_payload=True)
 
 
+def _feature_payload_inputs(row: dict) -> dict:
+    """Return normalized feature payload inputs for dashboard helpers."""
+    payload = row.get("feature_payload")
+    if not isinstance(payload, dict):
+        return {}
+    inputs = payload.get("inputs")
+    return inputs if isinstance(inputs, dict) else {}
+
+
+def _feature_payload_features(row: dict) -> dict:
+    """Return normalized feature payload features for dashboard helpers."""
+    payload = row.get("feature_payload")
+    if not isinstance(payload, dict):
+        return {}
+    features = payload.get("features")
+    return features if isinstance(features, dict) else {}
+
+
+def _count_quality_flags(rows: list[dict]) -> dict[str, int]:
+    """Count normalized quality flags across feature-set rows."""
+    counts: dict[str, int] = {}
+    for row in rows:
+        for flag in row.get("quality_flags", []):
+            counts[flag] = counts.get(flag, 0) + 1
+    return counts
+
+
+def _build_metric_position(
+    latest_rows: list[dict],
+    subject_id: str,
+    metric_key: str,
+) -> dict | None:
+    """Return rank/percentile info for one metric among latest subject rows."""
+    values = []
+    for row in latest_rows:
+        features = _feature_payload_features(row)
+        value = features.get(metric_key)
+        if isinstance(value, (int, float)):
+            values.append({
+                "subject_id": row["subject_id"],
+                "value": float(value),
+            })
+
+    if not values:
+        return None
+
+    values.sort(key=lambda item: item["value"], reverse=True)
+    for index, item in enumerate(values, start=1):
+        if item["subject_id"] != subject_id:
+            continue
+        total = len(values)
+        percentile = 100.0 if total == 1 else round(((total - index) / (total - 1)) * 100, 1)
+        return {
+            "value": item["value"],
+            "rank": index,
+            "total": total,
+            "percentile": percentile,
+        }
+    return None
+
+
+def _build_dashboard_timeline_point(
+    row: dict,
+    delta_row: dict | None,
+) -> dict:
+    """Normalize one dashboard timeline point from feature-set rows."""
+    features = _feature_payload_features(row)
+    delta_features = _feature_payload_features(delta_row) if delta_row else {}
+    delta_quality_flags = delta_row.get("quality_flags", []) if delta_row else []
+    usable_delta_keys = sorted(
+        key for key in delta_features if key.startswith("delta_") or key.startswith("pct_delta_")
+    )
+    has_usable_delta = bool(usable_delta_keys) and "mixed_source_compare" not in delta_quality_flags
+    return {
+        "feature_row_id": row["feature_row_id"],
+        "anchor_snapshot_id": row.get("anchor_snapshot_id"),
+        "anchor_measured_at": row["anchor_measured_at"],
+        "vo2max_rel": features.get("vo2max_rel"),
+        "fatmax_power_w": features.get("fatmax_power_w"),
+        "lt1_power_w": features.get("lt1_power_w"),
+        "quality_flags": row.get("quality_flags", []),
+        "has_usable_delta": has_usable_delta,
+        "delta_quality_flags": delta_quality_flags,
+        "delta_metrics": (
+            {key: delta_features[key] for key in usable_delta_keys}
+            if has_usable_delta
+            else {}
+        ),
+    }
+
+
+def summarize_dashboard_feature_analytics(db_path: Path) -> dict:
+    """Build a cohort-level overview for dashboard analytics."""
+    all_rows = list_subject_feature_sets(db_path, include_payload=False, limit=5000)
+    cpet_endurance_rows = list_subject_feature_sets(
+        db_path,
+        feature_spec_key="endurance_core",
+        anchor_source_kind="cpet_submission",
+        include_payload=True,
+        limit=5000,
+    )
+    cpet_delta_rows = list_subject_feature_sets(
+        db_path,
+        feature_spec_key="longitudinal_delta",
+        anchor_source_kind="cpet_submission",
+        include_payload=True,
+        limit=5000,
+    )
+
+    latest_by_subject: dict[str, dict] = {}
+    subjects_with_multi_date_history = 0
+    for row in cpet_endurance_rows:
+        latest_by_subject.setdefault(row["subject_id"], row)
+
+    rows_by_subject: dict[str, list[dict]] = {}
+    for row in cpet_endurance_rows:
+        rows_by_subject.setdefault(row["subject_id"], []).append(row)
+    for rows in rows_by_subject.values():
+        if len(rows) >= 2:
+            subjects_with_multi_date_history += 1
+
+    latest_anchor_measured_at = ""
+    if cpet_endurance_rows:
+        latest_anchor_measured_at = cpet_endurance_rows[0]["anchor_measured_at"]
+
+    available_vo2 = 0
+    available_fatmax = 0
+    for row in cpet_endurance_rows:
+        features = _feature_payload_features(row)
+        if isinstance(features.get("vo2max_rel"), (int, float)):
+            available_vo2 += 1
+        if isinstance(features.get("fatmax_power_w"), (int, float)):
+            available_fatmax += 1
+
+    base_summary = summarize_subject_feature_sets(db_path)
+    quality_flag_counts = _count_quality_flags(cpet_endurance_rows + cpet_delta_rows)
+
+    return {
+        "total_feature_rows": base_summary["total"],
+        "total_subjects": len({row["subject_id"] for row in all_rows}),
+        "latest_anchor_measured_at": latest_anchor_measured_at,
+        "usable_cpet_anchor_rows": len(cpet_endurance_rows),
+        "subjects_with_current_state": len(latest_by_subject),
+        "subjects_with_multi_date_cpet_history": subjects_with_multi_date_history,
+        "spec_counts": base_summary["by_spec"],
+        "available_metrics": {
+            "vo2max_rel_rows": available_vo2,
+            "fatmax_power_w_rows": available_fatmax,
+        },
+        "quality_flag_counts": quality_flag_counts,
+    }
+
+
+def list_dashboard_subject_analytics(
+    db_path: Path,
+    limit: int = 100,
+) -> list[dict]:
+    """List latest dashboard subject cards with history state and cohort ranks."""
+    cpet_endurance_rows = list_subject_feature_sets(
+        db_path,
+        feature_spec_key="endurance_core",
+        anchor_source_kind="cpet_submission",
+        include_payload=True,
+        limit=5000,
+    )
+    cpet_delta_rows = list_subject_feature_sets(
+        db_path,
+        feature_spec_key="longitudinal_delta",
+        anchor_source_kind="cpet_submission",
+        include_payload=True,
+        limit=5000,
+    )
+    delta_by_anchor_snapshot_id = {
+        row.get("anchor_snapshot_id"): row
+        for row in cpet_delta_rows
+        if row.get("anchor_snapshot_id")
+    }
+
+    rows_by_subject: dict[str, list[dict]] = {}
+    latest_rows: list[dict] = []
+    for row in cpet_endurance_rows:
+        rows_by_subject.setdefault(row["subject_id"], []).append(row)
+        if row["subject_id"] not in {item["subject_id"] for item in latest_rows}:
+            latest_rows.append(row)
+
+    subject_cards: list[dict] = []
+    for subject_id, rows in rows_by_subject.items():
+        latest = rows[0]
+        latest_features = _feature_payload_features(latest)
+        usable_delta_count = 0
+        timeline = []
+        for row in sorted(rows, key=lambda item: item["anchor_measured_at"]):
+            point = _build_dashboard_timeline_point(
+                row,
+                delta_by_anchor_snapshot_id.get(row.get("anchor_snapshot_id")),
+            )
+            if point["has_usable_delta"]:
+                usable_delta_count += 1
+            timeline.append(point)
+
+        subject_cards.append({
+            "subject_id": subject_id,
+            "subject_name": latest.get("subject_name", ""),
+            "latest_anchor_measured_at": latest["anchor_measured_at"],
+            "history_state": "timeline" if len(rows) >= 2 else "single_anchor",
+            "usable_history_count": len(rows),
+            "usable_delta_count": usable_delta_count,
+            "current_state": {
+                "vo2max_rel": latest_features.get("vo2max_rel"),
+                "fatmax_power_w": latest_features.get("fatmax_power_w"),
+                "lt1_power_w": latest_features.get("lt1_power_w"),
+                "quality_flags": latest.get("quality_flags", []),
+            },
+            "cohort_positioning": {
+                "vo2max_rel": _build_metric_position(latest_rows, subject_id, "vo2max_rel"),
+                "fatmax_power_w": _build_metric_position(latest_rows, subject_id, "fatmax_power_w"),
+            },
+            "timeline_preview": timeline[-3:],
+        })
+
+    subject_cards.sort(
+        key=lambda item: (item["latest_anchor_measured_at"], item["subject_name"]),
+        reverse=True,
+    )
+    return subject_cards[:limit]
+
+
+def get_dashboard_subject_analytics(
+    db_path: Path,
+    subject_id: str,
+) -> dict | None:
+    """Return one subject's dashboard analytics detail."""
+    subject_cards = list_dashboard_subject_analytics(db_path, limit=5000)
+    target = next((row for row in subject_cards if row["subject_id"] == subject_id), None)
+    if target is None:
+        return None
+
+    cpet_endurance_rows = list_subject_feature_sets(
+        db_path,
+        subject_id=subject_id,
+        feature_spec_key="endurance_core",
+        anchor_source_kind="cpet_submission",
+        include_payload=True,
+        limit=5000,
+    )
+    cpet_delta_rows = list_subject_feature_sets(
+        db_path,
+        subject_id=subject_id,
+        feature_spec_key="longitudinal_delta",
+        anchor_source_kind="cpet_submission",
+        include_payload=True,
+        limit=5000,
+    )
+    delta_by_anchor_snapshot_id = {
+        row.get("anchor_snapshot_id"): row
+        for row in cpet_delta_rows
+        if row.get("anchor_snapshot_id")
+    }
+    timeline = [
+        _build_dashboard_timeline_point(
+            row,
+            delta_by_anchor_snapshot_id.get(row.get("anchor_snapshot_id")),
+        )
+        for row in sorted(cpet_endurance_rows, key=lambda item: item["anchor_measured_at"])
+    ]
+
+    return {
+        "subject": {
+            "id": target["subject_id"],
+            "name": target["subject_name"],
+        },
+        "latest_anchor_measured_at": target["latest_anchor_measured_at"],
+        "history_state": target["history_state"],
+        "usable_history_count": target["usable_history_count"],
+        "usable_delta_count": target["usable_delta_count"],
+        "current_state": target["current_state"],
+        "cohort_positioning": target["cohort_positioning"],
+        "timeline": timeline,
+    }
+
+
 def build_subject_feature_set_compare(
     db_path: Path,
     baseline_feature_row_id: str,
