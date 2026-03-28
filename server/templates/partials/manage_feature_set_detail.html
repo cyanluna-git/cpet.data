@@ -40,6 +40,23 @@
   </div>
 
   <div>
+    <div class="mb-1 text-xs uppercase tracking-wide text-gray-400">Input Snapshots</div>
+    <div class="flex flex-wrap gap-2">
+      {% for snapshot_id in feature_set.input_snapshot_ids %}
+      <button
+        type="button"
+        class="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+        hx-get="/api/manage/snapshots/{{ snapshot_id }}"
+        hx-target="#manage-feature-set-related-snapshot"
+        hx-swap="innerHTML"
+      >{{ snapshot_id }}</button>
+      {% else %}
+      <span class="text-sm text-gray-400">관련 snapshot 없음</span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div>
     <div class="mb-1 text-xs uppercase tracking-wide text-gray-400">Feature Payload JSON</div>
     <pre class="overflow-x-auto rounded bg-gray-950 p-3 text-xs text-gray-100">{{ feature_set.feature_payload | tojson(indent=2) }}</pre>
   </div>

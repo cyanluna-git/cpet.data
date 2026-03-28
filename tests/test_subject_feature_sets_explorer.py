@@ -166,6 +166,7 @@ class TestSubjectFeatureSetsExplorer:
         assert "Total Rows" in resp.text
         assert "feature_spec_key=endurance_core" in resp.text
         assert "feature_spec_key=longitudinal_delta" in resp.text
+        assert "manage-feature-set-related-snapshot" in resp.text
 
     def test_feature_sets_partial_filters_by_spec_key(self, tmp_path: Path) -> None:
         db_path = self._setup_app(tmp_path)
@@ -224,5 +225,7 @@ class TestSubjectFeatureSetsExplorer:
         assert resp.status_code == 200
         assert detail_row["feature_row_id"] in resp.text
         assert "Feature Payload JSON" in resp.text
+        assert "Input Snapshots" in resp.text
+        assert "/api/manage/snapshots/" in resp.text
         assert "missing_previous_snapshot" in resp.text
         assert "longitudinal_delta" in resp.text
