@@ -5,6 +5,7 @@ tests/test_subject_metric_snapshots_inscyd.py — Contract tests for INSCYD snap
 import html
 import json
 from pathlib import Path
+import shutil
 
 from server.db import (
     create_submission,
@@ -161,6 +162,52 @@ class TestExtractInscydSnapshot:
         )
 
         assert extract_inscyd_snapshot(db_path, submission_id) is None
+
+    def test_falls_back_to_raw_workspace_when_report_html_is_missing(self, tmp_path: Path) -> None:
+        db_path = _init_platform_db(tmp_path)
+        subject = create_subject(db_path, name="Geunyun Park")
+        workspace = tmp_path / "workspaces" / "inscyd-raw-only"
+        raw_dir = workspace / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        metadata_dir = workspace / "metadata"
+        metadata_dir.mkdir(parents=True, exist_ok=True)
+
+        for path in (INSCYD_FIXTURE_WS / "raw").iterdir():
+            shutil.copy2(path, raw_dir / path.name)
+        (metadata_dir / "submission_context.json").write_text(
+            json.dumps({
+                "report_type": "inscyd",
+                "subject_name": "박근윤",
+                "test_date": "2026-01-06",
+            }),
+            encoding="utf-8",
+        )
+
+        submission_id = create_submission(
+            db_path,
+            "raw only inscyd",
+            [{"name": "KY Park_2026.pdf"}],
+            str(workspace),
+            subject_id=subject["id"],
+            test_date="2026-01-06",
+        )
+
+        snapshot = extract_inscyd_snapshot(db_path, submission_id)
+
+        assert snapshot is not None
+        assert snapshot["measured_at"] == "2026-01-06"
+        assert snapshot["protocol_type"] == "PPD"
+        assert snapshot["vo2max_ml"] == 3836.0
+        assert snapshot["vo2max_rel"] == 51.7
+        assert snapshot["fatmax_power_w"] == 150.0
+        assert snapshot["vlamax"] == 0.53
+        assert snapshot["at_power_w"] == 230.0
+        assert snapshot["carbmax_w"] == 178.0
+        assert snapshot["glycogen_g"] == 373.0
+        payload = json.loads(snapshot["payload_json"])
+        assert payload["source"]["workspace_mode"] == "raw_inscyd_workspace"
+        assert payload["subject"]["name"] == "박근윤"
+        assert payload["protocol"]["fit_sessions"]
 
     def test_returns_none_without_report_html(self, tmp_path: Path) -> None:
         db_path = _init_platform_db(tmp_path)

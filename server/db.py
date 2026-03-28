@@ -1412,28 +1412,65 @@ def _read_inscyd_report_data(report_html_path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def extract_inscyd_snapshot(
-    db_path: Path,
+def _build_inscyd_report_data_from_workspace(workspace: Path) -> dict:
+    """Build report-data-like payload directly from a raw INSCYD workspace."""
+    try:
+        from pipeline.inscyd_workspace import parse_inscyd_workspace
+    except Exception:
+        return {}
+
+    try:
+        parsed = parse_inscyd_workspace(workspace)
+    except Exception:
+        return {}
+
+    report = parsed.report
+    return {
+        "meta": {
+            "report_type": "inscyd",
+            "analysis_method": "INSCYD raw workspace snapshot",
+        },
+        "subject": {
+            "name": parsed.subject_name,
+            "body_mass_kg": report.body_mass_kg,
+            "body_height_cm": report.body_height_cm,
+        },
+        "session": {
+            "test_date": parsed.test_date,
+            "sport": report.sport,
+            "test_type": report.test_type,
+        },
+        "inscyd": {
+            "vo2max_abs_ml_min": report.vo2max_abs_ml_min,
+            "vo2max_rel_ml_kg_min": report.vo2max_rel_ml_kg_min,
+            "fatmax_watt": report.fatmax_watt,
+            "vlamax_mmol_l_s": report.vlamax_mmol_l_s,
+            "at_abs_watt": report.at_abs_watt,
+            "carbmax_abs_watt": report.carbmax_abs_watt,
+            "glycogen_abs_g": report.glycogen_abs_g,
+            "training_zones": report.training_zones,
+            "test_data_rows": report.test_data_rows,
+            "weighted_regression": report.weighted_regression,
+        },
+        "protocol": {
+            "fit_sessions": parsed.fit_sessions,
+            "zwo_summary": parsed.zwo_summary,
+        },
+        "warnings": parsed.warnings,
+        "artifacts": {
+            "original_pdf_name": parsed.pdf_path.name,
+            "original_pdf_file": parsed.pdf_path.name,
+        },
+    }
+
+
+def _build_inscyd_snapshot(
+    submission: dict,
     submission_id: str,
-    data_dir: Path | None = None,
+    report_data: dict,
+    source_artifact: dict,
 ) -> dict | None:
-    """Build an INSCYD snapshot row dict from a rendered report artifact."""
-    submission = get_submission(db_path, submission_id)
-    if submission is None or not submission.get("subject_id"):
-        return None
-
-    workspace = _resolve_workspace_path(submission.get("workspace_path"), data_dir=data_dir)
-    if workspace is None:
-        return None
-
-    report_html = _find_inscyd_report_html(workspace)
-    if report_html is None:
-        return None
-
-    report_data = _read_inscyd_report_data(report_html)
-    if not report_data:
-        return None
-
+    """Build a normalized INSCYD snapshot from report-data-like payload."""
     session = report_data.get("session") if isinstance(report_data.get("session"), dict) else {}
     inscyd = report_data.get("inscyd") if isinstance(report_data.get("inscyd"), dict) else {}
 
@@ -1451,6 +1488,9 @@ def extract_inscyd_snapshot(
         quality_flags.append("missing_protocol_type")
 
     present_metrics: dict[str, float | int] = {}
+    raw_vo2_abs = inscyd.get("vo2max_abs_ml_min")
+    if isinstance(raw_vo2_abs, (int, float)):
+        present_metrics["vo2max_ml"] = raw_vo2_abs
     for src_key, dest_key in _INSCYD_SNAPSHOT_METRIC_MAP.items():
         value = inscyd.get(src_key)
         if isinstance(value, (int, float)):
@@ -1462,17 +1502,16 @@ def extract_inscyd_snapshot(
     quality_flags.extend(f"missing_{key}" for key in missing_metrics)
     quality_flags.sort()
 
-    relative_report_html = report_html.relative_to(workspace).as_posix()
     payload = {
         "source": {
             "submission_id": submission_id,
-            "workspace_path": submission.get("workspace_path", ""),
-            "report_html": relative_report_html,
+            **source_artifact,
         },
         "meta": report_data.get("meta", {}),
         "subject": report_data.get("subject", {}),
         "session": session,
         "inscyd": inscyd,
+        "protocol": report_data.get("protocol", {}),
         "warnings": report_data.get("warnings", []),
         "missing_metrics": missing_metrics,
     }
@@ -1491,6 +1530,49 @@ def extract_inscyd_snapshot(
     }
     snapshot.update(present_metrics)
     return snapshot
+
+
+def extract_inscyd_snapshot(
+    db_path: Path,
+    submission_id: str,
+    data_dir: Path | None = None,
+) -> dict | None:
+    """Build an INSCYD snapshot row dict from rendered or raw report artifacts."""
+    submission = get_submission(db_path, submission_id)
+    if submission is None or not submission.get("subject_id"):
+        return None
+
+    workspace = _resolve_workspace_path(submission.get("workspace_path"), data_dir=data_dir)
+    if workspace is None:
+        return None
+
+    report_html = _find_inscyd_report_html(workspace)
+    if report_html is not None:
+        report_data = _read_inscyd_report_data(report_html)
+        if report_data:
+            return _build_inscyd_snapshot(
+                submission,
+                submission_id,
+                report_data,
+                source_artifact={
+                    "workspace_path": submission.get("workspace_path", ""),
+                    "report_html": report_html.relative_to(workspace).as_posix(),
+                },
+            )
+
+    report_data = _build_inscyd_report_data_from_workspace(workspace)
+    if not report_data:
+        return None
+
+    return _build_inscyd_snapshot(
+        submission,
+        submission_id,
+        report_data,
+        source_artifact={
+            "workspace_path": submission.get("workspace_path", ""),
+            "workspace_mode": "raw_inscyd_workspace",
+        },
+    )
 
 
 def _list_snapshot_candidate_submissions(
