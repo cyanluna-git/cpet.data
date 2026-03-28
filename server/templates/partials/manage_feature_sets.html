@@ -1,4 +1,41 @@
 <div class="space-y-4">
+  <div class="grid gap-3 md:grid-cols-4">
+    <div class="rounded-lg border border-gray-200 bg-white p-4">
+      <div class="text-xs uppercase tracking-wide text-gray-400">Total Rows</div>
+      <div class="mt-1 text-2xl font-semibold text-gray-900">{{ feature_set_summary.total }}</div>
+    </div>
+    <div class="rounded-lg border border-gray-200 bg-white p-4">
+      <div class="text-xs uppercase tracking-wide text-gray-400">By Spec</div>
+      <div class="mt-2 flex flex-wrap gap-1">
+        {% for key, count in feature_set_summary.by_spec.items() %}
+        <span class="inline-flex rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">{{ key }} {{ count }}</span>
+        {% else %}
+        <span class="text-sm text-gray-400">—</span>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="rounded-lg border border-gray-200 bg-white p-4">
+      <div class="text-xs uppercase tracking-wide text-gray-400">By Window</div>
+      <div class="mt-2 flex flex-wrap gap-1">
+        {% for key, count in feature_set_summary.by_window.items() %}
+        <span class="inline-flex rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">{{ key }} {{ count }}</span>
+        {% else %}
+        <span class="text-sm text-gray-400">—</span>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="rounded-lg border border-gray-200 bg-white p-4">
+      <div class="text-xs uppercase tracking-wide text-gray-400">By Source</div>
+      <div class="mt-2 flex flex-wrap gap-1">
+        {% for key, count in feature_set_summary.by_source.items() %}
+        <span class="inline-flex rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">{{ key }} {{ count }}</span>
+        {% else %}
+        <span class="text-sm text-gray-400">—</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
   <div class="bg-white rounded-lg shadow overflow-hidden">
     <div class="overflow-x-auto">
       <table class="min-w-full divide-y divide-gray-200">

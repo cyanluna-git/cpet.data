@@ -163,6 +163,7 @@ class TestSubjectFeatureSetsExplorer:
         assert "Geunyun Park" in resp.text
         assert "endurance_core" in resp.text
         assert "longitudinal_delta" in resp.text
+        assert "Total Rows" in resp.text
 
     def test_feature_sets_partial_filters_by_spec_key(self, tmp_path: Path) -> None:
         db_path = self._setup_app(tmp_path)
@@ -192,6 +193,7 @@ class TestSubjectFeatureSetsExplorer:
         assert "previous_pair" in resp.text
         assert "cpet_submission" in resp.text
         assert "endurance_core" not in resp.text
+        assert "Total Rows" in resp.text
 
     def test_feature_set_detail_partial_renders_payload_and_flags(self, tmp_path: Path) -> None:
         db_path = self._setup_app(tmp_path)

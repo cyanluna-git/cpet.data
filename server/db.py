@@ -1792,6 +1792,62 @@ def list_subject_feature_sets(
     return results
 
 
+def summarize_subject_feature_sets(
+    db_path: Path,
+    subject_id: str | None = None,
+    feature_spec_key: str | None = None,
+    window_label: str | None = None,
+    anchor_source_kind: str | None = None,
+) -> dict:
+    """Return filtered summary counts for subject_feature_sets explorer UIs."""
+    conn = _connect(db_path)
+    conditions = []
+    params: list[str] = []
+
+    if subject_id:
+        conditions.append("sfs.subject_id = ?")
+        params.append(subject_id)
+    if feature_spec_key:
+        conditions.append("sfs.feature_spec_key = ?")
+        params.append(feature_spec_key)
+    if window_label:
+        conditions.append("sfs.window_label = ?")
+        params.append(window_label)
+    if anchor_source_kind:
+        conditions.append("sms.source_kind = ?")
+        params.append(anchor_source_kind)
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    rows = conn.execute(
+        f"""SELECT sfs.feature_spec_key,
+                   sfs.window_label,
+                   sms.source_kind AS anchor_source_kind
+            FROM subject_feature_sets sfs
+            LEFT JOIN subject_metric_snapshots sms ON sfs.anchor_snapshot_id = sms.snapshot_id
+            {where_clause}""",
+        params,
+    ).fetchall()
+    conn.close()
+
+    by_spec: dict[str, int] = {}
+    by_window: dict[str, int] = {}
+    by_source: dict[str, int] = {}
+    for row in rows:
+        spec = str(row["feature_spec_key"] or "unknown")
+        window = str(row["window_label"] or "unknown")
+        source = str(row["anchor_source_kind"] or "unknown")
+        by_spec[spec] = by_spec.get(spec, 0) + 1
+        by_window[window] = by_window.get(window, 0) + 1
+        by_source[source] = by_source.get(source, 0) + 1
+
+    return {
+        "total": len(rows),
+        "by_spec": by_spec,
+        "by_window": by_window,
+        "by_source": by_source,
+    }
+
+
 def get_subject_feature_set(db_path: Path, feature_row_id: str) -> dict | None:
     """Fetch a single subject_feature_sets row for detail views."""
     conn = _connect(db_path)

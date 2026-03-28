@@ -49,6 +49,7 @@ from server.db import (
     list_subject_metric_snapshots,
     list_subject_feature_sets,
     set_report_name_override,
+    summarize_subject_feature_sets,
     update_subject,
     update_submission_subject_name,
     list_submissions_with_users,
@@ -659,6 +660,13 @@ async def manage_page(
         window_label=feature_window_label or None,
         anchor_source_kind=feature_anchor_source_kind or None,
     )
+    feature_set_summary = summarize_subject_feature_sets(
+        db_path,
+        subject_id=feature_subject_id or None,
+        feature_spec_key=feature_spec_key or None,
+        window_label=feature_window_label or None,
+        anchor_source_kind=feature_anchor_source_kind or None,
+    )
 
     active_tab = tab if tab in ("users", "subjects", "submissions", "snapshots", "feature_sets") else "users"
 
@@ -668,6 +676,7 @@ async def manage_page(
         "submissions": submissions,
         "snapshots": snapshots,
         "feature_sets": feature_sets,
+        "feature_set_summary": feature_set_summary,
         "suggestions": suggestions,
         "active_tab": active_tab,
         "session_user": session_user,
@@ -812,11 +821,19 @@ def _render_manage_feature_sets(
         window_label=feature_window_label or None,
         anchor_source_kind=feature_anchor_source_kind or None,
     )
+    feature_set_summary = summarize_subject_feature_sets(
+        db_path,
+        subject_id=feature_subject_id or None,
+        feature_spec_key=feature_spec_key or None,
+        window_label=feature_window_label or None,
+        anchor_source_kind=feature_anchor_source_kind or None,
+    )
     return templates.TemplateResponse(
         request,
         "partials/manage_feature_sets.html",
         {
             "feature_sets": feature_sets,
+            "feature_set_summary": feature_set_summary,
             "subjects": subjects,
             "feature_set_filters": {
                 "subject_id": feature_subject_id,

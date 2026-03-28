@@ -14,6 +14,7 @@ from server.db import (
     get_subject_feature_set,
     init_db,
     list_subject_feature_sets,
+    summarize_subject_feature_sets,
 )
 
 
@@ -167,3 +168,20 @@ class TestSubjectFeatureSetsQuery:
         assert isinstance(detail["feature_payload"], dict)
         assert isinstance(detail["quality_flags"], list)
         assert get_subject_feature_set(db_path, "missing-feature-row") is None
+
+    def test_summary_counts_respect_current_filters(self, tmp_path: Path) -> None:
+        db_path = _init_platform_db(tmp_path)
+        seeded = _seed_feature_rows(db_path, tmp_path)
+
+        summary = summarize_subject_feature_sets(
+            db_path,
+            subject_id=seeded["subject_a"]["id"],
+            feature_spec_key="longitudinal_delta",
+            window_label="previous_pair",
+            anchor_source_kind="cpet_submission",
+        )
+
+        assert summary["total"] == 2
+        assert summary["by_spec"] == {"longitudinal_delta": 2}
+        assert summary["by_window"] == {"previous_pair": 2}
+        assert summary["by_source"] == {"cpet_submission": 2}
