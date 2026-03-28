@@ -953,29 +953,6 @@ async def manage_snapshot_compare(
     )
 
 
-@app.get("/api/manage/feature-sets/{feature_row_id}", response_class=HTMLResponse)
-async def manage_feature_set_detail(request: Request, feature_row_id: str) -> HTMLResponse:
-    """Render a feature set detail card for explorer inspection."""
-    auth_result = _require_manage_access(request)
-    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
-        return auth_result
-    session_user = auth_result
-
-    feature_set = get_subject_feature_set(request.app.state.db_path, feature_row_id)
-    if feature_set is None:
-        return HTMLResponse("<div class='text-sm text-gray-500'>Feature set not found.</div>", status_code=404)
-
-    return templates.TemplateResponse(
-        request,
-        "partials/manage_feature_set_detail.html",
-        {
-            "feature_set": feature_set,
-            "session_user": session_user,
-            "current_user": session_user,
-        },
-    )
-
-
 def _snapshot_export_filters(
     subject_id: str = "",
     source_kind: str = "",
@@ -988,6 +965,21 @@ def _snapshot_export_filters(
         "source_kind": source_kind,
         "date_from": date_from,
         "date_to": date_to,
+    }
+
+
+def _feature_set_export_filters(
+    feature_subject_id: str = "",
+    feature_spec_key: str = "",
+    feature_window_label: str = "",
+    feature_anchor_source_kind: str = "",
+) -> dict[str, str]:
+    """Normalize feature set filter values for exporter routes."""
+    return {
+        "feature_subject_id": feature_subject_id,
+        "feature_spec_key": feature_spec_key,
+        "feature_window_label": feature_window_label,
+        "feature_anchor_source_kind": feature_anchor_source_kind,
     }
 
 
@@ -1081,6 +1073,116 @@ async def manage_snapshot_export_csv(
         media_type="text/csv; charset=utf-8",
         headers={
             "Content-Disposition": "attachment; filename=subject-metric-snapshots.csv"
+        },
+    )
+
+
+@app.get("/api/manage/feature-sets/export.json")
+async def manage_feature_set_export_json(
+    request: Request,
+    feature_subject_id: str = "",
+    feature_spec_key: str = "",
+    feature_window_label: str = "",
+    feature_anchor_source_kind: str = "",
+) -> JSONResponse:
+    """Export filtered feature set rows as JSON."""
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+
+    filters = _feature_set_export_filters(
+        feature_subject_id=feature_subject_id,
+        feature_spec_key=feature_spec_key,
+        feature_window_label=feature_window_label,
+        feature_anchor_source_kind=feature_anchor_source_kind,
+    )
+    feature_sets = list_subject_feature_sets(
+        request.app.state.db_path,
+        subject_id=feature_subject_id or None,
+        feature_spec_key=feature_spec_key or None,
+        window_label=feature_window_label or None,
+        anchor_source_kind=feature_anchor_source_kind or None,
+        limit=1000,
+        include_payload=True,
+    )
+    return JSONResponse({
+        "count": len(feature_sets),
+        "filters": filters,
+        "feature_sets": feature_sets,
+    })
+
+
+@app.get("/api/manage/feature-sets/export.csv")
+async def manage_feature_set_export_csv(
+    request: Request,
+    feature_subject_id: str = "",
+    feature_spec_key: str = "",
+    feature_window_label: str = "",
+    feature_anchor_source_kind: str = "",
+) -> Response:
+    """Export filtered feature set rows as CSV."""
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+
+    feature_sets = list_subject_feature_sets(
+        request.app.state.db_path,
+        subject_id=feature_subject_id or None,
+        feature_spec_key=feature_spec_key or None,
+        window_label=feature_window_label or None,
+        anchor_source_kind=feature_anchor_source_kind or None,
+        limit=1000,
+    )
+    fieldnames = [
+        "feature_row_id",
+        "subject_id",
+        "subject_name",
+        "feature_spec_key",
+        "feature_spec_version",
+        "anchor_snapshot_id",
+        "anchor_measured_at",
+        "window_label",
+        "anchor_source_kind",
+        "anchor_extraction_version",
+        "input_snapshot_ids_json",
+        "input_source_kinds_json",
+        "quality_flags_json",
+        "feature_payload_json",
+    ]
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in feature_sets:
+        writer.writerow({name: row.get(name) for name in fieldnames})
+
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": "attachment; filename=subject-feature-sets.csv"
+        },
+    )
+
+
+@app.get("/api/manage/feature-sets/{feature_row_id}", response_class=HTMLResponse)
+async def manage_feature_set_detail(request: Request, feature_row_id: str) -> HTMLResponse:
+    """Render a feature set detail card for explorer inspection."""
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+
+    feature_set = get_subject_feature_set(request.app.state.db_path, feature_row_id)
+    if feature_set is None:
+        return HTMLResponse("<div class='text-sm text-gray-500'>Feature set not found.</div>", status_code=404)
+
+    return templates.TemplateResponse(
+        request,
+        "partials/manage_feature_set_detail.html",
+        {
+            "feature_set": feature_set,
+            "session_user": session_user,
+            "current_user": session_user,
         },
     )
 
