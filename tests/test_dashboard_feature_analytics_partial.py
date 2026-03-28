@@ -167,7 +167,7 @@ class TestDashboardFeatureAnalyticsPartial:
         resp = client.get("/api/dashboard/analytics")
 
         assert resp.status_code == 200
-        assert "Dashboard Analytics" in resp.text
+        assert "주요 지표 대시보드" in resp.text
         assert "Single-Anchor Watchlist" in resp.text
         assert "Repeat-Test Ready" in resp.text
         assert "Cohort Leaders" in resp.text

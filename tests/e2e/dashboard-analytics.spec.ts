@@ -23,7 +23,7 @@ test.describe("Dashboard analytics", () => {
     await navigateAndWait(page, "/dashboard");
 
     await expect(page.locator("#filter-tabs")).toBeVisible();
-    await expect(page.locator("text=Dashboard Analytics")).toBeVisible();
+    await expect(page.locator("text=주요 지표 대시보드")).toBeVisible();
     await expect(page.locator("text=Current Cohort")).toBeVisible();
     await expect(page.locator("text=Repeat-Test Ready")).toBeVisible();
     await expect(page.locator("text=Cohort Leaders")).toBeVisible();

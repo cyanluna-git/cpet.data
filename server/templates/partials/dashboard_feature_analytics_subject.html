@@ -1,68 +1,94 @@
 {% if detail %}
-<section class="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4">
-  <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-    <div>
-      <h3 class="text-base font-semibold text-gray-900">{{ detail.subject.name }}</h3>
-      <p class="text-sm text-gray-500">
-        Latest anchor {{ detail.latest_anchor_measured_at }} · {{ detail.history_state }}
-      </p>
-    </div>
-    <div class="text-xs text-gray-500">
-      usable history {{ detail.usable_history_count }} · usable delta {{ detail.usable_delta_count }}
+<section class="grid gap-4">
+  <div
+    class="analytics-panel-card"
+    style="background: linear-gradient(135deg, rgba(22, 32, 40, 0.96), rgba(24, 78, 89, 0.94)); color: #f7f1e7; border-color: rgba(255,255,255,0.12);"
+  >
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div>
+        <div class="analytics-eyebrow" style="background: rgba(255,255,255,0.12); color: #f2d7a6;">Subject Drill-in</div>
+        <h3 class="mt-4 text-3xl font-semibold" style="color: #f7f1e7;">{{ detail.subject.name }}</h3>
+        <p class="mt-3 max-w-2xl text-sm" style="color: rgba(247, 241, 231, 0.78);">
+          Latest anchor {{ detail.latest_anchor_measured_at }} 기준으로 현재 상태, 코호트 내 위치,
+          그리고 재측정 변화 신호를 한 번에 확인합니다.
+        </p>
+      </div>
+      <div class="grid gap-3 text-sm lg:min-w-[280px]">
+        <div class="rounded-[18px] border px-4 py-3" style="border-color: rgba(255,255,255,0.14); background: rgba(255,255,255,0.08);">
+          <div class="analytics-panel-label" style="color: rgba(247, 241, 231, 0.68);">History State</div>
+          <div class="mt-2 text-lg font-semibold" style="color: #f7f1e7;">{{ detail.history_state }}</div>
+        </div>
+        <div class="rounded-[18px] border px-4 py-3" style="border-color: rgba(255,255,255,0.14); background: rgba(255,255,255,0.08);">
+          <div class="analytics-panel-label" style="color: rgba(247, 241, 231, 0.68);">Coverage</div>
+          <div class="mt-2 text-sm" style="color: rgba(247, 241, 231, 0.86);">
+            usable history {{ detail.usable_history_count }} · usable delta {{ detail.usable_delta_count }}
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="mt-4 grid gap-3 xl:grid-cols-3">
-    <div class="rounded-2xl border border-white bg-white px-4 py-4 shadow-sm">
-      <h4 class="text-sm font-semibold text-gray-900">Current State</h4>
-      <dl class="mt-3 space-y-2 text-sm text-gray-700">
-        <div class="flex items-center justify-between">
-          <dt>VO2max</dt>
-          <dd class="font-medium">{{ detail.current_state.vo2max_rel if detail.current_state.vo2max_rel is not none else "-" }}</dd>
+  <div class="grid gap-4 xl:grid-cols-3">
+    <div class="analytics-panel-card">
+      <div class="analytics-section-tag">Current State</div>
+      <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">현재 anchor 수치</h4>
+      <p class="analytics-note mt-2">가장 최근 CPET anchor에서 바로 읽을 수 있는 기준값입니다.</p>
+      <dl class="mt-5 grid gap-3">
+        <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          <div class="analytics-panel-label">VO2max</div>
+          <div class="mt-2 text-3xl font-semibold text-[var(--ink)]">{{ detail.current_state.vo2max_rel if detail.current_state.vo2max_rel is not none else "-" }}</div>
+          <div class="mt-1 text-sm text-[var(--muted)]">ml/kg/min</div>
         </div>
-        <div class="flex items-center justify-between">
-          <dt>FatMax</dt>
-          <dd class="font-medium">{{ detail.current_state.fatmax_power_w if detail.current_state.fatmax_power_w is not none else "-" }}</dd>
-        </div>
-        <div class="flex items-center justify-between">
-          <dt>LT1</dt>
-          <dd class="font-medium">{{ detail.current_state.lt1_power_w if detail.current_state.lt1_power_w is not none else "-" }}</dd>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+            <div class="analytics-panel-label">FatMax</div>
+            <div class="mt-2 text-2xl font-semibold text-[var(--ink)]">{{ detail.current_state.fatmax_power_w if detail.current_state.fatmax_power_w is not none else "-" }}</div>
+            <div class="mt-1 text-sm text-[var(--muted)]">W</div>
+          </div>
+          <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+            <div class="analytics-panel-label">LT1</div>
+            <div class="mt-2 text-2xl font-semibold text-[var(--ink)]">{{ detail.current_state.lt1_power_w if detail.current_state.lt1_power_w is not none else "-" }}</div>
+            <div class="mt-1 text-sm text-[var(--muted)]">W</div>
+          </div>
         </div>
       </dl>
     </div>
 
-    <div class="rounded-2xl border border-white bg-white px-4 py-4 shadow-sm">
-      <div class="flex items-center justify-between">
-        <h4 class="text-sm font-semibold text-gray-900">Cohort Positioning</h4>
-        <span class="text-xs text-gray-500">
-          {{ detail.timeline_window.first_anchor_measured_at }} to {{ detail.timeline_window.latest_anchor_measured_at }}
-        </span>
+    <div class="analytics-panel-card">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="analytics-section-tag">Cohort Positioning</div>
+          <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">코호트 내 위치</h4>
+        </div>
+        <div class="text-right text-xs text-[var(--muted)]">
+          {{ detail.timeline_window.first_anchor_measured_at }}<br>
+          {{ detail.timeline_window.latest_anchor_measured_at }}
+        </div>
       </div>
-      <div class="mt-3 space-y-3">
+      <div class="mt-5 space-y-3">
         {% for label, widget in [('VO2max', detail.positioning_widgets.vo2max_rel), ('FatMax', detail.positioning_widgets.fatmax_power_w)] %}
-        <div class="rounded-xl border border-gray-100 bg-gray-50 px-3 py-3">
+        <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
           <div class="flex items-center justify-between gap-3">
             <div>
-              <p class="text-xs uppercase tracking-wide text-gray-500">{{ label }}</p>
+              <div class="analytics-panel-label">{{ label }}</div>
               {% if widget %}
-              <p class="mt-1 text-base font-semibold text-gray-900">{{ widget.band_label }}</p>
+              <div class="mt-2 text-xl font-semibold text-[var(--ink)]">{{ widget.band_label }}</div>
               {% else %}
-              <p class="mt-1 text-base font-semibold text-gray-400">Unavailable</p>
+              <div class="mt-2 text-lg font-semibold text-[var(--muted)]">Unavailable</div>
               {% endif %}
             </div>
             {% if widget %}
-            <div class="text-right text-sm text-gray-700">
-              <p class="font-semibold">{{ widget.rank }}/{{ widget.total }}</p>
-              <p>{{ widget.percentile }}th pct</p>
+            <div class="text-right text-sm text-[var(--muted)]">
+              <div class="font-semibold text-[var(--ink)]">{{ widget.rank }}/{{ widget.total }}</div>
+              <div>{{ widget.percentile }}th pct</div>
             </div>
             {% endif %}
           </div>
           {% if widget %}
-          <div class="mt-3 h-2 rounded-full bg-white">
-            <div
-              class="h-2 rounded-full {% if widget.band_key == 'front_pack' %}bg-emerald-500{% elif widget.band_key == 'mid_pack' %}bg-sky-500{% else %}bg-amber-500{% endif %}"
-              style="width: {{ widget.percentile }}%;"
-            ></div>
+          <div class="analytics-meter mt-4">
+            <span
+              style="width: {{ widget.percentile }}%; background: {% if widget.band_key == 'front_pack' %}linear-gradient(90deg, #184e59, #2b6f77){% elif widget.band_key == 'mid_pack' %}linear-gradient(90deg, #577a84, #89a6ac){% else %}linear-gradient(90deg, #a17b37, #d5b27a){% endif %};"
+            ></span>
           </div>
           {% endif %}
         </div>
@@ -70,67 +96,77 @@
       </div>
     </div>
 
-    <div class="rounded-2xl border border-white bg-white px-4 py-4 shadow-sm">
-      <h4 class="text-sm font-semibold text-gray-900">Trend Signal</h4>
+    <div class="analytics-panel-card">
+      <div class="analytics-section-tag">Trend Signal</div>
+      <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">반복 측정 변화</h4>
       {% if detail.latest_trend.state == 'delta_ready' %}
-      <p class="mt-2 text-sm text-gray-600">
+      <p class="analytics-note mt-2">
         vs {{ detail.latest_trend.comparison_anchor_measured_at }}
       </p>
-      <div class="mt-3 flex flex-wrap gap-2 text-sm text-gray-700">
+      <div class="mt-5 grid gap-3">
         {% if detail.latest_trend.delta_metrics.get('delta_vo2max_rel') is not none %}
-        <span class="rounded-full bg-emerald-50 px-3 py-1">
-          ΔVO2 {{ detail.latest_trend.delta_metrics.delta_vo2max_rel }}
-        </span>
+        <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(24, 78, 89, 0.14); background: rgba(24, 78, 89, 0.08);">
+          <div class="analytics-panel-label" style="color: var(--teal);">VO2 Shift</div>
+          <div class="mt-2 text-2xl font-semibold text-[var(--ink)]">ΔVO2 {{ detail.latest_trend.delta_metrics.delta_vo2max_rel }}</div>
+        </div>
         {% endif %}
         {% if detail.latest_trend.delta_metrics.get('pct_delta_vo2max_rel') is not none %}
-        <span class="rounded-full bg-sky-50 px-3 py-1">
-          {{ detail.latest_trend.delta_metrics.pct_delta_vo2max_rel }}%
-        </span>
+        <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          <div class="analytics-panel-label">VO2 Rate</div>
+          <div class="mt-2 text-2xl font-semibold text-[var(--ink)]">{{ detail.latest_trend.delta_metrics.pct_delta_vo2max_rel }}%</div>
+        </div>
         {% endif %}
         {% if detail.latest_trend.delta_metrics.get('delta_fatmax_power_w') is not none %}
-        <span class="rounded-full bg-amber-50 px-3 py-1">
-          ΔFatMax {{ detail.latest_trend.delta_metrics.delta_fatmax_power_w }}
-        </span>
+        <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(161, 123, 55, 0.18); background: rgba(161, 123, 55, 0.08);">
+          <div class="analytics-panel-label" style="color: var(--gold);">FatMax Shift</div>
+          <div class="mt-2 text-2xl font-semibold text-[var(--ink)]">ΔFatMax {{ detail.latest_trend.delta_metrics.delta_fatmax_power_w }}</div>
+        </div>
         {% endif %}
       </div>
       {% else %}
-      <p class="mt-2 text-sm text-gray-600">
+      <p class="analytics-note mt-3">
         A second usable CPET anchor is needed before this subject gets a dashboard delta signal.
       </p>
       {% if detail.latest_trend.comparison_anchor_measured_at %}
-      <p class="mt-2 text-xs text-gray-500">
-        Latest comparison anchor: {{ detail.latest_trend.comparison_anchor_measured_at }}
-      </p>
+      <div class="analytics-subcard mt-4">
+        <div class="analytics-panel-label">Latest Comparison Anchor</div>
+        <div class="mt-2 text-lg font-semibold text-[var(--ink)]">{{ detail.latest_trend.comparison_anchor_measured_at }}</div>
+      </div>
       {% endif %}
       {% endif %}
     </div>
   </div>
 
-  <div class="mt-4 rounded-2xl border border-white bg-white px-4 py-4 shadow-sm">
-    <h4 class="text-sm font-semibold text-gray-900">Timeline</h4>
-    <div class="mt-3 space-y-3">
+  <div class="analytics-panel-card">
+    <div class="analytics-section-tag">Timeline Story</div>
+    <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">시계열 변화 로그</h4>
+    <p class="analytics-note mt-2">anchor별 지표와 변화 신호를 리포트 카드처럼 순서대로 확인합니다.</p>
+    <div class="mt-5 grid gap-3">
       {% for point in detail.timeline %}
-      <div class="rounded-xl border border-gray-200 px-4 py-4">
-        <div class="flex items-center justify-between gap-3">
+      <div class="rounded-[22px] border px-5 py-5" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72); box-shadow: 0 10px 26px rgba(17, 25, 32, 0.04);">
+        <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <p class="text-sm font-medium text-gray-900">{{ point.anchor_measured_at }}</p>
-            <p class="text-xs text-gray-500">
-              {% if loop.last %}latest anchor{% else %}history point{% endif %}
-            </p>
+            <div class="analytics-panel-label">
+              {% if loop.last %}Latest Anchor{% else %}History Point{% endif %}
+            </div>
+            <div class="mt-2 text-xl font-semibold text-[var(--ink)]">{{ point.anchor_measured_at }}</div>
           </div>
-          <span class="rounded-full px-2 py-1 text-xs {% if point.has_usable_delta %}bg-emerald-50 text-emerald-700{% else %}bg-gray-100 text-gray-500{% endif %}">
+          <span
+            class="rounded-full px-3 py-1 text-xs font-semibold"
+            style="{% if point.has_usable_delta %}background: rgba(24, 78, 89, 0.10); color: var(--teal);{% else %}background: rgba(22, 32, 40, 0.06); color: var(--muted);{% endif %}"
+          >
             {% if point.has_usable_delta %}usable delta{% else %}current state only{% endif %}
           </span>
         </div>
-        <div class="mt-3 flex flex-wrap gap-2 text-xs text-gray-600">
-          <span class="rounded-full bg-sky-50 px-2 py-1">VO2max {{ point.vo2max_rel if point.vo2max_rel is not none else "-" }}</span>
-          <span class="rounded-full bg-amber-50 px-2 py-1">FatMax {{ point.fatmax_power_w if point.fatmax_power_w is not none else "-" }}</span>
-          <span class="rounded-full bg-violet-50 px-2 py-1">LT1 {{ point.lt1_power_w if point.lt1_power_w is not none else "-" }}</span>
+        <div class="mt-4 flex flex-wrap gap-2 text-xs">
+          <span class="rounded-full px-3 py-1" style="background: rgba(24, 78, 89, 0.08); color: var(--teal);">VO2max {{ point.vo2max_rel if point.vo2max_rel is not none else "-" }}</span>
+          <span class="rounded-full px-3 py-1" style="background: rgba(161, 123, 55, 0.10); color: #8b6426;">FatMax {{ point.fatmax_power_w if point.fatmax_power_w is not none else "-" }}</span>
+          <span class="rounded-full px-3 py-1" style="background: rgba(143, 59, 47, 0.10); color: var(--accent);">LT1 {{ point.lt1_power_w if point.lt1_power_w is not none else "-" }}</span>
           {% if point.has_usable_delta and point.delta_metrics.get('delta_vo2max_rel') is not none %}
-          <span class="rounded-full bg-emerald-50 px-2 py-1">ΔVO2 {{ point.delta_metrics.delta_vo2max_rel }}</span>
+          <span class="rounded-full px-3 py-1" style="background: rgba(24, 78, 89, 0.16); color: var(--teal);">ΔVO2 {{ point.delta_metrics.delta_vo2max_rel }}</span>
           {% endif %}
           {% if point.has_usable_delta and point.delta_metrics.get('delta_fatmax_power_w') is not none %}
-          <span class="rounded-full bg-orange-50 px-2 py-1">ΔFatMax {{ point.delta_metrics.delta_fatmax_power_w }}</span>
+          <span class="rounded-full px-3 py-1" style="background: rgba(161, 123, 55, 0.18); color: #8b6426;">ΔFatMax {{ point.delta_metrics.delta_fatmax_power_w }}</span>
           {% endif %}
         </div>
       </div>
@@ -139,7 +175,7 @@
   </div>
 </section>
 {% else %}
-<section class="rounded-xl border border-dashed border-gray-300 px-4 py-4 text-sm text-gray-500">
-  Dashboard analytics subject detail is unavailable for this selection.
+<section class="analytics-empty">
+  선택한 피험자의 대시보드 분석 상세를 불러올 수 없습니다.
 </section>
 {% endif %}

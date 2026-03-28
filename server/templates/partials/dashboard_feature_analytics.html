@@ -1,20 +1,172 @@
-<section class="bg-white rounded-lg shadow px-5 py-5">
-  <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+<section class="dashboard-analytics-shell analytics-section">
+  <style>
+    .dashboard-analytics-shell {
+      --paper: #f4efe6;
+      --paper-strong: #efe6d8;
+      --ink: #162028;
+      --muted: #5f6d74;
+      --line: rgba(22, 32, 40, 0.12);
+      --accent: #8f3b2f;
+      --accent-soft: rgba(143, 59, 47, 0.12);
+      --teal: #184e59;
+      --gold: #a17b37;
+      --shadow: 0 24px 60px rgba(17, 25, 32, 0.12);
+      --radius: 22px;
+      position: relative;
+      overflow: hidden;
+      padding: 28px;
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at top left, rgba(143, 59, 47, 0.06), transparent 28%),
+        radial-gradient(circle at top right, rgba(24, 78, 89, 0.08), transparent 26%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(241, 234, 224, 0.88));
+      border: 1px solid rgba(255, 255, 255, 0.52);
+      box-shadow: var(--shadow);
+      color: var(--ink);
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+    }
+    .dashboard-analytics-shell h2,
+    .dashboard-analytics-shell h3,
+    .dashboard-analytics-shell h4 {
+      font-family: "Iowan Old Style", "Palatino Linotype", serif;
+      letter-spacing: -0.02em;
+    }
+    .dashboard-analytics-shell .analytics-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(22, 32, 40, 0.06);
+      color: var(--accent);
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+    .dashboard-analytics-shell .analytics-section-tag {
+      color: var(--accent);
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .dashboard-analytics-shell .analytics-note {
+      color: var(--muted);
+      font-size: 0.98rem;
+      line-height: 1.6;
+    }
+    .dashboard-analytics-shell .analytics-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 22px;
+    }
+    .dashboard-analytics-shell .analytics-kpi-card,
+    .dashboard-analytics-shell .analytics-panel-card {
+      min-height: 170px;
+      padding: 18px;
+      border-radius: 22px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(240, 233, 222, 0.88));
+      border: 1px solid rgba(22, 32, 40, 0.08);
+      box-shadow: 0 10px 26px rgba(17, 25, 32, 0.06);
+    }
+    .dashboard-analytics-shell .analytics-kpi-label,
+    .dashboard-analytics-shell .analytics-panel-label {
+      color: var(--muted);
+      font-size: 0.82rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+    .dashboard-analytics-shell .analytics-kpi-value {
+      margin-top: 10px;
+      font-family: "Iowan Old Style", "Palatino Linotype", serif;
+      font-size: 2.35rem;
+      line-height: 1;
+      color: var(--ink);
+    }
+    .dashboard-analytics-shell .analytics-kpi-copy {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 0.98rem;
+      line-height: 1.45;
+    }
+    .dashboard-analytics-shell .analytics-panel-grid {
+      display: grid;
+      grid-template-columns: 1.05fr 1fr 0.9fr;
+      gap: 16px;
+      margin-top: 18px;
+    }
+    .dashboard-analytics-shell .analytics-subcard {
+      margin-top: 12px;
+      padding: 16px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid rgba(22, 32, 40, 0.06);
+    }
+    .dashboard-analytics-shell .analytics-meter {
+      height: 8px;
+      margin-top: 10px;
+      border-radius: 999px;
+      background: rgba(22, 32, 40, 0.06);
+      overflow: hidden;
+    }
+    .dashboard-analytics-shell .analytics-meter > span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--teal), var(--gold));
+    }
+    .dashboard-analytics-shell .analytics-empty {
+      margin-top: 18px;
+      border-radius: 22px;
+      border: 1px dashed rgba(22, 32, 40, 0.16);
+      background: rgba(255, 255, 255, 0.45);
+      padding: 20px;
+      color: var(--muted);
+      text-align: center;
+    }
+    @media (max-width: 1100px) {
+      .dashboard-analytics-shell .analytics-kpi-grid,
+      .dashboard-analytics-shell .analytics-panel-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 720px) {
+      .dashboard-analytics-shell {
+        padding: 22px 18px;
+      }
+      .dashboard-analytics-shell .analytics-kpi-grid,
+      .dashboard-analytics-shell .analytics-panel-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+
+  <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
     <div>
-      <h2 class="text-lg font-semibold text-gray-900">Dashboard Analytics</h2>
-      <p class="text-sm text-gray-500">
-        subject_feature_sets 기반 cohort overview와 subject drill-in을 로드합니다.
-      </p>
+      <span class="analytics-eyebrow">Overview</span>
+      <div class="mt-4">
+        <div class="analytics-section-tag">Subject Feature Sets</div>
+        <h2 class="mt-2 text-3xl font-semibold text-[var(--ink)]">주요 지표 대시보드</h2>
+        <p class="analytics-note mt-3 max-w-3xl">
+          반복 제출된 CPET 기반 feature set을 바탕으로 코호트 상태와 개별 피험자 drill-in을
+          리포트 카드 톤으로 먼저 확인합니다.
+        </p>
+      </div>
     </div>
-    <label class="flex flex-col gap-1 text-sm text-gray-600">
-      <span>Subject Drill-in</span>
+    <label class="flex flex-col gap-2 text-sm text-[var(--muted)]">
+      <span class="analytics-panel-label">Subject Drill-in</span>
       <select
         name="subject_id"
-        class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+        class="min-w-[220px] rounded-2xl border border-[rgba(22,32,40,0.1)] bg-[rgba(255,255,255,0.82)] px-4 py-3 text-sm text-[var(--ink)] shadow-sm outline-none"
         hx-get="/api/dashboard/analytics/subject"
         hx-target="#dashboard-analytics-subject-detail"
         hx-swap="innerHTML"
       >
+        {% if not dashboard_subjects %}
+        <option value="">선택 가능한 피험자가 없습니다</option>
+        {% endif %}
         {% for row in dashboard_subjects %}
         <option value="{{ row.subject_id }}" {% if row.subject_id == selected_subject_id %}selected{% endif %}>
           {{ row.subject_name }}
@@ -24,120 +176,115 @@
     </label>
   </div>
 
-  <div class="mt-4 grid gap-3 lg:grid-cols-4">
-    <div class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4">
-      <p class="text-xs uppercase tracking-wide text-sky-700">Current Cohort</p>
-      <p class="mt-1 text-2xl font-semibold text-slate-900">{{ overview.subjects_with_current_state }}</p>
-      <p class="mt-1 text-sm text-slate-600">
-        subjects with current CPET anchors out of {{ overview.total_subjects }} total subjects
-      </p>
+  <div class="analytics-kpi-grid">
+    <div class="analytics-kpi-card">
+      <div class="analytics-kpi-label">Current Cohort</div>
+      <div class="analytics-kpi-value">{{ overview.subjects_with_current_state }}</div>
+      <div class="analytics-kpi-copy">
+        현재 usable CPET anchor가 있는 피험자 수입니다.
+        <div class="mt-2 text-sm text-[var(--accent)]">{{ overview.total_subjects }}명 전체 cohort 기준</div>
+      </div>
     </div>
-    <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
-      <p class="text-xs uppercase tracking-wide text-emerald-700">Repeat-Test Ready</p>
-      <p class="mt-1 text-2xl font-semibold text-slate-900">{{ overview.subjects_with_multi_date_cpet_history }}</p>
-      <p class="mt-1 text-sm text-slate-600">
-        subjects with at least two usable CPET anchors
-      </p>
+    <div class="analytics-kpi-card">
+      <div class="analytics-kpi-label">Repeat-Test Ready</div>
+      <div class="analytics-kpi-value">{{ overview.subjects_with_multi_date_cpet_history }}</div>
+      <div class="analytics-kpi-copy">
+        두 번 이상 usable anchor가 쌓여 변화 해석이 가능한 피험자입니다.
+      </div>
     </div>
-    <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
-      <p class="text-xs uppercase tracking-wide text-amber-700">Single-Anchor Watchlist</p>
-      <p class="mt-1 text-2xl font-semibold text-slate-900">{{ overview.single_anchor_subjects }}</p>
-      <p class="mt-1 text-sm text-slate-600">
+    <div class="analytics-kpi-card">
+      <div class="analytics-kpi-label">Single-Anchor Watchlist</div>
+      <div class="analytics-kpi-value">{{ overview.single_anchor_subjects }}</div>
+      <div class="analytics-kpi-copy">
         {% if overview.sparse_subject_preview %}
         {{ overview.sparse_subject_preview | join(', ') }}
         {% else %}
-        repeat history is available for every current subject
+        모든 current subject에 반복 측정 이력이 있습니다.
         {% endif %}
-      </p>
+      </div>
     </div>
-    <div class="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-4">
-      <p class="text-xs uppercase tracking-wide text-violet-700">Anchor Window</p>
-      <p class="mt-1 text-lg font-semibold text-slate-900">{{ overview.anchor_window.latest_measured_at or "-" }}</p>
-      <p class="mt-1 text-sm text-slate-600">
+    <div class="analytics-kpi-card">
+      <div class="analytics-kpi-label">Anchor Window</div>
+      <div class="analytics-kpi-value text-2xl">{{ overview.anchor_window.latest_measured_at or "-" }}</div>
+      <div class="analytics-kpi-copy">
         {{ overview.anchor_window.earliest_measured_at or "-" }} to {{ overview.anchor_window.latest_measured_at or "-" }}
-      </p>
+      </div>
     </div>
   </div>
 
-  <div class="mt-4 grid gap-3 xl:grid-cols-3">
-    <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-      <p class="text-xs uppercase tracking-wide text-slate-500">Metric Availability</p>
-      <dl class="mt-3 space-y-3 text-sm text-slate-700">
+  <div class="analytics-panel-grid">
+    <div class="analytics-panel-card">
+      <div class="analytics-panel-label">Metric Availability</div>
+      <dl class="mt-4 space-y-4 text-sm text-[var(--ink)]">
         <div class="flex items-center justify-between">
           <dt>VO2max rows</dt>
-          <dd class="font-medium">
+          <dd class="font-semibold">
             {{ overview.available_metrics.vo2max_rel_rows }} / {{ overview.usable_cpet_anchor_rows }}
           </dd>
         </div>
-        <div class="h-2 rounded-full bg-white">
-          <div
-            class="h-2 rounded-full bg-sky-500"
-            style="width: {{ overview.metric_coverage.vo2max_rel_pct }}%;"
-          ></div>
+        <div class="analytics-meter">
+          <span style="width: {{ overview.metric_coverage.vo2max_rel_pct }}%;"></span>
         </div>
         <div class="flex items-center justify-between">
           <dt>FatMax rows</dt>
-          <dd class="font-medium">
+          <dd class="font-semibold">
             {{ overview.available_metrics.fatmax_power_w_rows }} / {{ overview.usable_cpet_anchor_rows }}
           </dd>
         </div>
-        <div class="h-2 rounded-full bg-white">
-          <div
-            class="h-2 rounded-full bg-amber-500"
-            style="width: {{ overview.metric_coverage.fatmax_power_w_pct }}%;"
-          ></div>
+        <div class="analytics-meter">
+          <span style="width: {{ overview.metric_coverage.fatmax_power_w_pct }}%;"></span>
         </div>
-        <div class="flex items-center justify-between border-t border-slate-200 pt-3">
+        <div class="flex items-center justify-between border-t border-[var(--line)] pt-4">
           <dt>Usable delta subjects</dt>
-          <dd class="font-medium">{{ overview.subjects_with_usable_delta }}</dd>
+          <dd class="font-semibold">{{ overview.subjects_with_usable_delta }}</dd>
         </div>
       </dl>
     </div>
-    <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4">
-      <p class="text-xs uppercase tracking-wide text-rose-700">Cohort Leaders</p>
-      <dl class="mt-3 space-y-3 text-sm text-slate-700">
-        <div class="rounded-xl bg-white/80 px-3 py-3">
-          <dt class="text-xs uppercase tracking-wide text-slate-500">Top VO2max</dt>
+
+    <div class="analytics-panel-card">
+      <div class="analytics-panel-label">Cohort Leaders</div>
+      <div class="analytics-subcard">
+        <div class="analytics-panel-label">Top VO2max</div>
+        <div class="mt-2 text-base font-semibold text-[var(--ink)]">
           {% if overview.leaders.vo2max_rel %}
-          <dd class="mt-1 text-base font-semibold text-slate-900">
-            {{ overview.leaders.vo2max_rel.subject_name }}
-          </dd>
-          <dd class="text-sm text-slate-600">
-            {{ overview.leaders.vo2max_rel.value }} ml/kg/min across {{ overview.leaders.vo2max_rel.total }} current rows
-          </dd>
+          {{ overview.leaders.vo2max_rel.subject_name }}
+          <div class="mt-1 text-sm font-normal text-[var(--muted)]">
+            {{ overview.leaders.vo2max_rel.value }} ml/kg/min · {{ overview.leaders.vo2max_rel.total }} current rows
+          </div>
           {% else %}
-          <dd class="mt-1 text-sm text-slate-500">No usable VO2max rows</dd>
+          <div class="mt-1 text-sm text-[var(--muted)]">No usable VO2max rows</div>
           {% endif %}
         </div>
-        <div class="rounded-xl bg-white/80 px-3 py-3">
-          <dt class="text-xs uppercase tracking-wide text-slate-500">Top FatMax</dt>
+      </div>
+      <div class="analytics-subcard">
+        <div class="analytics-panel-label">Top FatMax</div>
+        <div class="mt-2 text-base font-semibold text-[var(--ink)]">
           {% if overview.leaders.fatmax_power_w %}
-          <dd class="mt-1 text-base font-semibold text-slate-900">
-            {{ overview.leaders.fatmax_power_w.subject_name }}
-          </dd>
-          <dd class="text-sm text-slate-600">
-            {{ overview.leaders.fatmax_power_w.value }} W across {{ overview.leaders.fatmax_power_w.total }} current rows
-          </dd>
+          {{ overview.leaders.fatmax_power_w.subject_name }}
+          <div class="mt-1 text-sm font-normal text-[var(--muted)]">
+            {{ overview.leaders.fatmax_power_w.value }} W · {{ overview.leaders.fatmax_power_w.total }} current rows
+          </div>
           {% else %}
-          <dd class="mt-1 text-sm text-slate-500">No usable FatMax rows</dd>
+          <div class="mt-1 text-sm text-[var(--muted)]">No usable FatMax rows</div>
           {% endif %}
         </div>
-      </dl>
+      </div>
     </div>
-    <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
-      <p class="text-xs uppercase tracking-wide text-amber-700">Quality Flags</p>
-      <dl class="mt-3 space-y-2 text-sm text-amber-900">
+
+    <div class="analytics-panel-card">
+      <div class="analytics-panel-label">Quality Flags</div>
+      <dl class="mt-4 space-y-3 text-sm text-[var(--ink)]">
         <div class="flex items-center justify-between">
           <dt>Missing previous snapshot</dt>
-          <dd class="font-medium">{{ overview.quality_flag_counts.get('missing_previous_snapshot', 0) }}</dd>
+          <dd class="font-semibold">{{ overview.quality_flag_counts.get('missing_previous_snapshot', 0) }}</dd>
         </div>
         <div class="flex items-center justify-between">
           <dt>Mixed source compare</dt>
-          <dd class="font-medium">{{ overview.quality_flag_counts.get('mixed_source_compare', 0) }}</dd>
+          <dd class="font-semibold">{{ overview.quality_flag_counts.get('mixed_source_compare', 0) }}</dd>
         </div>
-        <div class="flex items-center justify-between border-t border-amber-200 pt-2">
+        <div class="flex items-center justify-between border-t border-[var(--line)] pt-4">
           <dt>Total feature rows</dt>
-          <dd class="font-medium">{{ overview.total_feature_rows }}</dd>
+          <dd class="font-semibold">{{ overview.total_feature_rows }}</dd>
         </div>
       </dl>
     </div>
@@ -145,15 +292,15 @@
 
   <div
     id="dashboard-analytics-subject-detail"
-    class="mt-4"
+    class="mt-6"
     {% if selected_subject_id %}
     hx-get="/api/dashboard/analytics/subject?subject_id={{ selected_subject_id }}"
     hx-trigger="load"
     hx-swap="innerHTML"
     {% endif %}
   >
-    <div class="rounded-xl border border-dashed border-gray-300 px-4 py-4 text-sm text-gray-500">
-      Subject analytics detail will load here.
+    <div class="analytics-empty">
+      선택한 피험자의 변화 이력과 코호트 포지셔닝이 이 영역에 표시됩니다.
     </div>
   </div>
 </section>
