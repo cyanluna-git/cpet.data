@@ -2330,7 +2330,7 @@ def _build_positioning_widget(position: dict | None) -> dict | None:
         "band_key": band_key,
         "band_label": band_label,
         "relative_label": _format_top_share_label(position.get("rank"), position.get("total")),
-        "comparison_copy": f"코호트 대비 {round(percentile)} 퍼센타일 영역",
+        "comparison_copy": f"코호트 내 백분위 {round(percentile)}",
     }
 
 

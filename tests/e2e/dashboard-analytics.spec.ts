@@ -79,7 +79,7 @@ test.describe("Dashboard analytics", () => {
     await expect(page.locator("text=Trend Signal")).toBeVisible();
     await expect(
       page.locator(
-        "text=A second usable anchor is needed before this subject gets a dashboard delta signal.",
+        "text=변화 신호를 보려면 비교 가능한 측정이 한 번 더 필요합니다.",
       ),
     ).toBeVisible();
     await expect(page.locator("text=Unavailable")).toHaveCount(2);
