@@ -1745,6 +1745,8 @@ def list_subject_feature_sets(
     db_path: Path,
     subject_id: str | None = None,
     feature_spec_key: str | None = None,
+    window_label: str | None = None,
+    anchor_source_kind: str | None = None,
     limit: int = 200,
     include_payload: bool = False,
 ) -> list[dict]:
@@ -1759,6 +1761,12 @@ def list_subject_feature_sets(
     if feature_spec_key:
         conditions.append("sfs.feature_spec_key = ?")
         params.append(feature_spec_key)
+    if window_label:
+        conditions.append("sfs.window_label = ?")
+        params.append(window_label)
+    if anchor_source_kind:
+        conditions.append("sms.source_kind = ?")
+        params.append(anchor_source_kind)
 
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     params.append(limit)

@@ -176,6 +176,23 @@ class TestSubjectFeatureSetsExplorer:
         assert "longitudinal_delta" in resp.text
         assert "endurance_core" not in resp.text
 
+    def test_feature_sets_partial_filters_by_window_and_anchor_source(self, tmp_path: Path) -> None:
+        db_path = self._setup_app(tmp_path)
+        _seed_feature_rows(db_path, app.state.data_dir)
+        client = TestClient(app, raise_server_exceptions=False)
+        _login_as_researcher(client)
+
+        resp = client.get(
+            "/api/manage/feature-sets?feature_spec_key=longitudinal_delta"
+            "&feature_window_label=previous_pair"
+            "&feature_anchor_source_kind=cpet_submission"
+        )
+
+        assert resp.status_code == 200
+        assert "previous_pair" in resp.text
+        assert "cpet_submission" in resp.text
+        assert "endurance_core" not in resp.text
+
     def test_feature_set_detail_partial_renders_payload_and_flags(self, tmp_path: Path) -> None:
         db_path = self._setup_app(tmp_path)
         _, detail_row = _seed_feature_rows(db_path, app.state.data_dir)

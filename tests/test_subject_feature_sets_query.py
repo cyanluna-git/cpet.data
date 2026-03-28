@@ -135,6 +135,24 @@ class TestSubjectFeatureSetsQuery:
         assert "input_snapshot_ids" in latest
         assert "input_source_kinds" in latest
 
+    def test_list_filters_by_window_label_and_anchor_source_kind(self, tmp_path: Path) -> None:
+        db_path = _init_platform_db(tmp_path)
+        _seed_feature_rows(db_path, tmp_path)
+
+        rows = list_subject_feature_sets(
+            db_path,
+            feature_spec_key="longitudinal_delta",
+            window_label="previous_pair",
+            anchor_source_kind="cpet_submission",
+            include_payload=True,
+            limit=10,
+        )
+
+        assert len(rows) == 3
+        assert all(row["feature_spec_key"] == "longitudinal_delta" for row in rows)
+        assert all(row["window_label"] == "previous_pair" for row in rows)
+        assert all(row["anchor_source_kind"] == "cpet_submission" for row in rows)
+
     def test_get_returns_detail_row_and_none_for_missing(self, tmp_path: Path) -> None:
         db_path = _init_platform_db(tmp_path)
         seeded = _seed_feature_rows(db_path, tmp_path)

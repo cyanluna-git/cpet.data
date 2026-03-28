@@ -156,7 +156,7 @@
         </div>
       </div>
       <form
-        class="grid grid-cols-2 md:grid-cols-3 gap-2"
+        class="grid grid-cols-2 md:grid-cols-5 gap-2"
         hx-get="/api/manage/feature-sets"
         hx-target="#manage-feature-sets-body"
         hx-swap="innerHTML"
@@ -171,6 +171,16 @@
           <option value="">모든 feature spec</option>
           <option value="endurance_core" {% if feature_set_filters.feature_spec_key == 'endurance_core' %}selected{% endif %}>endurance_core</option>
           <option value="longitudinal_delta" {% if feature_set_filters.feature_spec_key == 'longitudinal_delta' %}selected{% endif %}>longitudinal_delta</option>
+        </select>
+        <select name="feature_window_label" class="rounded border border-gray-300 px-2 py-1.5 text-sm">
+          <option value="">모든 window</option>
+          <option value="anchor" {% if feature_set_filters.window_label == 'anchor' %}selected{% endif %}>anchor</option>
+          <option value="previous_pair" {% if feature_set_filters.window_label == 'previous_pair' %}selected{% endif %}>previous_pair</option>
+        </select>
+        <select name="feature_anchor_source_kind" class="rounded border border-gray-300 px-2 py-1.5 text-sm">
+          <option value="">모든 anchor source</option>
+          <option value="cpet_submission" {% if feature_set_filters.anchor_source_kind == 'cpet_submission' %}selected{% endif %}>cpet_submission</option>
+          <option value="inscyd_report" {% if feature_set_filters.anchor_source_kind == 'inscyd_report' %}selected{% endif %}>inscyd_report</option>
         </select>
         <button type="submit" class="rounded bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800">필터 적용</button>
       </form>

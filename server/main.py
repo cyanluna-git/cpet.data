@@ -628,6 +628,8 @@ async def manage_page(
     date_to: str = "",
     feature_subject_id: str = "",
     feature_spec_key: str = "",
+    feature_window_label: str = "",
+    feature_anchor_source_kind: str = "",
 ) -> HTMLResponse:
     """Render the admin management page with tabs for users, subjects, and submissions."""
     auth_result = _require_manage_access(request)
@@ -654,6 +656,8 @@ async def manage_page(
         db_path,
         subject_id=feature_subject_id or None,
         feature_spec_key=feature_spec_key or None,
+        window_label=feature_window_label or None,
+        anchor_source_kind=feature_anchor_source_kind or None,
     )
 
     active_tab = tab if tab in ("users", "subjects", "submissions", "snapshots", "feature_sets") else "users"
@@ -677,6 +681,8 @@ async def manage_page(
         "feature_set_filters": {
             "subject_id": feature_subject_id,
             "feature_spec_key": feature_spec_key,
+            "window_label": feature_window_label,
+            "anchor_source_kind": feature_anchor_source_kind,
         },
     })
 
@@ -793,6 +799,8 @@ def _render_manage_feature_sets(
     session_user: dict,
     feature_subject_id: str = "",
     feature_spec_key: str = "",
+    feature_window_label: str = "",
+    feature_anchor_source_kind: str = "",
 ) -> HTMLResponse:
     """Helper to render the feature set explorer partial after HTMX filtering."""
     db_path = request.app.state.db_path
@@ -801,6 +809,8 @@ def _render_manage_feature_sets(
         db_path,
         subject_id=feature_subject_id or None,
         feature_spec_key=feature_spec_key or None,
+        window_label=feature_window_label or None,
+        anchor_source_kind=feature_anchor_source_kind or None,
     )
     return templates.TemplateResponse(
         request,
@@ -811,6 +821,8 @@ def _render_manage_feature_sets(
             "feature_set_filters": {
                 "subject_id": feature_subject_id,
                 "feature_spec_key": feature_spec_key,
+                "window_label": feature_window_label,
+                "anchor_source_kind": feature_anchor_source_kind,
             },
             "session_user": session_user,
             "current_user": session_user,
@@ -882,6 +894,8 @@ async def manage_feature_sets_partial(
     request: Request,
     feature_subject_id: str = "",
     feature_spec_key: str = "",
+    feature_window_label: str = "",
+    feature_anchor_source_kind: str = "",
 ) -> HTMLResponse:
     """Render the filtered feature set explorer partial for HTMX swaps."""
     auth_result = _require_manage_access(request)
@@ -893,6 +907,8 @@ async def manage_feature_sets_partial(
         session_user,
         feature_subject_id=feature_subject_id,
         feature_spec_key=feature_spec_key,
+        feature_window_label=feature_window_label,
+        feature_anchor_source_kind=feature_anchor_source_kind,
     )
 
 
