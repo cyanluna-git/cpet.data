@@ -23,6 +23,10 @@
       class="px-4 py-2 text-sm font-medium border-b-2 transition-colors
         {% if active_tab == 'snapshots' %}border-gray-900 text-gray-900{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{% endif %}"
     >Snapshot Explorer</a>
+    <a href="/manage?tab=feature_sets"
+      class="px-4 py-2 text-sm font-medium border-b-2 transition-colors
+        {% if active_tab == 'feature_sets' %}border-gray-900 text-gray-900{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{% endif %}"
+    >Feature Sets Explorer</a>
   </div>
 
   <!-- Tab content -->
@@ -97,7 +101,7 @@
     </div>
   </div>
 
-  {% else %}
+  {% elif active_tab == 'snapshots' %}
   <div class="space-y-4" id="manage-snapshots-container">
     <div class="bg-white rounded-lg shadow p-4">
       <div class="flex items-center justify-between gap-2 mb-3">
@@ -139,6 +143,45 @@
 
     <div id="manage-snapshot-detail" class="bg-white rounded-lg shadow p-4 text-sm text-gray-500">
       행의 상세 버튼을 누르면 payload와 provenance가 표시됩니다.
+    </div>
+  </div>
+
+  {% else %}
+  <div class="space-y-4" id="manage-feature-sets-container">
+    <div class="bg-white rounded-lg shadow p-4">
+      <div class="flex items-center justify-between gap-2 mb-3">
+        <div>
+          <h3 class="text-sm font-semibold text-gray-900">Feature Sets Explorer</h3>
+          <p class="text-xs text-gray-500">subject_feature_sets 테이블을 필터링해서 파생 feature row를 검증합니다.</p>
+        </div>
+      </div>
+      <form
+        class="grid grid-cols-2 md:grid-cols-3 gap-2"
+        hx-get="/api/manage/feature-sets"
+        hx-target="#manage-feature-sets-body"
+        hx-swap="innerHTML"
+      >
+        <select name="feature_subject_id" class="rounded border border-gray-300 px-2 py-1.5 text-sm">
+          <option value="">모든 피험자</option>
+          {% for subj in subjects %}
+          <option value="{{ subj.id }}" {% if feature_set_filters.subject_id == subj.id %}selected{% endif %}>{{ subj.name }}</option>
+          {% endfor %}
+        </select>
+        <select name="feature_spec_key" class="rounded border border-gray-300 px-2 py-1.5 text-sm">
+          <option value="">모든 feature spec</option>
+          <option value="endurance_core" {% if feature_set_filters.feature_spec_key == 'endurance_core' %}selected{% endif %}>endurance_core</option>
+          <option value="longitudinal_delta" {% if feature_set_filters.feature_spec_key == 'longitudinal_delta' %}selected{% endif %}>longitudinal_delta</option>
+        </select>
+        <button type="submit" class="rounded bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800">필터 적용</button>
+      </form>
+    </div>
+
+    <div id="manage-feature-sets-body">
+      {% include "partials/manage_feature_sets.html" %}
+    </div>
+
+    <div id="manage-feature-set-detail" class="bg-white rounded-lg shadow p-4 text-sm text-gray-500">
+      행의 상세 버튼을 누르면 feature payload와 quality flags가 표시됩니다.
     </div>
   </div>
   {% endif %}

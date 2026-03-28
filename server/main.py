@@ -33,6 +33,7 @@ from server.db import (
     summarize_fitness_trends,
     get_report_user_links,
     get_subject,
+    get_subject_feature_set,
     get_submission,
     get_user,
     get_user_profile,
@@ -46,6 +47,7 @@ from server.db import (
     set_report_note,
     list_subjects,
     list_subject_metric_snapshots,
+    list_subject_feature_sets,
     set_report_name_override,
     update_subject,
     update_submission_subject_name,
@@ -624,6 +626,8 @@ async def manage_page(
     source_kind: str = "",
     date_from: str = "",
     date_to: str = "",
+    feature_subject_id: str = "",
+    feature_spec_key: str = "",
 ) -> HTMLResponse:
     """Render the admin management page with tabs for users, subjects, and submissions."""
     auth_result = _require_manage_access(request)
@@ -646,14 +650,20 @@ async def manage_page(
         "baseline_snapshot_id": snapshots[1]["snapshot_id"] if len(snapshots) >= 2 else "",
         "current_snapshot_id": snapshots[0]["snapshot_id"] if len(snapshots) >= 2 else "",
     }
+    feature_sets = list_subject_feature_sets(
+        db_path,
+        subject_id=feature_subject_id or None,
+        feature_spec_key=feature_spec_key or None,
+    )
 
-    active_tab = tab if tab in ("users", "subjects", "submissions", "snapshots") else "users"
+    active_tab = tab if tab in ("users", "subjects", "submissions", "snapshots", "feature_sets") else "users"
 
     return _template_response(request, "manage.html", {
         "users": users,
         "subjects": subjects,
         "submissions": submissions,
         "snapshots": snapshots,
+        "feature_sets": feature_sets,
         "suggestions": suggestions,
         "active_tab": active_tab,
         "session_user": session_user,
@@ -663,6 +673,10 @@ async def manage_page(
             "source_kind": source_kind,
             "date_from": date_from,
             "date_to": date_to,
+        },
+        "feature_set_filters": {
+            "subject_id": feature_subject_id,
+            "feature_spec_key": feature_spec_key,
         },
     })
 
@@ -774,6 +788,36 @@ def _render_manage_snapshots(
     )
 
 
+def _render_manage_feature_sets(
+    request: Request,
+    session_user: dict,
+    feature_subject_id: str = "",
+    feature_spec_key: str = "",
+) -> HTMLResponse:
+    """Helper to render the feature set explorer partial after HTMX filtering."""
+    db_path = request.app.state.db_path
+    subjects = list_subjects(db_path)
+    feature_sets = list_subject_feature_sets(
+        db_path,
+        subject_id=feature_subject_id or None,
+        feature_spec_key=feature_spec_key or None,
+    )
+    return templates.TemplateResponse(
+        request,
+        "partials/manage_feature_sets.html",
+        {
+            "feature_sets": feature_sets,
+            "subjects": subjects,
+            "feature_set_filters": {
+                "subject_id": feature_subject_id,
+                "feature_spec_key": feature_spec_key,
+            },
+            "session_user": session_user,
+            "current_user": session_user,
+        },
+    )
+
+
 @app.patch("/api/manage/link/{entry_id}", response_class=HTMLResponse)
 async def manage_link_entry(
     request: Request, entry_id: str,
@@ -833,6 +877,25 @@ async def manage_snapshots_partial(
     )
 
 
+@app.get("/api/manage/feature-sets", response_class=HTMLResponse)
+async def manage_feature_sets_partial(
+    request: Request,
+    feature_subject_id: str = "",
+    feature_spec_key: str = "",
+) -> HTMLResponse:
+    """Render the filtered feature set explorer partial for HTMX swaps."""
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+    return _render_manage_feature_sets(
+        request,
+        session_user,
+        feature_subject_id=feature_subject_id,
+        feature_spec_key=feature_spec_key,
+    )
+
+
 @app.get("/api/manage/snapshots/compare", response_class=HTMLResponse)
 async def manage_snapshot_compare(
     request: Request,
@@ -868,6 +931,29 @@ async def manage_snapshot_compare(
         "partials/manage_snapshot_compare.html",
         {
             "compare": compare,
+            "session_user": session_user,
+            "current_user": session_user,
+        },
+    )
+
+
+@app.get("/api/manage/feature-sets/{feature_row_id}", response_class=HTMLResponse)
+async def manage_feature_set_detail(request: Request, feature_row_id: str) -> HTMLResponse:
+    """Render a feature set detail card for explorer inspection."""
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+
+    feature_set = get_subject_feature_set(request.app.state.db_path, feature_row_id)
+    if feature_set is None:
+        return HTMLResponse("<div class='text-sm text-gray-500'>Feature set not found.</div>", status_code=404)
+
+    return templates.TemplateResponse(
+        request,
+        "partials/manage_feature_set_detail.html",
+        {
+            "feature_set": feature_set,
             "session_user": session_user,
             "current_user": session_user,
         },

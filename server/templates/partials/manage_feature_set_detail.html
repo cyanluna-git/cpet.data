@@ -1,0 +1,46 @@
+<div class="space-y-4">
+  <div class="flex items-start justify-between gap-3">
+    <div>
+      <div class="text-sm font-semibold text-gray-900">{{ feature_set.subject_name or "—" }}</div>
+      <div class="text-xs text-gray-500">{{ feature_set.feature_row_id }}</div>
+    </div>
+    <span class="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+      {{ feature_set.feature_spec_key }} / {{ feature_set.feature_spec_version }}
+    </span>
+  </div>
+
+  <dl class="grid grid-cols-2 gap-3 text-sm">
+    <div>
+      <dt class="text-xs uppercase tracking-wide text-gray-400">Anchor Date</dt>
+      <dd class="text-gray-800">{{ feature_set.anchor_measured_at }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs uppercase tracking-wide text-gray-400">Window</dt>
+      <dd class="text-gray-800">{{ feature_set.window_label or "—" }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs uppercase tracking-wide text-gray-400">Anchor Snapshot</dt>
+      <dd class="text-gray-800">{{ feature_set.anchor_snapshot_id or "—" }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs uppercase tracking-wide text-gray-400">Anchor Source</dt>
+      <dd class="text-gray-800">{{ feature_set.anchor_source_kind or "—" }}</dd>
+    </div>
+  </dl>
+
+  <div>
+    <div class="mb-1 text-xs uppercase tracking-wide text-gray-400">Quality Flags</div>
+    <div class="flex flex-wrap gap-1">
+      {% for flag in feature_set.quality_flags %}
+      <span class="inline-flex rounded bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">{{ flag }}</span>
+      {% else %}
+      <span class="text-sm text-gray-400">flags 없음</span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div>
+    <div class="mb-1 text-xs uppercase tracking-wide text-gray-400">Feature Payload JSON</div>
+    <pre class="overflow-x-auto rounded bg-gray-950 p-3 text-xs text-gray-100">{{ feature_set.feature_payload | tojson(indent=2) }}</pre>
+  </div>
+</div>

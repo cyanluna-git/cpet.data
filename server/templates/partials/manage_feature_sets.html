@@ -1,0 +1,57 @@
+<div class="space-y-4">
+  <div class="bg-white rounded-lg shadow overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">피험자</th>
+            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Anchor Date</th>
+            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Feature Spec</th>
+            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Anchor Source</th>
+            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Flags</th>
+            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">상세</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100 bg-white">
+          {% for row in feature_sets %}
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-3 text-sm text-gray-900">
+              <div class="font-medium">{{ row.subject_name or "—" }}</div>
+              <div class="text-xs text-gray-400">{{ row.subject_id }}</div>
+            </td>
+            <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{{ row.anchor_measured_at }}</td>
+            <td class="px-4 py-3 text-sm text-gray-600">
+              <div>{{ row.feature_spec_key }} / {{ row.feature_spec_version }}</div>
+              <div class="text-xs text-gray-400">{{ row.window_label or "—" }}</div>
+            </td>
+            <td class="px-4 py-3 text-sm text-gray-600">
+              <div>{{ row.anchor_source_kind or "—" }}</div>
+              <div class="text-xs text-gray-400">{{ row.anchor_extraction_version or "—" }}</div>
+            </td>
+            <td class="px-4 py-3 text-sm text-gray-600">
+              {% if row.quality_flags %}
+              <div class="text-xs text-gray-700">{{ row.quality_flags|length }} flags</div>
+              <div class="text-xs text-gray-400 truncate max-w-[16rem]">{{ row.quality_flags|join(", ") }}</div>
+              {% else %}
+              <div class="text-xs text-gray-400">flags 없음</div>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 text-sm">
+              <button
+                class="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                hx-get="/api/manage/feature-sets/{{ row.feature_row_id }}"
+                hx-target="#manage-feature-set-detail"
+                hx-swap="innerHTML"
+              >상세</button>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" class="px-4 py-8 text-center text-sm text-gray-500">조건에 맞는 feature set이 없습니다</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
