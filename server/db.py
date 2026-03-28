@@ -2034,6 +2034,35 @@ def _build_latest_trend_summary(timeline: list[dict]) -> dict:
     }
 
 
+def _get_dashboard_subject_display_names(
+    db_path: Path,
+    subject_ids: list[str],
+) -> dict[str, str]:
+    """Prefer the latest submission.subject_name over the master subject label."""
+    if not subject_ids:
+        return {}
+
+    conn = _connect(db_path)
+    placeholders = ", ".join("?" for _ in subject_ids)
+    rows = conn.execute(
+        f"""SELECT subject_id, subject_name
+            FROM submissions
+            WHERE subject_id IN ({placeholders})
+              AND subject_name IS NOT NULL
+              AND trim(subject_name) != ''
+            ORDER BY created_at DESC, rowid DESC""",
+        subject_ids,
+    ).fetchall()
+    conn.close()
+
+    display_names: dict[str, str] = {}
+    for row in rows:
+        subject_id = str(row["subject_id"])
+        if subject_id not in display_names:
+            display_names[subject_id] = str(row["subject_name"]).strip()
+    return display_names
+
+
 def _filter_dashboard_rows_by_subject_ids(
     rows: list[dict],
     subject_ids: list[str] | None = None,
@@ -2101,6 +2130,10 @@ def summarize_dashboard_feature_analytics(
             available_fatmax += 1
 
     latest_rows = list(latest_by_subject.values())
+    display_names = _get_dashboard_subject_display_names(
+        db_path,
+        list({row["subject_id"] for row in latest_rows}),
+    )
 
     def _build_leader(metric_key: str) -> dict | None:
         ranked: list[tuple[float, dict]] = []
@@ -2115,7 +2148,10 @@ def summarize_dashboard_feature_analytics(
         value, leader_row = ranked[0]
         return {
             "subject_id": leader_row["subject_id"],
-            "subject_name": leader_row.get("subject_name", ""),
+            "subject_name": display_names.get(
+                leader_row["subject_id"],
+                leader_row.get("subject_name", ""),
+            ),
             "value": value,
             "total": len(ranked),
         }
@@ -2131,7 +2167,7 @@ def summarize_dashboard_feature_analytics(
     single_anchor_subjects = max(len(latest_by_subject) - subjects_with_multi_date_history, 0)
     sparse_subject_preview = sorted(
         [
-            row.get("subject_name", "")
+            display_names.get(row["subject_id"], row.get("subject_name", ""))
             for row in latest_rows
             if len(rows_by_subject.get(row["subject_id"], [])) < 2
         ]
@@ -2206,6 +2242,10 @@ def list_dashboard_subject_analytics(
         for row in cpet_delta_rows
         if row.get("anchor_snapshot_id")
     }
+    display_names = _get_dashboard_subject_display_names(
+        db_path,
+        list({row["subject_id"] for row in cpet_endurance_rows}),
+    )
 
     rows_by_subject: dict[str, list[dict]] = {}
     latest_rows: list[dict] = []
@@ -2231,7 +2271,7 @@ def list_dashboard_subject_analytics(
 
         subject_cards.append({
             "subject_id": subject_id,
-            "subject_name": latest.get("subject_name", ""),
+            "subject_name": display_names.get(subject_id, latest.get("subject_name", "")),
             "latest_anchor_measured_at": latest["anchor_measured_at"],
             "history_state": "timeline" if len(rows) >= 2 else "single_anchor",
             "usable_history_count": len(rows),

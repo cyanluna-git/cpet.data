@@ -7,6 +7,7 @@ from pathlib import Path
 from server.db import (
     backfill_endurance_core_feature_sets,
     backfill_longitudinal_delta_feature_sets,
+    create_submission,
     create_subject,
     get_dashboard_subject_analytics,
     init_db,
@@ -263,6 +264,30 @@ class TestDashboardFeatureAnalyticsQuery:
             )
             is None
         )
+
+    def test_dashboard_prefers_latest_submission_subject_name_for_display(self, tmp_path: Path) -> None:
+        db_path = _init_platform_db(tmp_path)
+        seeded = _seed_dashboard_feature_rows(db_path)
+
+        create_submission(
+            db_path,
+            "alias row",
+            [{"name": "alias.fit"}],
+            "workspaces/alias-row",
+            subject_name="박근윤",
+            test_date="2026-02-11",
+            subject_id=seeded["alpha"]["id"],
+        )
+
+        rows = list_dashboard_subject_analytics(db_path)
+        alpha = next(row for row in rows if row["subject_id"] == seeded["alpha"]["id"])
+        summary = summarize_dashboard_feature_analytics(db_path)
+        detail = get_dashboard_subject_analytics(db_path, seeded["alpha"]["id"])
+
+        assert alpha["subject_name"] == "박근윤"
+        assert detail is not None
+        assert detail["subject"]["name"] == "박근윤"
+        assert summary["sparse_subject_preview"] == ["Beta Rider", "Gamma Rider"]
 
     def test_detail_handles_sparse_subject_with_missing_metrics(self, tmp_path: Path) -> None:
         db_path = _init_platform_db(tmp_path)
