@@ -141,6 +141,30 @@ class TestExtractCpetSnapshot:
         payload = json.loads(snapshot["payload_json"])
         assert payload["source"]["workspace_path"] == "workspaces/relative-1"
 
+    def test_resolves_workspace_path_that_already_includes_data_prefix(self, tmp_path: Path) -> None:
+        db_path = _init_platform_db(tmp_path)
+        data_dir = tmp_path / "data"
+        subject = create_subject(db_path, name="Prefixed Subject")
+        workspace = data_dir / "workspaces" / "prefixed-1"
+        _create_analysis_db(
+            workspace,
+            "2026-02-02",
+            metrics={"vo2max": {"vo2max_rel": 41.2}},
+        )
+        submission_id = create_submission(
+            db_path,
+            "prefixed cpet",
+            [{"name": "prefixed.fit"}],
+            "data/workspaces/prefixed-1",
+            subject_id=subject["id"],
+        )
+
+        snapshot = extract_cpet_snapshot(db_path, submission_id, data_dir=data_dir)
+
+        assert snapshot is not None
+        assert snapshot["measured_at"] == "2026-02-02"
+        assert snapshot["vo2max_rel"] == 41.2
+
     def test_returns_none_without_subject_link(self, tmp_path: Path) -> None:
         db_path = _init_platform_db(tmp_path)
         workspace = tmp_path / "workspaces" / "orphan"

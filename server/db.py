@@ -1254,9 +1254,19 @@ def _resolve_workspace_path(
     if not workspace_path:
         return None
     path = Path(workspace_path)
-    if path.is_absolute() or data_dir is None:
+    if path.is_absolute():
         return path
-    return data_dir / path
+    if path.exists():
+        return path
+    if data_dir is None:
+        return path
+    candidate = data_dir / path
+    if candidate.exists():
+        return candidate
+    if path.parts and path.parts[0] == data_dir.name:
+        stripped = Path(*path.parts[1:])
+        candidate = data_dir / stripped
+    return candidate
 
 
 def _read_analysis_snapshot_source(analysis_db_path: Path) -> dict:
