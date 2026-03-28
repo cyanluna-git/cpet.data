@@ -96,8 +96,22 @@
 
   {% elif active_tab == 'submissions' %}
   <div class="bg-white rounded-lg shadow" id="manage-submissions-container">
-    <div id="manage-submissions-body" class="divide-y divide-gray-100">
-      {% include "partials/manage_submissions.html" %}
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">피험자명</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">검사일</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">상태</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">리포트</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">연결 유저</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">작업</th>
+          </tr>
+        </thead>
+        <tbody id="manage-submissions-body" class="divide-y divide-gray-100 bg-white">
+          {% include "partials/manage_submissions.html" %}
+        </tbody>
+      </table>
     </div>
   </div>
 
