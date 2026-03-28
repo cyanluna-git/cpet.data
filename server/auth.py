@@ -19,7 +19,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 from starlette.config import Config
 
-from server.db import upsert_user
+from server.db import get_user_by_email, upsert_user
 
 logger = logging.getLogger(__name__)
 
@@ -113,3 +113,37 @@ async def logout(request: Request) -> RedirectResponse:
     """Clear the session and redirect to the landing page."""
     request.session.clear()
     return RedirectResponse(url="/", status_code=302)
+
+
+@router.get("/dev-login")
+async def dev_login(
+    request: Request,
+    email: str = "",
+    next: str = "/manage?tab=feature_sets",
+) -> RedirectResponse:
+    """Create a local dev session without external OAuth.
+
+    Only works when ENABLE_LOCAL_DEV_LOGIN=1.
+    Uses DEV_LOGIN_EMAIL as the default target account when no query email is given.
+    """
+    if os.environ.get("ENABLE_LOCAL_DEV_LOGIN", "") != "1":
+        return RedirectResponse(url="/", status_code=302)
+
+    target_email = (email or os.environ.get("DEV_LOGIN_EMAIL", "")).strip()
+    if not target_email:
+        return RedirectResponse(url="/", status_code=302)
+
+    user = get_user_by_email(_get_db_path(request), target_email)
+    if user is None:
+        return RedirectResponse(url="/", status_code=302)
+
+    request.session["user_id"] = user["id"]
+    request.session["display_name"] = user.get("display_name", "")
+    request.session["avatar_url"] = user.get("avatar_url", "")
+    request.session["email"] = user.get("email", "")
+    request.session["role"] = user.get("role", "user")
+    request.session["onboarding_completed"] = user.get("onboarding_completed", 0)
+    request.session["subject_id"] = user.get("subject_id", "")
+
+    logger.info("Local dev login: %s (%s)", user["id"][:8], target_email)
+    return RedirectResponse(url=next or "/", status_code=302)

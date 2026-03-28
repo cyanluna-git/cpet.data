@@ -688,6 +688,18 @@ def get_user_by_google_id(db_path: Path, google_id: str) -> dict | None:
     return dict(row)
 
 
+def get_user_by_email(db_path: Path, email: str) -> dict | None:
+    """Fetch a user by email, or None if not found."""
+    conn = _connect(db_path)
+    row = conn.execute(
+        "SELECT * FROM users WHERE email = ?", (email,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return dict(row)
+
+
 def complete_onboarding(
     db_path: Path,
     user_id: str,
