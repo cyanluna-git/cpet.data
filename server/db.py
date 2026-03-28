@@ -1204,6 +1204,18 @@ _ENDURANCE_CORE_FEATURE_KEYS = (
     "vlamax",
     "at_power_w",
 )
+_LONGITUDINAL_DELTA_FEATURE_SPEC_KEY = "longitudinal_delta"
+_LONGITUDINAL_DELTA_FEATURE_SPEC_VERSION = "v1"
+_LONGITUDINAL_DELTA_DELTA_KEYS = (
+    "vo2max_rel",
+    "lt1_power_w",
+    "fatmax_power_w",
+    "vlamax",
+)
+_LONGITUDINAL_DELTA_PCT_KEYS = (
+    "vo2max_rel",
+    "lt1_power_w",
+)
 
 
 def _parse_analysis_result_value(raw_value: str | None) -> float | int | None:
@@ -1789,6 +1801,155 @@ def build_endurance_core_feature_set(
         "window_label": "anchor",
         "input_snapshot_ids_json": json.dumps([anchor_snapshot_id]),
         "input_source_kinds_json": json.dumps([snapshot["source_kind"]]),
+        "feature_payload_json": json.dumps(payload, ensure_ascii=True, sort_keys=True),
+        "quality_flags_json": json.dumps(quality_flags),
+    }
+
+
+def _parse_snapshot_datetime(value: str) -> datetime | None:
+    """Parse snapshot measured_at values stored as ISO dates or datetimes."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _find_previous_snapshot_id(
+    db_path: Path,
+    anchor_snapshot_id: str,
+    subject_id: str,
+) -> str | None:
+    """Return the immediately previous snapshot id for the same subject."""
+    conn = _connect(db_path)
+    rows = conn.execute(
+        """SELECT snapshot_id
+           FROM subject_metric_snapshots
+           WHERE subject_id = ?
+           ORDER BY measured_at ASC, created_at ASC, snapshot_id ASC""",
+        (subject_id,),
+    ).fetchall()
+    conn.close()
+    ordered_ids = [str(row["snapshot_id"]) for row in rows]
+    if anchor_snapshot_id not in ordered_ids:
+        return None
+    anchor_index = ordered_ids.index(anchor_snapshot_id)
+    if anchor_index == 0:
+        return None
+    return ordered_ids[anchor_index - 1]
+
+
+def build_longitudinal_delta_feature_set(
+    db_path: Path,
+    anchor_snapshot_id: str,
+) -> dict | None:
+    """Build a longitudinal_delta_v1 feature row from an anchor snapshot."""
+    anchor = get_subject_metric_snapshot(db_path, anchor_snapshot_id)
+    if anchor is None:
+        return None
+
+    previous_snapshot_id = _find_previous_snapshot_id(
+        db_path,
+        anchor_snapshot_id=anchor_snapshot_id,
+        subject_id=anchor["subject_id"],
+    )
+    previous = (
+        get_subject_metric_snapshot(db_path, previous_snapshot_id)
+        if previous_snapshot_id is not None
+        else None
+    )
+
+    input_snapshot_ids = [anchor_snapshot_id]
+    input_source_kinds = [anchor["source_kind"]]
+    quality_flags: list[str] = []
+    features: dict[str, float | int] = {}
+
+    previous_measured_at = None
+    previous_source_kind = None
+    days_since_previous = None
+
+    if previous is None:
+        quality_flags.append("missing_previous_snapshot")
+    else:
+        input_snapshot_ids = [previous_snapshot_id, anchor_snapshot_id]
+        input_source_kinds = [previous["source_kind"], anchor["source_kind"]]
+        previous_measured_at = previous["measured_at"]
+        previous_source_kind = previous["source_kind"]
+
+        anchor_dt = _parse_snapshot_datetime(anchor["measured_at"])
+        previous_dt = _parse_snapshot_datetime(previous["measured_at"])
+        if anchor_dt is not None and previous_dt is not None:
+            days_since_previous = max(0, (anchor_dt - previous_dt).days)
+            features["days_since_previous"] = days_since_previous
+
+        if previous["source_kind"] != anchor["source_kind"]:
+            quality_flags.append("mixed_source_compare")
+
+        for key in _LONGITUDINAL_DELTA_DELTA_KEYS:
+            anchor_value = anchor.get(key)
+            previous_value = previous.get(key)
+
+            missing = False
+            if anchor_value is None:
+                quality_flags.append(f"missing_anchor_{key}")
+                missing = True
+            if previous_value is None:
+                quality_flags.append(f"missing_previous_{key}")
+                missing = True
+            if missing:
+                continue
+
+            try:
+                delta = round(float(anchor_value) - float(previous_value), 2)
+            except (TypeError, ValueError):
+                continue
+
+            features[f"delta_{key}"] = delta
+
+        for key in _LONGITUDINAL_DELTA_PCT_KEYS:
+            anchor_value = anchor.get(key)
+            previous_value = previous.get(key)
+            if anchor_value is None or previous_value is None:
+                continue
+            try:
+                previous_float = float(previous_value)
+                if previous_float == 0:
+                    quality_flags.append(f"previous_zero_{key}")
+                    continue
+                pct_delta = round(((float(anchor_value) - previous_float) / previous_float) * 100, 2)
+            except (TypeError, ValueError, ZeroDivisionError):
+                continue
+            features[f"pct_delta_{key}"] = pct_delta
+
+    payload = {
+        "spec": {
+            "key": _LONGITUDINAL_DELTA_FEATURE_SPEC_KEY,
+            "version": _LONGITUDINAL_DELTA_FEATURE_SPEC_VERSION,
+        },
+        "inputs": {
+            "anchor_snapshot_id": anchor_snapshot_id,
+            "previous_snapshot_id": previous_snapshot_id,
+            "anchor_measured_at": anchor["measured_at"],
+            "previous_measured_at": previous_measured_at,
+            "anchor_source_kind": anchor["source_kind"],
+            "previous_source_kind": previous_source_kind,
+            "days_since_previous": days_since_previous,
+        },
+        "features": features,
+    }
+
+    quality_flags.sort()
+    return {
+        "feature_row_id": str(uuid.uuid4()),
+        "subject_id": anchor["subject_id"],
+        "feature_spec_key": _LONGITUDINAL_DELTA_FEATURE_SPEC_KEY,
+        "feature_spec_version": _LONGITUDINAL_DELTA_FEATURE_SPEC_VERSION,
+        "anchor_snapshot_id": anchor_snapshot_id,
+        "anchor_measured_at": anchor["measured_at"],
+        "window_label": "previous_pair",
+        "input_snapshot_ids_json": json.dumps(input_snapshot_ids),
+        "input_source_kinds_json": json.dumps(input_source_kinds),
         "feature_payload_json": json.dumps(payload, ensure_ascii=True, sort_keys=True),
         "quality_flags_json": json.dumps(quality_flags),
     }
