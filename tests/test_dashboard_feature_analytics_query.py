@@ -149,6 +149,49 @@ class TestDashboardFeatureAnalyticsQuery:
         assert area_cards["building_momentum"]["count"] == 1
         assert area_cards["history_needed"]["count"] == 2
 
+    def test_summary_aligns_usable_delta_count_with_latest_cohort_map_state(self, tmp_path: Path) -> None:
+        db_path = _init_platform_db(tmp_path)
+        alpha = create_subject(db_path, name="Alpha Rider")
+
+        for snapshot in (
+            _snapshot(
+                subject_id=alpha["id"],
+                source_kind="cpet_submission",
+                source_ref_id="alpha-cpet-1",
+                measured_at="2026-01-10",
+                vo2max_rel=50.0,
+                fatmax_power_w=180.0,
+                lt1_power_w=205.0,
+            ),
+            _snapshot(
+                subject_id=alpha["id"],
+                source_kind="cpet_submission",
+                source_ref_id="alpha-cpet-2",
+                measured_at="2026-02-10",
+                vo2max_rel=55.0,
+                fatmax_power_w=195.0,
+                lt1_power_w=220.0,
+            ),
+            _snapshot(
+                subject_id=alpha["id"],
+                source_kind="inscyd_report",
+                source_ref_id="alpha-inscyd-3",
+                measured_at="2026-03-10",
+            ),
+        ):
+            upsert_subject_metric_snapshot(db_path, snapshot)
+
+        backfill_endurance_core_feature_sets(db_path)
+        backfill_longitudinal_delta_feature_sets(db_path)
+
+        summary = summarize_dashboard_feature_analytics(db_path)
+
+        assert summary["subjects_with_multi_date_history"] == 1
+        assert summary["cohort_map_summary"]["history_ready_count"] == 0
+        assert summary["subjects_with_usable_delta"] == 0
+        area_cards = {card["key"]: card for card in summary["cohort_map_summary"]["area_cards"]}
+        assert area_cards["history_needed"]["count"] == 1
+
     def test_list_returns_subject_cards_with_history_state_and_privacy_safe_positioning(self, tmp_path: Path) -> None:
         db_path = _init_platform_db(tmp_path)
         seeded = _seed_dashboard_feature_rows(db_path)

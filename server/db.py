@@ -2621,14 +2621,11 @@ def summarize_dashboard_feature_analytics(
         list({row["subject_id"] for row in latest_rows}),
     )
 
-    subjects_with_usable_delta = len(
-        {
-            row["subject_id"]
-            for row in delta_rows
-            if "missing_previous_snapshot" not in row.get("quality_flags", [])
-            and "mixed_source_compare" not in row.get("quality_flags", [])
-        }
-    )
+    # Keep the headline count aligned with the cohort-map classification.
+    # If a subject has an older usable delta but the latest anchor is no longer
+    # history-ready, the overview should not imply that the current cohort map
+    # contains a non-zero active change segment.
+    subjects_with_usable_delta = int(cohort_map["summary"]["history_ready_count"])
     single_anchor_subjects = max(len(latest_by_subject) - subjects_with_multi_date_history, 0)
     sparse_subject_preview = sorted(
         [
