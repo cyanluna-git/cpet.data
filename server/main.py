@@ -252,7 +252,15 @@ async def dashboard_page(request: Request) -> HTMLResponse:
     guard = _check_onboarding(request)
     if guard:
         return guard
-    return _template_response(request, "dashboard.html")
+    session_user = _get_session_user(request)
+    requested_tab = (request.query_params.get("tab") or "").strip().lower()
+    if requested_tab not in {"analytics", "reports"}:
+        requested_tab = "analytics" if session_user else "reports"
+    if requested_tab == "analytics" and session_user is None:
+        requested_tab = "reports"
+    return _template_response(request, "dashboard.html", {
+        "dashboard_tab": requested_tab,
+    })
 
 
 def _render_dashboard_analytics(

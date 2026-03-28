@@ -17,12 +17,13 @@ test.describe("Dashboard analytics", () => {
     await loginAsTestUser(context);
   });
 
-  test("researcher dashboard shows analytics overview alongside report filters", async ({
+  test("researcher dashboard shows analytics overview in its own tab", async ({
     page,
   }) => {
     await navigateAndWait(page, "/dashboard");
 
-    await expect(page.locator("#filter-tabs")).toBeVisible();
+    await expect(page.locator("#filter-tabs")).toHaveCount(0);
+    await expect(page.locator('a[href="/dashboard?tab=reports"]')).toBeVisible();
     await expect(page.locator("text=주요 지표 대시보드")).toBeVisible();
     await expect(page.locator("text=Current Cohort")).toBeVisible();
     await expect(page.locator("text=Repeat-Test Ready")).toBeVisible();

@@ -849,7 +849,7 @@ class TestPageRoutes:
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
         assert "대시보드" in resp.text
-        assert 'hx-get="/api/jobs/partial"' in resp.text
+        assert "Reports" in resp.text
 
 
 # ── Security: path traversal ──────────────────────────────────────────

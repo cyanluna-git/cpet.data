@@ -160,6 +160,20 @@ class TestDashboardFeatureAnalyticsPartial:
         assert resp.status_code == 200
         assert 'id="dashboard-analytics-region"' in resp.text
 
+    def test_dashboard_reports_tab_hides_analytics_and_mounts_job_list(self, tmp_path: Path) -> None:
+        db_path = _setup_app(tmp_path)
+        _seed_feature_rows(db_path)
+        client = TestClient(app, raise_server_exceptions=False)
+        _login_as(client, "researcher")
+
+        resp = client.get("/dashboard?tab=reports")
+
+        assert resp.status_code == 200
+        assert 'id="dashboard-analytics-region"' not in resp.text
+        assert 'id="filter-tabs"' in resp.text
+        assert 'id="job-list-body"' in resp.text
+        assert 'hx-get="/api/jobs/partial"' in resp.text
+
     def test_dashboard_analytics_overview_partial_renders_summary(self, tmp_path: Path) -> None:
         db_path = _setup_app(tmp_path)
         seeded = _seed_feature_rows(db_path)

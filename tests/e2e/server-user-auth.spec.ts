@@ -202,7 +202,7 @@ test.describe("Profile page", () => {
 test.describe("Dashboard My Reports filter", () => {
   test("logged-in user sees filter tabs", async ({ context, page }) => {
     await loginAsTestUser(context);
-    await navigateAndWait(page, "/dashboard");
+    await navigateAndWait(page, "/dashboard?tab=reports");
 
     // Filter tabs container is visible
     const filterTabs = page.locator("#filter-tabs");
@@ -227,7 +227,7 @@ test.describe("Dashboard My Reports filter", () => {
     page,
   }) => {
     await loginAsTestUser(context);
-    await navigateAndWait(page, "/dashboard");
+    await navigateAndWait(page, "/dashboard?tab=reports");
 
     // Click "My Reports" tab
     const myReportsBtn = page.locator('button[data-filter="mine"]');
@@ -252,7 +252,7 @@ test.describe("Dashboard My Reports filter", () => {
 
   test("switching back to All tab works", async ({ context, page }) => {
     await loginAsTestUser(context);
-    await navigateAndWait(page, "/dashboard");
+    await navigateAndWait(page, "/dashboard?tab=reports");
 
     // Click "My Reports" first
     const myReportsBtn = page.locator('button[data-filter="mine"]');
@@ -278,7 +278,7 @@ test.describe("Dashboard My Reports filter", () => {
   });
 
   test("anonymous user does NOT see filter tabs", async ({ page }) => {
-    await navigateAndWait(page, "/dashboard");
+    await navigateAndWait(page, "/dashboard?tab=reports");
 
     // Filter tabs should not be present
     await expect(page.locator("#filter-tabs")).not.toBeVisible();
