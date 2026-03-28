@@ -23,6 +23,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from server.db import (
+    build_subject_feature_set_compare,
     build_fitness_trend_compare,
     build_fitness_trend_options,
     build_subject_metric_snapshot_compare,
@@ -926,6 +927,47 @@ async def manage_feature_sets_partial(
         feature_spec_key=feature_spec_key,
         feature_window_label=feature_window_label,
         feature_anchor_source_kind=feature_anchor_source_kind,
+    )
+
+
+@app.get("/api/manage/feature-sets/compare", response_class=HTMLResponse)
+async def manage_feature_set_compare(
+    request: Request,
+    baseline_feature_row_id: str = "",
+    current_feature_row_id: str = "",
+) -> HTMLResponse:
+    """Render a compare card for two selected feature sets."""
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+
+    if not baseline_feature_row_id or not current_feature_row_id:
+        return HTMLResponse(
+            "<div class='text-sm text-gray-500'>비교할 feature set 두 개를 선택하세요.</div>",
+            status_code=400,
+        )
+
+    try:
+        compare = build_subject_feature_set_compare(
+            request.app.state.db_path,
+            baseline_feature_row_id=baseline_feature_row_id,
+            current_feature_row_id=current_feature_row_id,
+        )
+    except ValueError as exc:
+        return HTMLResponse(
+            f"<div class='text-sm text-gray-500'>{str(exc)}</div>",
+            status_code=400,
+        )
+
+    return templates.TemplateResponse(
+        request,
+        "partials/manage_feature_set_compare.html",
+        {
+            "compare": compare,
+            "session_user": session_user,
+            "current_user": session_user,
+        },
     )
 
 

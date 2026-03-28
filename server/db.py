@@ -1868,6 +1868,56 @@ def get_subject_feature_set(db_path: Path, feature_row_id: str) -> dict | None:
     return _deserialize_feature_set_row(dict(row), include_payload=True)
 
 
+def build_subject_feature_set_compare(
+    db_path: Path,
+    baseline_feature_row_id: str,
+    current_feature_row_id: str,
+) -> dict:
+    """Build a two-feature-set comparison payload for explorer UIs."""
+    baseline = get_subject_feature_set(db_path, baseline_feature_row_id)
+    if baseline is None:
+        raise ValueError("invalid baseline feature set")
+
+    current = get_subject_feature_set(db_path, current_feature_row_id)
+    if current is None:
+        raise ValueError("invalid current feature set")
+
+    if baseline["feature_row_id"] == current["feature_row_id"]:
+        raise ValueError("baseline and current feature sets must differ")
+
+    if (
+        baseline["feature_spec_key"] != current["feature_spec_key"]
+        or baseline["feature_spec_version"] != current["feature_spec_version"]
+    ):
+        raise ValueError("feature sets must share the same spec and version")
+
+    baseline_features = baseline.get("feature_payload", {}).get("features", {})
+    current_features = current.get("feature_payload", {}).get("features", {})
+
+    metrics: list[dict] = []
+    for key in sorted(set(baseline_features) & set(current_features)):
+        before = baseline_features.get(key)
+        after = current_features.get(key)
+        if not isinstance(before, (int, float)) or not isinstance(after, (int, float)):
+            continue
+        delta = round(float(after) - float(before), 2)
+        metrics.append({
+            "key": key,
+            "label": key.replace("_", " "),
+            "before_value": before,
+            "after_value": after,
+            "delta": delta,
+        })
+
+    return {
+        "baseline": baseline,
+        "current": current,
+        "metrics": metrics,
+        "feature_spec_key": baseline["feature_spec_key"],
+        "feature_spec_version": baseline["feature_spec_version"],
+    }
+
+
 def build_subject_metric_snapshot_compare(
     db_path: Path,
     baseline_snapshot_id: str,
