@@ -166,6 +166,29 @@
           >JSON export</a>
         </div>
       </div>
+      <div class="mb-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          hx-get="/api/manage/feature-sets?feature_subject_id={{ feature_set_filters.subject_id or '' }}&feature_spec_key=&feature_window_label={{ feature_set_filters.window_label or '' }}&feature_anchor_source_kind={{ feature_set_filters.anchor_source_kind or '' }}"
+          hx-target="#manage-feature-sets-body"
+          hx-swap="innerHTML"
+        >전체</button>
+        <button
+          type="button"
+          class="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          hx-get="/api/manage/feature-sets?feature_subject_id={{ feature_set_filters.subject_id or '' }}&feature_spec_key=endurance_core&feature_window_label={{ feature_set_filters.window_label or '' }}&feature_anchor_source_kind={{ feature_set_filters.anchor_source_kind or '' }}"
+          hx-target="#manage-feature-sets-body"
+          hx-swap="innerHTML"
+        >endurance_core</button>
+        <button
+          type="button"
+          class="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          hx-get="/api/manage/feature-sets?feature_subject_id={{ feature_set_filters.subject_id or '' }}&feature_spec_key=longitudinal_delta&feature_window_label={{ feature_set_filters.window_label or '' }}&feature_anchor_source_kind={{ feature_set_filters.anchor_source_kind or '' }}"
+          hx-target="#manage-feature-sets-body"
+          hx-swap="innerHTML"
+        >longitudinal_delta</button>
+      </div>
       <form
         class="grid grid-cols-2 md:grid-cols-5 gap-2"
         hx-get="/api/manage/feature-sets"

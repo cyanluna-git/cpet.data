@@ -164,6 +164,8 @@ class TestSubjectFeatureSetsExplorer:
         assert "endurance_core" in resp.text
         assert "longitudinal_delta" in resp.text
         assert "Total Rows" in resp.text
+        assert "feature_spec_key=endurance_core" in resp.text
+        assert "feature_spec_key=longitudinal_delta" in resp.text
 
     def test_feature_sets_partial_filters_by_spec_key(self, tmp_path: Path) -> None:
         db_path = self._setup_app(tmp_path)
@@ -176,6 +178,22 @@ class TestSubjectFeatureSetsExplorer:
         assert resp.status_code == 200
         assert "longitudinal_delta" in resp.text
         assert "endurance_core" not in resp.text
+
+    def test_quick_spec_filter_links_preserve_other_filters(self, tmp_path: Path) -> None:
+        db_path = self._setup_app(tmp_path)
+        _seed_feature_rows(db_path, app.state.data_dir)
+        client = TestClient(app, raise_server_exceptions=False)
+        _login_as_researcher(client)
+
+        resp = client.get(
+            "/manage?tab=feature_sets"
+            "&feature_window_label=previous_pair"
+            "&feature_anchor_source_kind=cpet_submission"
+        )
+
+        assert resp.status_code == 200
+        assert "feature_spec_key=endurance_core&feature_window_label=previous_pair&feature_anchor_source_kind=cpet_submission" in resp.text
+        assert "feature_spec_key=longitudinal_delta&feature_window_label=previous_pair&feature_anchor_source_kind=cpet_submission" in resp.text
 
     def test_feature_sets_partial_filters_by_window_and_anchor_source(self, tmp_path: Path) -> None:
         db_path = self._setup_app(tmp_path)
