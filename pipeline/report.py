@@ -417,7 +417,7 @@ def build_metabolism_chart_payload(
 
 
 def build_metabolic_flexibility_payload(context: dict[str, Any]) -> dict[str, Any]:
-    """Build a custom metabolic flexibility summary for two-block CPET reports."""
+    """Build a custom metabolic flexibility summary for any CPET with RQ1 split."""
     analysis = context["analysis"]
     substrate = analysis["substrate"]
     rq1 = substrate.get("rq1_fuel_split") or {}
@@ -865,17 +865,17 @@ def render_html(context: dict[str, Any]) -> str:
     )
 
     fuel_flex = context.get("fuel_flex") or {}
-    # Energy system / fuel contribution section
     es = analysis.get("energy_system", {})
+    fuel_contribution_section = ""
     energy_system_section = ""
-    if is_two_block_cpet and fuel_flex:
-        energy_system_section = f"""
+    if fuel_flex:
+        fuel_contribution_section = f"""
     <section class="section" id="fuel-flex">
       <div class="section-header">
         <div>
           <span class="section-tag">Fuel Contribution</span>
           <h2>RQ 1.0 기준 연료 기여율</h2>
-          <p>기존 3-pathway energy table 대신, 이번 2블럭 CPET에서는 RQ 1.0 도달 전까지 지방과 탄수화물이 실제로 얼마나 기여했는지로 정리합니다.</p>
+          <p>RQ 1.0 도달 전까지 지방과 탄수화물이 실제로 얼마나 기여했는지를 별도 섹션으로 정리합니다. lactate 기반 3-pathway energy 해석과는 독립적으로 함께 읽습니다.</p>
         </div>
       </div>
       <div class="kpi-grid">
@@ -916,7 +916,7 @@ def render_html(context: dict[str, Any]) -> str:
         <p>{html_text(fuel_flex.get('formula_note'))}</p>
       </div>
     </section>"""
-    elif es.get("status") == "computed" and es.get("total_kj"):
+    if es.get("status") == "computed" and es.get("total_kj"):
         colors = {"oxidative": "#3B82F6", "glycolytic": "#EF4444", "phosphagen": "#10B981"}
         labels = {"oxidative": "Oxidative (산화적)", "glycolytic": "Glycolytic (해당과정)", "phosphagen": "Phosphagen (인원질)"}
         pathways = []
@@ -1820,6 +1820,8 @@ def render_html(context: dict[str, Any]) -> str:
         </article>
       </div>
     </section>
+
+    {fuel_contribution_section}
 
     {energy_system_section}
 

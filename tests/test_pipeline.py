@@ -111,6 +111,18 @@ class TestParkGeunyun:
         assert report_path.exists()
         assert report_path.stat().st_size > 10000
 
+    def test_report_includes_fuel_contribution_alongside_energy_system(self) -> None:
+        """Standard CPET reports should show fuel contribution without removing 3-pathway."""
+        from pipeline.report import generate_report
+
+        report_path = generate_report(
+            PARK_WS / "analysis.db", PARK_WS / "report"
+        )
+        html = report_path.read_text(encoding="utf-8")
+        assert "RQ 1.0 기준 연료 기여율" in html
+        assert "Fuel Split Before RQ 1.0" in html
+        assert "에너지 시스템 기여도 (3-Pathway)" in html
+
     def test_vo2max_ml(self) -> None:
         _assert_within_pct(
             self._results["vo2max"]["vo2max_ml"], 4505.3, label="vo2max_ml"
@@ -244,6 +256,17 @@ class TestCosmedOnly:
         )
         assert report_path.exists()
         assert report_path.stat().st_size > 10000
+
+    def test_report_includes_fuel_contribution_without_blood(self) -> None:
+        """Fuel contribution should also render in non-lactate CPET reports when computed."""
+        from pipeline.report import generate_report
+
+        report_path = generate_report(
+            COSMED_WS / "analysis.db", COSMED_WS / "report"
+        )
+        html = report_path.read_text(encoding="utf-8")
+        assert "RQ 1.0 기준 연료 기여율" in html
+        assert "Fuel Split Before RQ 1.0" in html
 
     def test_no_lactate_sections(self) -> None:
         """COSMED-only report should not have lactate data."""
