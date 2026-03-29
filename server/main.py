@@ -1608,6 +1608,52 @@ async def manage_rename_subject(request: Request) -> HTMLResponse:
     return HTMLResponse(f'<span>{new_name}</span>')
 
 
+@app.patch("/api/manage/report-metadata", response_class=HTMLResponse)
+async def manage_update_report_metadata(request: Request) -> HTMLResponse:
+    """Update report display metadata from the dashboard reports list.
+
+    Any logged-in user can update note text.
+    Only admins can update subject_name.
+    """
+    from fastapi.responses import JSONResponse
+
+    session_user = _get_session_user(request)
+    if session_user is None:
+        return JSONResponse(status_code=401, content={"error": "login required"})
+
+    form = await request.form()
+    new_name = str(form.get("subject_name", "")).strip()
+    note = str(form.get("note", "")).strip()
+    submission_id = str(form.get("submission_id", "")).strip()
+    report_slug = str(form.get("report_slug", "")).strip()
+
+    if not submission_id and not report_slug:
+        return JSONResponse(status_code=400, content={"error": "submission_id or report_slug is required"})
+
+    db_path = request.app.state.db_path
+
+    if new_name:
+        if session_user.get("role") != "admin":
+            return JSONResponse(status_code=403, content={"error": "admin only for subject rename"})
+        if submission_id:
+            update_submission_subject_name(db_path, submission_id, new_name)
+        if report_slug:
+            set_report_name_override(db_path, report_slug, new_name)
+
+    if report_slug:
+        set_report_note(db_path, report_slug, note)
+
+    return JSONResponse(
+        content={
+            "ok": True,
+            "subject_name": new_name,
+            "note": note,
+            "report_slug": report_slug,
+            "submission_id": submission_id,
+        }
+    )
+
+
 @app.patch("/api/report-note", response_class=HTMLResponse)
 async def update_report_note(request: Request) -> HTMLResponse:
     """Update a report note. Any logged-in user."""

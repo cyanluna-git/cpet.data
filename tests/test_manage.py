@@ -22,14 +22,18 @@ from fastapi.testclient import TestClient
 from server.db import (
     _connect,
     complete_onboarding,
+    create_job,
     create_submission,
     create_subject,
     get_subject,
+    get_report_name_overrides,
+    get_report_notes,
     get_user,
     init_db,
     link_submission_user,
     list_submissions_with_users,
     list_users,
+    set_report_note,
     unlink_submission_user,
     update_user_role,
     upsert_user,
@@ -439,6 +443,95 @@ class TestManageSubjectsAPI:
         submission = get_submission(db_path, submission_id)
         assert submission is not None
         assert submission["subject_name"] == "Before Subject"
+
+    def test_admin_can_update_report_metadata_from_dashboard(self, client: TestClient) -> None:
+        """Admin can update both subject label and test note from report modal."""
+        _login_as(client, role="admin", google_id="report-meta-admin-gid", email="report-meta-admin@test.com")
+        db_path = app.state.db_path
+        submission_id = _create_test_submission(db_path, subject_name="Before Subject")
+        job_id = create_job(db_path, submission_id)
+        conn = _connect(db_path)
+        conn.execute(
+            "UPDATE jobs SET status = ?, report_slug = ?, report_url = ? WHERE id = ?",
+            ("done", "before-subject-20260115", "/report/before-subject-20260115/", job_id),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": "before-subject-20260115",
+                "subject_name": "After Subject",
+                "note": "2블럭 램프, 존2 후반",
+            },
+        )
+
+        assert resp.status_code == 200
+        from server.db import get_submission
+        submission = get_submission(db_path, submission_id)
+        assert submission is not None
+        assert submission["subject_name"] == "After Subject"
+        assert get_report_name_overrides(db_path)["before-subject-20260115"] == "After Subject"
+        assert get_report_notes(db_path)["before-subject-20260115"] == "2블럭 램프, 존2 후반"
+
+    def test_non_admin_can_update_note_but_not_subject_name(self, client: TestClient) -> None:
+        """Non-admin users can save note text but cannot rename subject labels."""
+        _login_as(client, role="user", google_id="report-meta-user-gid", email="report-meta-user@test.com")
+        db_path = app.state.db_path
+        submission_id = _create_test_submission(db_path, subject_name="Before Subject")
+
+        forbidden = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": "before-subject-20260115",
+                "subject_name": "After Subject",
+                "note": "이 메모는 저장되면 안됨",
+            },
+        )
+
+        assert forbidden.status_code == 403
+
+        ok = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": "before-subject-20260115",
+                "note": "식별 메모",
+            },
+        )
+
+        assert ok.status_code == 200
+        from server.db import get_submission
+        submission = get_submission(db_path, submission_id)
+        assert submission is not None
+        assert submission["subject_name"] == "Before Subject"
+        assert get_report_notes(db_path)["before-subject-20260115"] == "식별 메모"
+
+    def test_jobs_partial_renders_edit_button_and_note_badge(self, client: TestClient) -> None:
+        """Reports list shows one edit button and note badge instead of inline note editor."""
+        _login_as(client, role="admin", google_id="report-partial-admin-gid", email="report-partial-admin@test.com")
+        db_path = app.state.db_path
+        submission_id = _create_test_submission(db_path, subject_name="Visible Subject")
+        job_id = create_job(db_path, submission_id)
+        conn = _connect(db_path)
+        conn.execute(
+            "UPDATE jobs SET status = ?, report_slug = ?, report_url = ? WHERE id = ?",
+            ("done", "visible-subject-20260115", "/report/visible-subject-20260115/", job_id),
+        )
+        conn.commit()
+        conn.close()
+        set_report_note(db_path, "visible-subject-20260115", "프로토콜 식별 메모")
+
+        resp = client.get("/api/jobs/partial")
+
+        assert resp.status_code == 200
+        assert "편집" in resp.text
+        assert "프로토콜 식별 메모" in resp.text
+        assert "+ 메모" not in resp.text
+        assert "openNoteEdit" not in resp.text
 
     def test_submissions_partial_can_filter_unlinked_only_and_sort_by_name(self, client: TestClient) -> None:
         """Submissions partial supports unlinked-only filter and sort controls."""

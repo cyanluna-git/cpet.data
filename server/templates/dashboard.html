@@ -151,25 +151,42 @@
   {% endif %}
 </div>
 
-<!-- 피험자명 수정 모달 -->
-<div id="rename-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50" onclick="if(event.target===this)closeRenameModal()">
+<!-- 리포트 메타데이터 편집 모달 -->
+<div id="report-meta-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50" onclick="if(event.target===this)closeReportMetaModal()">
   <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md mx-4" onclick="event.stopPropagation()">
-    <h3 class="text-lg font-semibold text-gray-900 mb-4">피험자명 수정</h3>
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">리포트 정보 편집</h3>
+    <div id="report-meta-name-wrap">
+      <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">피험자 이름</label>
+      <input
+        id="report-meta-subject-name"
+        type="text"
+        class="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+        placeholder="피험자 이름"
+      />
+    </div>
+    <div class="mt-4">
+      <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">테스트 메모</label>
+      <textarea
+        id="report-meta-note"
+        rows="4"
+        class="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+        placeholder="식별용 메모를 남기세요. 예: 존2 훈련 후 / 2블럭 램프 / 10초 증가 프로토콜"
+      ></textarea>
+    </div>
     <input
-      id="rename-input"
-      type="text"
-      class="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
-      placeholder="피험자 이름"
+      id="report-meta-can-rename"
+      type="hidden"
+      value="0"
     />
-    <input id="rename-submission-id" type="hidden" />
-    <input id="rename-report-slug" type="hidden" />
+    <input id="report-meta-submission-id" type="hidden" />
+    <input id="report-meta-report-slug" type="hidden" />
     <div class="flex justify-end gap-3 mt-4">
       <button
-        onclick="closeRenameModal()"
+        onclick="closeReportMetaModal()"
         class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
       >취소</button>
       <button
-        onclick="submitRename()"
+        onclick="submitReportMeta()"
         class="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800"
       >저장</button>
     </div>
@@ -177,73 +194,61 @@
 </div>
 
 <script>
-function openRenameModal(submissionId, reportSlug, currentName) {
-  document.getElementById('rename-submission-id').value = submissionId;
-  document.getElementById('rename-report-slug').value = reportSlug;
-  document.getElementById('rename-input').value = currentName;
-  const modal = document.getElementById('rename-modal');
+function openReportMetaModal(payload) {
+  var canRename = !!payload.canRename;
+  document.getElementById('report-meta-submission-id').value = payload.submissionId || '';
+  document.getElementById('report-meta-report-slug').value = payload.reportSlug || '';
+  document.getElementById('report-meta-subject-name').value = payload.subjectName || '';
+  document.getElementById('report-meta-note').value = payload.note || '';
+  document.getElementById('report-meta-can-rename').value = canRename ? '1' : '0';
+  var nameWrap = document.getElementById('report-meta-name-wrap');
+  var nameInput = document.getElementById('report-meta-subject-name');
+  nameWrap.style.display = canRename ? '' : 'none';
+  nameInput.disabled = !canRename;
+  const modal = document.getElementById('report-meta-modal');
   modal.classList.remove('hidden');
   modal.classList.add('flex');
-  document.getElementById('rename-input').focus();
+  (canRename ? nameInput : document.getElementById('report-meta-note')).focus();
 }
 
-function closeRenameModal() {
-  const modal = document.getElementById('rename-modal');
+function closeReportMetaModal() {
+  const modal = document.getElementById('report-meta-modal');
   modal.classList.add('hidden');
   modal.classList.remove('flex');
 }
 
-function submitRename() {
-  const subId = document.getElementById('rename-submission-id').value;
-  const slug = document.getElementById('rename-report-slug').value;
-  const name = document.getElementById('rename-input').value.trim();
-  if (!name) return;
-  const body = `subject_name=${encodeURIComponent(name)}&submission_id=${encodeURIComponent(subId)}&report_slug=${encodeURIComponent(slug)}`;
-  fetch('/api/manage/rename-subject', {
+function submitReportMeta() {
+  const subId = document.getElementById('report-meta-submission-id').value;
+  const slug = document.getElementById('report-meta-report-slug').value;
+  const canRename = document.getElementById('report-meta-can-rename').value === '1';
+  const name = document.getElementById('report-meta-subject-name').value.trim();
+  const note = document.getElementById('report-meta-note').value.trim();
+  if (!slug && !subId) return;
+  if (canRename && !name) return;
+  const body = new URLSearchParams({
+    subject_name: name,
+    note: note,
+    submission_id: subId,
+    report_slug: slug
+  });
+  fetch('/api/manage/report-metadata', {
     method: 'PATCH',
     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-    body: body
+    body: body.toString()
   }).then(r => {
     if (r.ok) {
-      closeRenameModal();
+      closeReportMetaModal();
       htmx.trigger(document.getElementById('job-list-body'), 'load');
     }
   });
 }
 
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Enter' && !document.getElementById('rename-modal').classList.contains('hidden')) {
-    submitRename();
+  if (e.key === 'Enter' && !document.getElementById('report-meta-modal').classList.contains('hidden') && e.target.tagName !== 'TEXTAREA') {
+    submitReportMeta();
   }
-  if (e.key === 'Escape') closeRenameModal();
+  if (e.key === 'Escape') closeReportMetaModal();
 });
-
-function openNoteEdit(el, slug, currentNote) {
-  var input = document.createElement('input');
-  input.type = 'text';
-  input.value = currentNote;
-  input.placeholder = '메모 입력 (예: 존2 훈련 후)';
-  input.className = 'text-[11px] border border-amber-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-amber-400 w-40';
-  input.onblur = function() { saveNote(el, slug, input.value); };
-  input.onkeydown = function(e) {
-    if (e.key === 'Enter') { e.preventDefault(); saveNote(el, slug, input.value); }
-    if (e.key === 'Escape') { el.style.display = ''; input.remove(); }
-  };
-  el.style.display = 'none';
-  el.parentNode.insertBefore(input, el.nextSibling);
-  input.focus();
-  input.select();
-}
-
-function saveNote(el, slug, note) {
-  fetch('/api/report-note', {
-    method: 'PATCH',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-    body: 'report_slug=' + encodeURIComponent(slug) + '&note=' + encodeURIComponent(note)
-  }).then(function() {
-    htmx.trigger(document.getElementById('job-list-body'), 'load');
-  });
-}
 </script>
 <script src="/static/dashboard-analytics.js"></script>
 {% endblock %}

@@ -5,14 +5,7 @@
     <div class="flex items-center gap-3 min-w-0">
       <!-- 피험자명 -->
       <div class="font-medium text-sm text-gray-900 truncate">
-        {% if current_user_role in ('researcher', 'admin') %}
-          <span
-            class="cursor-pointer hover:text-blue-600 hover:underline"
-            onclick="openRenameModal('{{ job.submission_id or '' }}', '{{ job.report_slug or '' }}', '{{ (job.subject_name or '')|e }}')"
-          >{{ job.subject_name or "—" }}</span>
-        {% else %}
-          {{ job.subject_name or "—" }}
-        {% endif %}
+        {{ job.subject_name or "—" }}
       </div>
 
       <!-- 날짜 -->
@@ -73,6 +66,17 @@
 
       {% if current_user_role == 'admin' or job.is_mine %}
         <button
+          type="button"
+          class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition"
+          onclick="openReportMetaModal({
+            submissionId: '{{ job.submission_id or '' }}',
+            reportSlug: '{{ job.report_slug or '' }}',
+            subjectName: {{ (job.subject_name or '')|tojson }},
+            note: {{ (job.note or '')|tojson }},
+            canRename: {{ 'true' if current_user_role == 'admin' else 'false' }}
+          })"
+        >편집</button>
+        <button
           class="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-medium text-red-600 hover:bg-red-50 transition"
           hx-delete="/api/manage/entries/{{ job.submission_id or job.id }}"
           hx-target="#job-list-body"
@@ -105,15 +109,12 @@
       <span class="text-[11px] text-gray-300 truncate max-w-[160px]" title="{{ job.report_slug }}">{{ job.report_slug }}</span>
     {% endif %}
 
-    <!-- Note (inline edit) -->
-    {% if job.report_slug and current_user_id %}
-    <span class="ml-auto">
-      <span
-        class="text-[11px] {% if job.note %}text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded{% else %}text-gray-300{% endif %} cursor-pointer hover:text-amber-600"
-        onclick="openNoteEdit(this, '{{ job.report_slug }}', '{{ (job.note or '')|e }}')"
-        title="메모 편집"
-      >{% if job.note %}{{ job.note }}{% else %}+ 메모{% endif %}</span>
+    {% if job.note %}
+    <span class="ml-auto rounded bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700" title="{{ job.note }}">
+      {{ job.note }}
     </span>
+    {% elif job.report_slug and current_user_id %}
+    <span class="ml-auto text-[11px] text-gray-300">메모 없음</span>
     {% endif %}
   </div>
 </div>
