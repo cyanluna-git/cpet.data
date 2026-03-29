@@ -545,6 +545,13 @@ def _linear_interpolate(x1: float, y1: float, x2: float, y2: float, target_x: fl
     return float(y1 + ratio * (y2 - y1))
 
 
+def _trapezoid_area(y: np.ndarray, x: np.ndarray) -> float:
+    """Integrate y over x across NumPy versions."""
+    if hasattr(np, "trapezoid"):
+        return float(np.trapezoid(y, x))
+    return float(np.trapz(y, x))
+
+
 def _normalize_substrate_rate(series: pd.Series) -> pd.Series:
     """Normalize substrate oxidation units to g/min.
 
@@ -608,8 +615,8 @@ def _build_rq1_fuel_split(valid: pd.DataFrame) -> dict[str, Any]:
     t_min = cutoff["t_s"].to_numpy(dtype=float) / 60.0
     fat_kcal_rate = cutoff["fat_gmin"].clip(lower=0).to_numpy(dtype=float) * 9.75
     cho_kcal_rate = cutoff["cho_gmin"].clip(lower=0).to_numpy(dtype=float) * 4.07
-    fat_kcal = float(np.trapz(fat_kcal_rate, t_min))
-    cho_kcal = float(np.trapz(cho_kcal_rate, t_min))
+    fat_kcal = _trapezoid_area(fat_kcal_rate, t_min)
+    cho_kcal = _trapezoid_area(cho_kcal_rate, t_min)
     total_kcal = fat_kcal + cho_kcal
 
     power_w = cutoff["bike_power_w"].iloc[-1] if "bike_power_w" in cutoff.columns else None
