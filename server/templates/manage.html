@@ -95,6 +95,7 @@
   </div>
 
   {% elif active_tab == 'submissions' %}
+  {% set submission_filters = submission_filters | default({}) %}
   <div class="space-y-4" id="manage-submissions-container">
     <div class="bg-white rounded-lg shadow p-4">
       <form
@@ -111,7 +112,7 @@
               name="submissions_unlinked_only"
               value="1"
               class="rounded border-gray-300 text-gray-900 focus:ring-gray-400"
-              {% if submission_filters.unlinked_only == '1' %}checked{% endif %}
+              {% if submission_filters.get('unlinked_only', '') == '1' %}checked{% endif %}
             />
             미연결만 보기
           </label>
@@ -119,10 +120,10 @@
             name="submissions_sort_by"
             class="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700"
           >
-            <option value="recent_desc" {% if submission_filters.sort_by == 'recent_desc' %}selected{% endif %}>최신 검사일순</option>
-            <option value="recent_asc" {% if submission_filters.sort_by == 'recent_asc' %}selected{% endif %}>오래된 검사일순</option>
-            <option value="name_asc" {% if submission_filters.sort_by == 'name_asc' %}selected{% endif %}>피험자명 오름차순</option>
-            <option value="name_desc" {% if submission_filters.sort_by == 'name_desc' %}selected{% endif %}>피험자명 내림차순</option>
+            <option value="recent_desc" {% if submission_filters.get('sort_by', 'recent_desc') == 'recent_desc' %}selected{% endif %}>최신 검사일순</option>
+            <option value="recent_asc" {% if submission_filters.get('sort_by', 'recent_desc') == 'recent_asc' %}selected{% endif %}>오래된 검사일순</option>
+            <option value="name_asc" {% if submission_filters.get('sort_by', 'recent_desc') == 'name_asc' %}selected{% endif %}>피험자명 오름차순</option>
+            <option value="name_desc" {% if submission_filters.get('sort_by', 'recent_desc') == 'name_desc' %}selected{% endif %}>피험자명 내림차순</option>
           </select>
         </div>
         <button type="submit" class="rounded bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800">적용</button>
