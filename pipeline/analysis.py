@@ -881,6 +881,58 @@ def _build_power_domain_substrate(valid: pd.DataFrame) -> dict[str, Any]:
     }
 
 
+def _anchor_power_domain_markers(
+    payload: dict[str, Any],
+    fatmax_power_w: float | None,
+    fatmax_gmin: float | None,
+) -> dict[str, Any]:
+    """Align power-domain markers with the measured substrate FatMax anchor."""
+    if not payload or fatmax_power_w is None:
+        return payload
+
+    markers = dict(payload.get("metabolism_markers") or {})
+    curve = payload.get("metabolism_power_curve") or {}
+    dense_power = [float(value) for value in curve.get("power_w") or []]
+    dense_fat = [float(value) for value in curve.get("fat_gmin") or []]
+    if not dense_power or not dense_fat:
+        return payload
+
+    fatmax_power = float(fatmax_power_w)
+    anchor_idx = min(range(len(dense_power)), key=lambda idx: abs(dense_power[idx] - fatmax_power))
+    curve_anchor_value = dense_fat[anchor_idx]
+    threshold = curve_anchor_value * 0.90
+
+    if threshold > 0:
+        left_idx = anchor_idx
+        right_idx = anchor_idx
+        while left_idx > 0 and dense_fat[left_idx - 1] >= threshold:
+            left_idx -= 1
+        while right_idx < len(dense_fat) - 1 and dense_fat[right_idx + 1] >= threshold:
+            right_idx += 1
+        zone_min = float(dense_power[left_idx])
+        zone_max = float(dense_power[right_idx])
+    else:
+        zone_min = max(float(dense_power[0]), fatmax_power - 10.0)
+        zone_max = min(float(dense_power[-1]), fatmax_power + 10.0)
+
+    if zone_max - zone_min < 8.0:
+        zone_min = max(float(dense_power[0]), fatmax_power - 10.0)
+        zone_max = min(float(dense_power[-1]), fatmax_power + 10.0)
+
+    markers.update(
+        {
+            "fatmax_power_w": round(fatmax_power, 1),
+            "fatmax_gmin": round(float(fatmax_gmin), 4) if fatmax_gmin is not None else markers.get("fatmax_gmin"),
+            "fatmax_zone_min_w": round(zone_min, 1),
+            "fatmax_zone_max_w": round(zone_max, 1),
+        }
+    )
+
+    payload = dict(payload)
+    payload["metabolism_markers"] = markers
+    return payload
+
+
 def analyze_substrate(bxb: pd.DataFrame) -> dict[str, Any]:
     """Analyze fat and CHO oxidation rates."""
     results: dict[str, Any] = {}
@@ -922,7 +974,13 @@ def analyze_substrate(bxb: pd.DataFrame) -> dict[str, Any]:
         "cho_gmin": cho.tolist(),
     }
 
-    results.update(_build_power_domain_substrate(valid))
+    power_domain_payload = _build_power_domain_substrate(valid)
+    power_domain_payload = _anchor_power_domain_markers(
+        power_domain_payload,
+        results.get("fatmax_power_w"),
+        results.get("fatmax_gmin"),
+    )
+    results.update(power_domain_payload)
     results["rq1_fuel_split"] = _build_rq1_fuel_split(valid)
 
     if "ee_tot" in valid.columns:

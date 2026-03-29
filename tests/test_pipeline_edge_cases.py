@@ -664,6 +664,29 @@ class TestAnalysisEdgeCases:
         assert markers["fatmax_gmin"] == pytest.approx(3.0, abs=0.01)
         assert markers["fatmax_zone_min_w"] <= 150.0 <= markers["fatmax_zone_max_w"]
 
+    def test_analyze_substrate_keeps_measured_fatmax_when_power_domain_drops_row(self) -> None:
+        from pipeline.analysis import analyze_substrate
+
+        bxb = pd.DataFrame(
+            {
+                "t_s": [0.0, 60.0, 120.0, 180.0],
+                "vo2_ml": [1500.0, 1800.0, 2200.0, 2600.0],
+                "vco2_ml": [1200.0, 1500.0, 2200.0, 3000.0],
+                "rq": [0.8, 0.83, 1.0, 1.15],
+                "hr_bpm": [110.0, 120.0, 130.0, 140.0],
+                "ve_lmin": [30.0, 35.0, 45.0, 55.0],
+                "bike_power_w": [100.0, 150.0, 220.0, 280.0],
+                "fat_gmin": [0.4, 2.5, 0.8, 0.2],
+                "cho_gmin": [0.8, None, 1.6, 2.2],
+            }
+        )
+
+        result = analyze_substrate(bxb)
+        markers = result["metabolism_markers"]
+        assert result["fatmax_power_w"] == 150
+        assert markers["fatmax_power_w"] == pytest.approx(150.0, abs=0.1)
+        assert markers["fatmax_zone_min_w"] <= 150.0 <= markers["fatmax_zone_max_w"]
+
     def test_analyze_efficiency_empty_bxb(self) -> None:
         from pipeline.analysis import analyze_efficiency
 
