@@ -415,6 +415,67 @@ def build_metabolism_chart_payload(
     }
 
 
+def build_metabolic_flexibility_payload(context: dict[str, Any]) -> dict[str, Any]:
+    """Build a custom metabolic flexibility summary for two-block CPET reports."""
+    analysis = context["analysis"]
+    substrate = analysis["substrate"]
+    rq1 = substrate.get("rq1_fuel_split") or {}
+    if rq1.get("status") != "computed":
+        return {}
+
+    vt = analysis["ventilatory_thresholds"]
+    markers = substrate.get("metabolism_markers") or {}
+    fat_pct = float(rq1.get("fat_pct") or 0.0)
+    cho_pct = float(rq1.get("cho_pct") or 0.0)
+    crossing_power = float(rq1.get("crossing_power_w") or 0.0)
+    crossover_power = float(
+        (markers.get("primary_crossover") or {}).get("power_w")
+        or substrate.get("crossover_power_w")
+        or 0.0
+    )
+    fatmax_power = float(substrate.get("fatmax_power_w") or 0.0)
+    vt1_power = float(vt.get("vt1_power_w") or 0.0)
+
+    fat_share_score = min(max(fat_pct / 50.0, 0.0), 1.0) * 45.0
+    crossover_score = (
+        min(max(crossover_power / crossing_power, 0.0), 1.0) * 35.0
+        if crossing_power > 0
+        else 0.0
+    )
+    fatmax_score = (
+        min(max(fatmax_power / vt1_power, 0.0), 1.0) * 20.0
+        if vt1_power > 0
+        else 0.0
+    )
+    score = round(fat_share_score + crossover_score + fatmax_score, 1)
+
+    if score >= 75:
+        band = "high"
+        note = "지방 산화 유지와 탄수화물 전환 타이밍이 비교적 안정적인 편입니다."
+    elif score >= 55:
+        band = "moderate"
+        note = "기본적인 전환 능력은 있으나 고강도 진입 전 탄수화물 의존이 다소 빠르게 올라옵니다."
+    else:
+        band = "low"
+        note = "저중강도 지방 활용과 고강도 전환 사이 간격을 더 다듬을 필요가 있습니다."
+
+    return {
+        "score": score,
+        "band": band,
+        "note": note,
+        "fat_contribution_pct": round(fat_pct, 1),
+        "cho_contribution_pct": round(cho_pct, 1),
+        "crossing_power_w": rq1.get("crossing_power_w"),
+        "crossing_hr_bpm": rq1.get("crossing_hr_bpm"),
+        "crossing_time_s": rq1.get("crossing_time_s"),
+        "total_kcal": rq1.get("total_kcal"),
+        "crossover_power_w": round(crossover_power, 1) if crossover_power else None,
+        "fatmax_power_w": round(fatmax_power, 1) if fatmax_power else None,
+        "vt1_power_w": round(vt1_power, 1) if vt1_power else None,
+        "formula_note": "Custom score = fat share before RQ 1.0 (45) + crossover proximity to RQ1 power (35) + FatMax proximity to VT1 (20).",
+    }
+
+
 def build_insights(context: dict[str, Any]) -> list[str]:
     """Create short interpretation bullets for the dashboard header."""
     subject = context["subject"]
@@ -605,6 +666,7 @@ def build_report_context(db_path: Path) -> dict[str, Any]:
             "protocol_name": protocol_name,
         },
     }
+    context["fuel_flex"] = build_metabolic_flexibility_payload(context)
     context["insights"] = build_insights(context)
     context["coach_summary"] = build_coach_summary(context)
     context["chart_data"] = build_chart_data(context, bxb_rows)
@@ -779,10 +841,52 @@ def render_html(context: dict[str, Any]) -> str:
         else "호흡별 대사 데이터, 혈중 lactate/glucose 샘플, 워크아웃 전 구간 FIT 기록을 하나의 정적 문서로 통합한 스포츠과학 리포트입니다. 젖산 역치, 환기 역치, 기질 산화, lactate clearance, 심박 반응, 트레이닝 존을 한 화면에서 검토할 수 있게 구성했습니다."
     )
 
-    # Energy system section
+    fuel_flex = context.get("fuel_flex") or {}
+    # Energy system / fuel contribution section
     es = analysis.get("energy_system", {})
     energy_system_section = ""
-    if es.get("status") == "computed" and es.get("total_kj"):
+    if is_two_block_cpet and fuel_flex:
+        energy_system_section = f"""
+    <section class="section" id="fuel-flex">
+      <div class="section-header">
+        <div>
+          <span class="section-tag">Fuel Contribution</span>
+          <h2>RQ 1.0 기준 연료 기여율</h2>
+          <p>기존 3-pathway energy table 대신, 이번 2블럭 CPET에서는 RQ 1.0 도달 전까지 지방과 탄수화물이 실제로 얼마나 기여했는지로 정리합니다.</p>
+        </div>
+      </div>
+      <div class="kpi-grid">
+        <article class="kpi-card">
+          <span class="kpi-label">Fat Contribution</span>
+          <strong class="kpi-value">{html_text(format_number(fuel_flex.get('fat_contribution_pct'), 1))}</strong>
+          <span class="kpi-unit">%</span>
+          <p class="kpi-note">RQ 1.0 이전 지방 기여율</p>
+        </article>
+        <article class="kpi-card">
+          <span class="kpi-label">CHO Contribution</span>
+          <strong class="kpi-value">{html_text(format_number(fuel_flex.get('cho_contribution_pct'), 1))}</strong>
+          <span class="kpi-unit">%</span>
+          <p class="kpi-note">RQ 1.0 이전 탄수화물 기여율</p>
+        </article>
+        <article class="kpi-card">
+          <span class="kpi-label">RQ 1.0 Crossing</span>
+          <strong class="kpi-value">{html_text(format_number(fuel_flex.get('crossing_power_w')))}</strong>
+          <span class="kpi-unit">W</span>
+          <p class="kpi-note">HR {html_text(format_number(fuel_flex.get('crossing_hr_bpm')))} bpm · 총 {html_text(format_number(fuel_flex.get('total_kcal'), 1))} kcal</p>
+        </article>
+        <article class="kpi-card">
+          <span class="kpi-label">Metabolic Flexibility Index</span>
+          <strong class="kpi-value">{html_text(format_number(fuel_flex.get('score'), 1))}</strong>
+          <span class="kpi-unit">/100</span>
+          <p class="kpi-note">{html_text(fuel_flex.get('note'))}</p>
+        </article>
+      </div>
+      <div class="note-card" style="margin-top:18px;">
+        <strong>Custom definition</strong>
+        <p>{html_text(fuel_flex.get('formula_note'))}</p>
+      </div>
+    </section>"""
+    elif es.get("status") == "computed" and es.get("total_kj"):
         colors = {"oxidative": "#3B82F6", "glycolytic": "#EF4444", "phosphagen": "#10B981"}
         labels = {"oxidative": "Oxidative (산화적)", "glycolytic": "Glycolytic (해당과정)", "phosphagen": "Phosphagen (인원질)"}
         pathways = []
@@ -1758,7 +1862,12 @@ def render_html(context: dict[str, Any]) -> str:
         fallback(id, 'Chart.js CDN을 불러오지 못해 차트를 렌더링하지 못했습니다. 네트워크 연결 후 새로고침하거나 표 데이터를 사용해 해석해 주세요.');
         return;
       }}
-      new Chart(el, config);
+      try {{
+        new Chart(el, config);
+      }} catch (error) {{
+        console.error('Chart render failed:', id, error);
+        fallback(id, '차트 데이터가 충분하지 않아 이 시각화는 생략되었습니다.');
+      }}
     }}
 
     function isCompactViewport() {{

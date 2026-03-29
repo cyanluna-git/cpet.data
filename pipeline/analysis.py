@@ -705,7 +705,8 @@ def _build_power_domain_substrate(valid: pd.DataFrame) -> dict[str, Any]:
             power_domain[column] = pd.to_numeric(
                 power_domain[column], errors="coerce"
             )
-            power_domain = power_domain[np.isfinite(power_domain[column])]
+    for column in ["bike_power_w", "fat_gmin", "cho_gmin"]:
+        power_domain = power_domain[np.isfinite(power_domain[column])]
     if power_domain.empty:
         return {}
 
@@ -747,13 +748,7 @@ def _build_power_domain_substrate(valid: pd.DataFrame) -> dict[str, Any]:
     dense_hr = grouped["hr_bpm"].to_numpy(dtype=float)
     dense_vo2 = grouped["vo2_kg"].to_numpy(dtype=float)
 
-    finite_mask = (
-        np.isfinite(x)
-        & np.isfinite(dense_fat)
-        & np.isfinite(dense_cho)
-        & np.isfinite(dense_hr)
-        & np.isfinite(dense_vo2)
-    )
+    finite_mask = np.isfinite(x) & np.isfinite(dense_fat) & np.isfinite(dense_cho)
     x_finite = x[finite_mask]
     fat_finite = dense_fat[finite_mask]
     cho_finite = dense_cho[finite_mask]
@@ -775,8 +770,20 @@ def _build_power_domain_substrate(valid: pd.DataFrame) -> dict[str, Any]:
         )
         dense_fat = PchipInterpolator(x_finite, fat_finite)(dense_power)
         dense_cho = PchipInterpolator(x_finite, cho_finite)(dense_power)
-        dense_hr = PchipInterpolator(x_finite, hr_finite)(dense_power)
-        dense_vo2 = PchipInterpolator(x_finite, vo2_finite)(dense_power)
+        hr_valid = np.isfinite(hr_finite)
+        vo2_valid = np.isfinite(vo2_finite)
+        if hr_valid.sum() >= 4 and len(np.unique(x_finite[hr_valid])) >= 4:
+            dense_hr = PchipInterpolator(
+                x_finite[hr_valid], hr_finite[hr_valid]
+            )(dense_power)
+        else:
+            dense_hr = np.full_like(dense_power, np.nan, dtype=float)
+        if vo2_valid.sum() >= 4 and len(np.unique(x_finite[vo2_valid])) >= 4:
+            dense_vo2 = PchipInterpolator(
+                x_finite[vo2_valid], vo2_finite[vo2_valid]
+            )(dense_power)
+        else:
+            dense_vo2 = np.full_like(dense_power, np.nan, dtype=float)
 
     dense_fat = np.clip(dense_fat, 0, None)
     dense_cho = np.clip(dense_cho, 0, None)
