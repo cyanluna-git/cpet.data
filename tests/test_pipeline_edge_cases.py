@@ -645,6 +645,25 @@ class TestAnalysisEdgeCases:
         assert result["fat_gmin"].tolist() == pytest.approx([0.501, 0.0], abs=0.01)
         assert result["cho_gmin"].tolist() == pytest.approx([0.645, 2.412], abs=0.01)
 
+    def test_power_domain_substrate_prefers_measured_fatmax_anchor(self) -> None:
+        from pipeline.analysis import _build_power_domain_substrate
+
+        bxb = pd.DataFrame(
+            {
+                "bike_power_w": [100.0, 150.0, 200.0, 250.0, 300.0],
+                "fat_gmin": [0.2, 3.0, 0.5, 0.4, 0.3],
+                "cho_gmin": [0.4, 0.5, 0.9, 1.2, 1.4],
+                "hr_bpm": [110.0, 120.0, 130.0, 140.0, 150.0],
+                "vo2_kg": [20.0, 25.0, 30.0, 35.0, 40.0],
+            }
+        )
+
+        result = _build_power_domain_substrate(bxb)
+        markers = result["metabolism_markers"]
+        assert markers["fatmax_power_w"] == pytest.approx(150.0, abs=0.1)
+        assert markers["fatmax_gmin"] == pytest.approx(3.0, abs=0.01)
+        assert markers["fatmax_zone_min_w"] <= 150.0 <= markers["fatmax_zone_max_w"]
+
     def test_analyze_efficiency_empty_bxb(self) -> None:
         from pipeline.analysis import analyze_efficiency
 

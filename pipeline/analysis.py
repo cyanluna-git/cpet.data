@@ -788,14 +788,23 @@ def _build_power_domain_substrate(valid: pd.DataFrame) -> dict[str, Any]:
     dense_fat = np.clip(dense_fat, 0, None)
     dense_cho = np.clip(dense_cho, 0, None)
 
-    fatmax_idx = int(np.argmax(dense_fat))
-    fatmax_power = float(dense_power[fatmax_idx])
-    fatmax_value = float(dense_fat[fatmax_idx])
-    fatmax_threshold = fatmax_value * 0.90
-    fatmax_mask = dense_fat >= fatmax_threshold
-    if fatmax_mask.any():
-        zone_min = float(dense_power[np.where(fatmax_mask)[0][0]])
-        zone_max = float(dense_power[np.where(fatmax_mask)[0][-1]])
+    raw_fatmax_idx = power_domain["fat_gmin"].idxmax()
+    raw_fatmax_power = float(power_domain.loc[raw_fatmax_idx, "bike_power_w"])
+    raw_fatmax_value = float(power_domain.loc[raw_fatmax_idx, "fat_gmin"])
+    fatmax_idx = int(np.argmin(np.abs(dense_power - raw_fatmax_power)))
+    fatmax_power = raw_fatmax_power
+    fatmax_value = raw_fatmax_value
+    curve_anchor_value = float(dense_fat[fatmax_idx]) if len(dense_fat) else raw_fatmax_value
+    fatmax_threshold = curve_anchor_value * 0.90
+    if fatmax_threshold > 0:
+        left_idx = fatmax_idx
+        right_idx = fatmax_idx
+        while left_idx > 0 and dense_fat[left_idx - 1] >= fatmax_threshold:
+            left_idx -= 1
+        while right_idx < len(dense_fat) - 1 and dense_fat[right_idx + 1] >= fatmax_threshold:
+            right_idx += 1
+        zone_min = float(dense_power[left_idx])
+        zone_max = float(dense_power[right_idx])
     else:
         zone_min = max(float(dense_power[0]), fatmax_power - 10.0)
         zone_max = min(float(dense_power[-1]), fatmax_power + 10.0)
