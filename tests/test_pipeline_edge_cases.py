@@ -16,6 +16,7 @@ Focus areas:
 """
 
 import io
+import math
 import sqlite3
 import textwrap
 import zipfile
@@ -790,6 +791,35 @@ class TestReportPartialData:
         html = report_path.read_text(encoding="utf-8")
         assert "<html" in html.lower() or "<!doctype" in html.lower()
         assert "</html>" in html.lower()
+
+    def test_report_embedded_json_does_not_include_nan(self, tmp_path: Path) -> None:
+        """Embedded report JSON should remain browser-parseable."""
+        from pipeline.parsers import parse_workspace
+        from pipeline.schema import create_database
+        from pipeline.analysis import run_analysis
+        from pipeline.report import generate_report
+
+        _make_minimal_xlsx(tmp_path)
+        parsed = parse_workspace(tmp_path)
+        db_path = create_database(tmp_path, parsed)
+        run_analysis(db_path)
+
+        report_path = generate_report(db_path, tmp_path / "report")
+        html = report_path.read_text(encoding="utf-8")
+        assert "NaN" not in html
+
+    def test_json_safe_replaces_nan_recursively(self) -> None:
+        """Nested NaN values should serialize as null, not invalid JSON tokens."""
+        from pipeline.report import _json_safe
+
+        payload = {
+            "outer": [1.0, math.nan, {"inner": float("inf"), "ok": 2.0}],
+        }
+
+        safe = _json_safe(payload)
+        assert safe["outer"][1] is None
+        assert safe["outer"][2]["inner"] is None
+        assert safe["outer"][2]["ok"] == 2.0
 
 
 # =====================================================================

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import html
 import json
+import math
 import sqlite3
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -819,6 +820,26 @@ def render_protocol_summary(rows: list[dict[str, Any]]) -> str:
     return "".join(items)
 
 
+def _json_safe(value: Any) -> Any:
+    """Recursively replace NaN and infinities so embedded JSON stays valid."""
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    try:
+        if hasattr(value, "item"):
+            scalar = value.item()
+            if scalar is not value:
+                return _json_safe(scalar)
+    except Exception:
+        pass
+    return value
+
+
 def render_html(context: dict[str, Any]) -> str:
     """Render the full standalone HTML document."""
     subject = context["subject"]
@@ -829,8 +850,10 @@ def render_html(context: dict[str, Any]) -> str:
     report_profile = context.get("report_profile") or {}
     has_blood = bool(report_profile.get("has_blood"))
     is_two_block_cpet = bool(report_profile.get("is_two_block_cpet"))
-    chart_json = json.dumps(context["chart_data"], ensure_ascii=False).replace("</", "<\\/")
-    data_json = json.dumps(context, ensure_ascii=False).replace("</", "<\\/")
+    safe_chart_data = _json_safe(context["chart_data"])
+    safe_context = _json_safe(context)
+    chart_json = json.dumps(safe_chart_data, ensure_ascii=False, allow_nan=False).replace("</", "<\\/")
+    data_json = json.dumps(safe_context, ensure_ascii=False, allow_nan=False).replace("</", "<\\/")
     report_title = context["meta"].get("report_title") or "CPET Analysis Report"
     hero_eyebrow = "FatMax Ramp · VO2max Ramp · CPET" if is_two_block_cpet else "Belgium Protocol · Lactate · CPET"
     hero_heading = "Two-Block CPET Analysis" if is_two_block_cpet else "Belgium Lactate Test Analysis"
@@ -879,6 +902,13 @@ def render_html(context: dict[str, Any]) -> str:
           <strong class="kpi-value">{html_text(format_number(fuel_flex.get('score'), 1))}</strong>
           <span class="kpi-unit">/100</span>
           <p class="kpi-note">{html_text(fuel_flex.get('note'))}</p>
+        </article>
+      </div>
+      <div class="chart-grid" style="margin-top:18px;">
+        <article class="chart-card chart-card--full">
+          <h3>Fuel Split Before RQ 1.0</h3>
+          <p>RQ 1.0 도달 전까지 누적된 총 kcal에서 지방과 탄수화물 기여 비율을 바로 읽을 수 있도록 도넛 차트로 표시합니다.</p>
+          <div class="chart-shell chart-shell--compact"><canvas id="chart-fuel-split"></canvas><div class="chart-fallback" data-fallback="chart-fuel-split"></div></div>
         </article>
       </div>
       <div class="note-card" style="margin-top:18px;">
@@ -2348,6 +2378,48 @@ def render_html(context: dict[str, Any]) -> str:
         }}
       }}
     }});
+
+    const fuelFlex = reportData.fuel_flex || {{}};
+    if (Number.isFinite(fuelFlex.fat_contribution_pct) && Number.isFinite(fuelFlex.cho_contribution_pct)) {{
+      createChart('chart-fuel-split', {{
+        type: 'doughnut',
+        data: {{
+          labels: ['Fat', 'CHO'],
+          datasets: [{{
+            data: [fuelFlex.fat_contribution_pct, fuelFlex.cho_contribution_pct],
+            backgroundColor: [palette.gold, palette.teal],
+            borderColor: ['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.95)'],
+            borderWidth: 3,
+            hoverOffset: 6
+          }}]
+        }},
+        options: {{
+          ...defaultOptions('Fuel Split Before RQ 1.0'),
+          cutout: '62%',
+          plugins: {{
+            ...defaultOptions('').plugins,
+            legend: {{
+              position: 'bottom',
+              labels: {{
+                color: palette.muted,
+                font: {{ family: 'Avenir Next, Segoe UI, sans-serif', size: 12 }},
+                padding: 16
+              }}
+            }},
+            tooltip: {{
+              callbacks: {{
+                label(context) {{
+                  const pct = Number(context.raw || 0);
+                  const totalKcal = Number(fuelFlex.total_kcal || 0);
+                  const kcal = totalKcal > 0 ? (totalKcal * pct) / 100 : 0;
+                  return `${{context.label}}: ${{pct.toFixed(1)}}% · ${{kcal.toFixed(1)}} kcal`;
+                }}
+              }}
+            }}
+          }}
+        }}
+      }});
+    }}
   </script>
 </body>
 </html>
