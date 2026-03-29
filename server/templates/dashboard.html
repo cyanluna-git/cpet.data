@@ -194,6 +194,16 @@
 </div>
 
 <script>
+function openReportMetaModalFromButton(button) {
+  openReportMetaModal({
+    submissionId: button.dataset.submissionId || '',
+    reportSlug: button.dataset.reportSlug || '',
+    subjectName: button.dataset.subjectName || '',
+    note: button.dataset.note || '',
+    canRename: button.dataset.canRename === '1'
+  });
+}
+
 function openReportMetaModal(payload) {
   var canRename = !!payload.canRename;
   document.getElementById('report-meta-submission-id').value = payload.submissionId || '';
