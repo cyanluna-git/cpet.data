@@ -537,11 +537,168 @@ def _rolling_mean(values: pd.Series, window: int = 5) -> pd.Series:
     return values.rolling(window=window, center=True, min_periods=1).mean()
 
 
+def _linear_interpolate(x1: float, y1: float, x2: float, y2: float, target_x: float) -> float:
+    """Linearly interpolate y at target_x between two points."""
+    if x2 == x1:
+        return float(y2)
+    ratio = (target_x - x1) / (x2 - x1)
+    return float(y1 + ratio * (y2 - y1))
+
+
+def _normalize_substrate_rate(series: pd.Series) -> pd.Series:
+    """Normalize substrate oxidation units to g/min.
+
+    Some COSMED exports label Fat/CHO as g/min but actually store mg/min-scale
+    values (for example 2338 instead of 2.338). When the median positive value
+    is implausibly large for exercise oxidation, scale the full series by 1000.
+    """
+    numeric = pd.to_numeric(series, errors="coerce")
+    positives = numeric[numeric > 0]
+    if not positives.empty and float(positives.median()) > 20.0:
+        return numeric / 1000.0
+    return numeric
+
+
+def _build_rq1_fuel_split(valid: pd.DataFrame) -> dict[str, Any]:
+    """Summarize substrate calorie split up to the exact RQ 1.0 crossing.
+
+    Assumes protein oxidation is negligible and uses the already-derived
+    Frayn-style fat/CHO oxidation rates (g/min) from the BxB table.
+    """
+    required = ["t_s", "rq", "fat_gmin", "cho_gmin"]
+    window = valid.dropna(subset=required).copy()
+    if len(window) < 2:
+        return {"status": "insufficient_data"}
+
+    window = window.sort_values("t_s").reset_index(drop=True)
+    rq = window["rq"].to_numpy(dtype=float)
+    times = window["t_s"].to_numpy(dtype=float)
+    fat_gmin = window["fat_gmin"].clip(lower=0).to_numpy(dtype=float)
+    cho_gmin = window["cho_gmin"].clip(lower=0).to_numpy(dtype=float)
+
+    crossing_idx = next((idx for idx, value in enumerate(rq) if value >= 1.0), None)
+    if crossing_idx is None:
+        return {"status": "no_rq1_crossing"}
+
+    cutoff = window.iloc[: crossing_idx + 1].copy()
+    crossing_time_s = float(window.iloc[crossing_idx]["t_s"])
+    crossing_rq = float(window.iloc[crossing_idx]["rq"])
+
+    if crossing_idx > 0 and float(window.iloc[crossing_idx - 1]["rq"]) < 1.0:
+        left = window.iloc[crossing_idx - 1]
+        right = window.iloc[crossing_idx]
+        crossing_time_s = _linear_interpolate(
+            float(left["rq"]), float(left["t_s"]), float(right["rq"]), float(right["t_s"]), 1.0,
+        )
+        crossing_row = right.copy()
+        crossing_row["t_s"] = crossing_time_s
+        crossing_row["rq"] = 1.0
+        for col in ["fat_gmin", "cho_gmin", "bike_power_w", "hr_bpm"]:
+            if col in cutoff.columns:
+                crossing_row[col] = _linear_interpolate(
+                    float(left["t_s"]),
+                    float(left[col]) if pd.notna(left[col]) else 0.0,
+                    float(right["t_s"]),
+                    float(right[col]) if pd.notna(right[col]) else 0.0,
+                    crossing_time_s,
+                )
+        cutoff = pd.concat([window.iloc[:crossing_idx], crossing_row.to_frame().T], ignore_index=True)
+        crossing_rq = 1.0
+
+    t_min = cutoff["t_s"].to_numpy(dtype=float) / 60.0
+    fat_kcal_rate = cutoff["fat_gmin"].clip(lower=0).to_numpy(dtype=float) * 9.75
+    cho_kcal_rate = cutoff["cho_gmin"].clip(lower=0).to_numpy(dtype=float) * 4.07
+    fat_kcal = float(np.trapz(fat_kcal_rate, t_min))
+    cho_kcal = float(np.trapz(cho_kcal_rate, t_min))
+    total_kcal = fat_kcal + cho_kcal
+
+    power_w = cutoff["bike_power_w"].iloc[-1] if "bike_power_w" in cutoff.columns else None
+    hr_bpm = cutoff["hr_bpm"].iloc[-1] if "hr_bpm" in cutoff.columns else None
+
+    return {
+        "status": "computed",
+        "crossing_time_s": round(crossing_time_s, 1),
+        "crossing_rq": round(crossing_rq, 2),
+        "crossing_power_w": int(power_w) if pd.notna(power_w) else None,
+        "crossing_hr_bpm": int(hr_bpm) if pd.notna(hr_bpm) else None,
+        "fat_kcal": round(fat_kcal, 2),
+        "cho_kcal": round(cho_kcal, 2),
+        "total_kcal": round(total_kcal, 2),
+        "fat_pct": round((fat_kcal / total_kcal) * 100.0, 1) if total_kcal > 0 else None,
+        "cho_pct": round((cho_kcal / total_kcal) * 100.0, 1) if total_kcal > 0 else None,
+    }
+
+
+def _ensure_substrate_columns(valid: pd.DataFrame) -> pd.DataFrame:
+    """Backfill fat/CHO oxidation from VO2/VCO2 when COSMED columns are absent.
+
+    Frayn 1983, assuming negligible protein oxidation:
+    - fat g/min = 1.67 * VO2(L/min) - 1.67 * VCO2(L/min)
+    - cho g/min = 4.55 * VCO2(L/min) - 3.21 * VO2(L/min)
+    """
+    df = valid.copy()
+    if "fat_gmin" in df.columns:
+        df["fat_gmin"] = _normalize_substrate_rate(df["fat_gmin"])
+    if "cho_gmin" in df.columns:
+        df["cho_gmin"] = _normalize_substrate_rate(df["cho_gmin"])
+
+    has_fat = "fat_gmin" in df.columns and df["fat_gmin"].notna().any()
+    has_cho = "cho_gmin" in df.columns and df["cho_gmin"].notna().any()
+    suspicious_substrate = False
+    if "fat_gmin" in valid.columns:
+        fat_raw = pd.to_numeric(valid["fat_gmin"], errors="coerce")
+        fat_pos = fat_raw[fat_raw > 0]
+        suspicious_substrate = suspicious_substrate or (
+            not fat_pos.empty and float(fat_pos.median()) > 20.0
+        )
+    if "cho_gmin" in valid.columns:
+        cho_raw = pd.to_numeric(valid["cho_gmin"], errors="coerce")
+        cho_pos = cho_raw[cho_raw > 0]
+        suspicious_substrate = suspicious_substrate or (
+            not cho_pos.empty and float(cho_pos.median()) > 20.0
+        )
+
+    if has_fat and has_cho and not suspicious_substrate:
+        return df
+
+    if "vo2_ml" not in df.columns or "vco2_ml" not in df.columns:
+        return df
+
+    vo2_l = pd.to_numeric(df["vo2_ml"], errors="coerce") / 1000.0
+    vco2_l = pd.to_numeric(df["vco2_ml"], errors="coerce") / 1000.0
+    derived_fat = (1.67 * vo2_l - 1.67 * vco2_l).clip(lower=0)
+    derived_cho = (4.55 * vco2_l - 3.21 * vo2_l).clip(lower=0)
+
+    df["fat_gmin"] = (
+        _normalize_substrate_rate(df["fat_gmin"])
+        if "fat_gmin" in df.columns
+        else pd.Series(index=df.index, dtype=float)
+    )
+    df["cho_gmin"] = (
+        _normalize_substrate_rate(df["cho_gmin"])
+        if "cho_gmin" in df.columns
+        else pd.Series(index=df.index, dtype=float)
+    )
+    if suspicious_substrate or not has_fat or not has_cho:
+        df["fat_gmin"] = derived_fat
+        df["cho_gmin"] = derived_cho
+    else:
+        df["fat_gmin"] = df["fat_gmin"].fillna(derived_fat)
+        df["cho_gmin"] = df["cho_gmin"].fillna(derived_cho)
+    return df
+
+
 def _build_power_domain_substrate(valid: pd.DataFrame) -> dict[str, Any]:
     """Build a chart-ready power-domain substrate contract from breath data."""
     required = ["bike_power_w", "fat_gmin", "cho_gmin"]
     power_domain = valid.dropna(subset=required).copy()
     power_domain = power_domain[power_domain["bike_power_w"] >= 40].copy()
+    for column in ["bike_power_w", "fat_gmin", "cho_gmin", "hr_bpm", "vo2_kg"]:
+        if column in power_domain.columns:
+            power_domain[column] = pd.to_numeric(
+                power_domain[column], errors="coerce"
+            )
+            power_domain = power_domain[np.isfinite(power_domain[column])]
     if power_domain.empty:
         return {}
 
@@ -551,21 +708,30 @@ def _build_power_domain_substrate(valid: pd.DataFrame) -> dict[str, Any]:
         (power_domain["bike_power_w"] / 5.0).round() * 5.0
     )
 
+    agg_map: dict[str, tuple[str, str]] = {
+        "fat_gmin": ("fat_gmin", "median"),
+        "cho_gmin": ("cho_gmin", "median"),
+        "sample_count": ("bike_power_w", "size"),
+    }
+    if "hr_bpm" in power_domain.columns:
+        agg_map["hr_bpm"] = ("hr_bpm", "median")
+    if "vo2_kg" in power_domain.columns:
+        agg_map["vo2_kg"] = ("vo2_kg", "median")
+
     grouped = (
         power_domain.groupby("power_bin_w", as_index=False)
-        .agg(
-            fat_gmin=("fat_gmin", "median"),
-            cho_gmin=("cho_gmin", "median"),
-            hr_bpm=("hr_bpm", "median"),
-            vo2_kg=("vo2_kg", "median"),
-            sample_count=("bike_power_w", "size"),
-        )
+        .agg(**agg_map)
         .sort_values("power_bin_w")
         .reset_index(drop=True)
     )
 
+    for column in ["hr_bpm", "vo2_kg"]:
+        if column not in grouped.columns:
+            grouped[column] = np.nan
+
     for column in ["fat_gmin", "cho_gmin", "hr_bpm", "vo2_kg"]:
         grouped[column] = _rolling_mean(grouped[column], window=5)
+        grouped[column] = pd.to_numeric(grouped[column], errors="coerce")
 
     x = grouped["power_bin_w"].to_numpy(dtype=float)
     dense_power = x.copy()
@@ -574,12 +740,36 @@ def _build_power_domain_substrate(valid: pd.DataFrame) -> dict[str, Any]:
     dense_hr = grouped["hr_bpm"].to_numpy(dtype=float)
     dense_vo2 = grouped["vo2_kg"].to_numpy(dtype=float)
 
-    if len(grouped) >= 4 and grouped["power_bin_w"].nunique() >= 4:
-        dense_power = np.arange(float(x[0]), float(x[-1]) + 0.5, 0.5)
-        dense_fat = PchipInterpolator(x, dense_fat)(dense_power)
-        dense_cho = PchipInterpolator(x, dense_cho)(dense_power)
-        dense_hr = PchipInterpolator(x, dense_hr)(dense_power)
-        dense_vo2 = PchipInterpolator(x, dense_vo2)(dense_power)
+    finite_mask = (
+        np.isfinite(x)
+        & np.isfinite(dense_fat)
+        & np.isfinite(dense_cho)
+        & np.isfinite(dense_hr)
+        & np.isfinite(dense_vo2)
+    )
+    x_finite = x[finite_mask]
+    fat_finite = dense_fat[finite_mask]
+    cho_finite = dense_cho[finite_mask]
+    hr_finite = dense_hr[finite_mask]
+    vo2_finite = dense_vo2[finite_mask]
+
+    if len(x_finite) == 0:
+        return {}
+
+    dense_power = x_finite.copy()
+    dense_fat = fat_finite.copy()
+    dense_cho = cho_finite.copy()
+    dense_hr = hr_finite.copy()
+    dense_vo2 = vo2_finite.copy()
+
+    if len(x_finite) >= 4 and len(np.unique(x_finite)) >= 4:
+        dense_power = np.arange(
+            float(x_finite[0]), float(x_finite[-1]) + 0.5, 0.5
+        )
+        dense_fat = PchipInterpolator(x_finite, fat_finite)(dense_power)
+        dense_cho = PchipInterpolator(x_finite, cho_finite)(dense_power)
+        dense_hr = PchipInterpolator(x_finite, hr_finite)(dense_power)
+        dense_vo2 = PchipInterpolator(x_finite, vo2_finite)(dense_power)
 
     dense_fat = np.clip(dense_fat, 0, None)
     dense_cho = np.clip(dense_cho, 0, None)
@@ -675,9 +865,12 @@ def analyze_substrate(bxb: pd.DataFrame) -> dict[str, Any]:
     valid = _active_bxb_window(bxb)
     if valid.empty:
         return results
+    valid = _ensure_substrate_columns(valid)
 
     fat = valid["fat_gmin"].clip(lower=0)
     cho = valid["cho_gmin"].clip(lower=0)
+    if fat.notna().sum() == 0 or cho.notna().sum() == 0:
+        return results
 
     fatmax_idx = fat.idxmax()
     results["fatmax_gmin"] = round(float(fat.loc[fatmax_idx]), 3)
@@ -707,6 +900,7 @@ def analyze_substrate(bxb: pd.DataFrame) -> dict[str, Any]:
     }
 
     results.update(_build_power_domain_substrate(valid))
+    results["rq1_fuel_split"] = _build_rq1_fuel_split(valid)
 
     if "ee_tot" in valid.columns:
         results["total_energy_kcal"] = round(

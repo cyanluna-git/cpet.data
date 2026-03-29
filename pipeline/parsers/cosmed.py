@@ -60,6 +60,33 @@ def _time_to_seconds(val: Any) -> float | None:
     return None
 
 
+def _parse_test_time(value: Any) -> str | None:
+    """Normalize COSMED test time metadata into HH:MM:SS.
+
+    COSMED exports have been seen with:
+    - datetime.time objects
+    - "09:00:00"
+    - "AM 10:29" / "PM 03:14"
+    """
+    if value is None:
+        return None
+    if isinstance(value, dt.time):
+        return value.strftime("%H:%M:%S")
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    for fmt in ("%H:%M:%S", "%H:%M", "%p %I:%M", "%p %I:%M:%S"):
+        try:
+            parsed = dt.datetime.strptime(text, fmt)
+            return parsed.strftime("%H:%M:%S")
+        except ValueError:
+            continue
+
+    return text
+
+
 def parse_cosmed(
     path: Path,
     workout_df: pd.DataFrame | None = None,
@@ -147,14 +174,8 @@ def parse_cosmed(
             if test_date
             else "2026-03-20"
         )
-        if isinstance(test_time, str):
-            base_time = pd.Timestamp(f"{date_text} {test_time}")
-        elif isinstance(test_time, dt.time):
-            base_time = pd.Timestamp(
-                f"{date_text} {test_time.strftime('%H:%M:%S')}"
-            )
-        else:
-            base_time = pd.Timestamp(f"{date_text} 00:00:00")
+        normalized_time = _parse_test_time(test_time) or "00:00:00"
+        base_time = pd.Timestamp(f"{date_text} {normalized_time}")
 
         bxb_df["timestamp_kst"] = base_time + pd.to_timedelta(
             bxb_df["t_s"], unit="s"

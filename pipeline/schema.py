@@ -138,6 +138,25 @@ def _to_int_like(value: object, default: int | None = None) -> int | None:
         return default
 
 
+def _infer_protocol_name(parsed: ParsedData) -> str:
+    """Infer a human-readable protocol label from available sources."""
+    if parsed.blood_df is not None and not parsed.blood_df.empty:
+        return "Belgium Lactate Test Elite"
+
+    protocol_df = parsed.protocol_df
+    if protocol_df is not None and not protocol_df.empty:
+        blocks = set(protocol_df["block"].dropna().astype(str))
+        if "block_2" in blocks:
+            return "Two-Block FatMax + VO2max CPET"
+
+    if parsed.workout_df is not None and not parsed.workout_df.empty:
+        blocks = set(parsed.workout_df.get("block", pd.Series(dtype=str)).dropna().astype(str))
+        if "block_2" in blocks:
+            return "Two-Block FatMax + VO2max CPET"
+
+    return "CPET Analysis"
+
+
 def create_database(workspace: Path, parsed: ParsedData) -> Path:
     """Create analysis.db from parsed data sources.
 
@@ -219,7 +238,7 @@ def create_database(workspace: Path, parsed: ParsedData) -> Path:
         (
             subject_id,
             test_date,
-            "Belgium Lactate Test Elite",
+            _infer_protocol_name(parsed),
             start_time,
             end_time,
             subject_info_xlsx.get("ambient_temp_c"),

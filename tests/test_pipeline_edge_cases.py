@@ -129,7 +129,7 @@ class TestCosmedParserEdgeCases:
 
     def test_time_to_seconds_variants(self) -> None:
         """_time_to_seconds handles datetime.time, timedelta, int, float, None."""
-        from pipeline.parsers.cosmed import _time_to_seconds
+        from pipeline.parsers.cosmed import _time_to_seconds, _parse_test_time
         import datetime as dt
 
         assert _time_to_seconds(None) is None
@@ -137,6 +137,8 @@ class TestCosmedParserEdgeCases:
         assert _time_to_seconds(dt.timedelta(seconds=45)) == 45.0
         assert _time_to_seconds(120) == 120.0
         assert _time_to_seconds(0.5) == 0.5
+        assert _parse_test_time("AM 10:29") == "10:29:00"
+        assert _parse_test_time("PM 03:14") == "15:14:00"
 
 
 # =====================================================================
@@ -597,6 +599,50 @@ class TestAnalysisEdgeCases:
 
         result = analyze_substrate(pd.DataFrame())
         assert result == {}
+
+    def test_analyze_substrate_builds_rq1_fuel_split(self) -> None:
+        from pipeline.analysis import analyze_substrate
+
+        bxb = pd.DataFrame(
+            {
+                "t_s": [0.0, 60.0, 120.0],
+                "vo2_ml": [1500.0, 1800.0, 2200.0],
+                "vco2_ml": [1200.0, 1800.0, 2640.0],
+                "rq": [0.8, 1.0, 1.2],
+                "hr_bpm": [110.0, 120.0, 130.0],
+                "ve_lmin": [30.0, 40.0, 55.0],
+                "bike_power_w": [120.0, 150.0, 180.0],
+                "fat_gmin": [1.0, 0.5, 0.0],
+                "cho_gmin": [0.5, 1.0, 2.0],
+            }
+        )
+
+        result = analyze_substrate(bxb)
+        split = result["rq1_fuel_split"]
+        assert split["status"] == "computed"
+        assert split["crossing_time_s"] == 60.0
+        assert split["crossing_power_w"] == 150
+        assert split["fat_kcal"] == pytest.approx(7.31, abs=0.02)
+        assert split["cho_kcal"] == pytest.approx(3.05, abs=0.02)
+        assert split["fat_pct"] == pytest.approx(70.5, abs=0.2)
+        assert split["cho_pct"] == pytest.approx(29.5, abs=0.2)
+
+    def test_ensure_substrate_columns_rebuilds_suspicious_cosmed_units(self) -> None:
+        from pipeline.analysis import _ensure_substrate_columns
+
+        bxb = pd.DataFrame(
+            {
+                "t_s": [0.0, 60.0],
+                "vo2_ml": [1500.0, 1800.0],
+                "vco2_ml": [1200.0, 1800.0],
+                "fat_gmin": [None, None],
+                "cho_gmin": [2338.0, 3314.0],
+            }
+        )
+
+        result = _ensure_substrate_columns(bxb)
+        assert result["fat_gmin"].tolist() == pytest.approx([0.501, 0.0], abs=0.01)
+        assert result["cho_gmin"].tolist() == pytest.approx([0.645, 2.412], abs=0.01)
 
     def test_analyze_efficiency_empty_bxb(self) -> None:
         from pipeline.analysis import analyze_efficiency

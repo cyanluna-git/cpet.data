@@ -19,6 +19,40 @@ from statistics import mean, median
 from typing import Any
 
 
+def _safe_mean(values: list[float]) -> float | None:
+    """Return the arithmetic mean when at least one value exists."""
+    if not values:
+        return None
+    return mean(values)
+
+
+def _substrate_from_row(row: dict[str, Any], key: str) -> float | None:
+    """Read stored substrate values or derive them from VO2/VCO2."""
+    direct = row.get(key)
+    should_derive = row.get("fat_gmin") is None or row.get("cho_gmin") is None
+    if direct is not None:
+        try:
+            value = float(direct)
+            if value > 20.0:
+                should_derive = True
+            elif not should_derive:
+                return value
+        except (TypeError, ValueError):
+            should_derive = True
+
+    vo2_ml = row.get("vo2_ml")
+    vco2_ml = row.get("vco2_ml")
+    try:
+        vo2_l = float(vo2_ml) / 1000.0
+        vco2_l = float(vco2_ml) / 1000.0
+    except (TypeError, ValueError):
+        return None
+
+    if key == "fat_gmin":
+        return max(0.0, 1.67 * vo2_l - 1.67 * vco2_l)
+    if key == "cho_gmin":
+        return max(0.0, 4.55 * vco2_l - 3.21 * vo2_l)
+    return None
 
 
 def decode_value(value: Any) -> Any:
@@ -140,15 +174,32 @@ def summarize_bxb_stages(bxb_rows: list[dict[str, Any]]) -> list[dict[str, Any]]
     summary: list[dict[str, Any]] = []
     for bucket in sorted(buckets):
         rows = buckets[bucket]
+        vo2_values = [
+            float(r["vo2_ml"]) for r in rows if r.get("vo2_ml") is not None
+        ]
+        hr_values = [
+            float(r["hr_bpm"]) for r in rows if r.get("hr_bpm") is not None
+        ]
+        rq_values = [float(r["rq"]) for r in rows if r.get("rq") is not None]
+        fat_values = [
+            value
+            for value in (_substrate_from_row(r, "fat_gmin") for r in rows)
+            if value is not None
+        ]
+        cho_values = [
+            value
+            for value in (_substrate_from_row(r, "cho_gmin") for r in rows)
+            if value is not None
+        ]
         summary.append(
             {
                 "power_w": bucket,
                 "n": len(rows),
-                "vo2_ml": round(mean(float(r["vo2_ml"]) for r in rows if r.get("vo2_ml") is not None), 1),
-                "hr_bpm": round(mean(float(r["hr_bpm"]) for r in rows if r.get("hr_bpm") is not None), 1),
-                "rq": round(mean(float(r["rq"]) for r in rows if r.get("rq") is not None), 2),
-                "fat_gmin": round(mean(float(r["fat_gmin"]) for r in rows if r.get("fat_gmin") is not None), 2),
-                "cho_gmin": round(mean(float(r["cho_gmin"]) for r in rows if r.get("cho_gmin") is not None), 2),
+                "vo2_ml": round(_safe_mean(vo2_values) or 0.0, 1),
+                "hr_bpm": round(_safe_mean(hr_values) or 0.0, 1),
+                "rq": round(_safe_mean(rq_values) or 0.0, 2),
+                "fat_gmin": round(_safe_mean(fat_values) or 0.0, 2),
+                "cho_gmin": round(_safe_mean(cho_values) or 0.0, 2),
             }
         )
     return summary
@@ -372,6 +423,21 @@ def build_insights(context: dict[str, Any]) -> list[str]:
     substrate = context["analysis"]["substrate"]
     clearance = context["analysis"]["clearance"]
     hr = context["analysis"]["hr"]
+    vt = context["analysis"]["ventilatory_thresholds"]
+    if not context["blood_samples"]:
+        rq1_fuel = substrate.get("rq1_fuel_split") or {}
+        fuel_text = (
+            f"RQ 1.0 이전 총 {format_number(rq1_fuel.get('total_kcal'), 1)} kcal에서 지방 {format_number(rq1_fuel.get('fat_pct'), 1)}%, 탄수화물 {format_number(rq1_fuel.get('cho_pct'), 1)}% 비율로 에너지가 공급되었습니다."
+            if rq1_fuel.get("status") == "computed"
+            else "RQ 1.0 이전 연료 기여율은 안정적으로 계산되지 않았습니다."
+        )
+        return [
+            "첫 번째 블럭은 FatMax와 연료 효율, 두 번째 블럭은 10초 램프 기반 VO2max 반응을 읽는 2블럭 CPET로 해석했습니다.",
+            f"VO2max는 {format_number(vo2max.get('vo2max_rel'), 1)} mL/kg/min, peak power는 {format_number(vo2max.get('peak_power_achieved_w'))}W로 정리되었습니다.",
+            f"FatMax는 {format_number(substrate.get('fatmax_power_w'))}W, 산화 기여가 우세한 구간은 {format_number(((substrate.get('metabolism_markers') or {}).get('fatmax_zone_min_w')), 1)}-{format_number(((substrate.get('metabolism_markers') or {}).get('fatmax_zone_max_w')), 1)}W입니다.",
+            fuel_text,
+            f"환기 기준 VT1/VT2는 {format_number(vt.get('vt1_power_w'))}W / {format_number(vt.get('vt2_power_w'))}W로 관찰되었습니다.",
+        ]
     crossover = (
         (substrate.get("metabolism_markers") or {}).get("primary_crossover")
         or substrate.get("crossover_power_w")
@@ -401,6 +467,28 @@ def build_coach_summary(context: dict[str, Any]) -> dict[str, Any]:
     clearance = analysis["clearance"]
     vt = analysis["ventilatory_thresholds"]
     zones = analysis["training_zones"]
+    hr = analysis["hr"]
+    if not context["blood_samples"]:
+        rq1_fuel = substrate.get("rq1_fuel_split") or {}
+        fuel_note = (
+            f"RQ 1.0 이전 에너지 기여는 지방 {format_number(rq1_fuel.get('fat_pct'), 1)}% / 탄수화물 {format_number(rq1_fuel.get('cho_pct'), 1)}%입니다."
+            if rq1_fuel.get("status") == "computed"
+            else "RQ 1.0 이전 연료 기여율은 추가 확인이 필요합니다."
+        )
+        return {
+            "headline": "2블럭 CPET 코칭 요약",
+            "subheadline": "FatMax 완만 램프와 10초 VO2max 램프를 기준으로 지구력 연료 효율과 상단 ceiling을 함께 읽은 압축 메모입니다.",
+            "bullets": [
+                f"FatMax는 {format_number(substrate.get('fatmax_power_w'))}W에 위치해 있어 steady endurance는 해당 anchor 전후에서 연료 효율 확인 가치가 높습니다.",
+                fuel_note,
+                f"VO2max {format_number(vo2max.get('vo2max_rel'), 1)} mL/kg/min, VT2 {format_number(vt.get('vt2_power_w'))}W를 보면 상단 유산소 반응은 이미 충분히 좋은 편입니다.",
+                f"두 번째 블럭의 10초 램프는 {format_number(vo2max.get('peak_power_achieved_w'))}W까지 올라가며 peak HR {format_number(hr.get('actual_max_hr'))}bpm를 기록했습니다.",
+            ],
+            "lt2_note": (
+                f"이번 세션은 lactate 블럭이 없는 2블럭 CPET라 LT2는 lactate turnpoint가 아니라 환기·파워 반응 기반 참고치입니다. "
+                f"VT1/VT2는 {format_number(vt.get('vt1_power_w'))}W / {format_number(vt.get('vt2_power_w'))}W입니다."
+            ),
+        }
 
     lt1_power = lactate.get("lt1_dmax_power_w") or lactate.get("lt1_fixed_power_w")
     lt2_power = zones.get("lt2_power_w")
@@ -445,6 +533,10 @@ def build_report_context(db_path: Path) -> dict[str, Any]:
     bxb_summary = summarize_bxb_stages(bxb_rows)
     protocol_summary = build_protocol_summary(protocol_stages)
 
+    has_blood = bool(blood_samples)
+    protocol_name = str(session.get("protocol_name") or "")
+    is_two_block_cpet = (not has_blood) and ("Two-Block" in protocol_name)
+
     kpis = [
         {
             "label": "VO2max",
@@ -468,7 +560,11 @@ def build_report_context(db_path: Path) -> dict[str, Any]:
             "label": "FatMax",
             "value": format_number(analysis["substrate"].get("fatmax_power_w")),
             "unit": "W",
-            "note": f"{format_number(analysis['substrate'].get('fatmax_gmin'), 2)} g/min",
+            "note": (
+                f"{format_number((analysis['substrate'].get('rq1_fuel_split') or {}).get('fat_pct'), 1)}% fat"
+                if ((analysis["substrate"].get("rq1_fuel_split") or {}).get("status") == "computed")
+                else f"{format_number(analysis['substrate'].get('fatmax_gmin'), 2)} g/min"
+            ),
         },
         {
             "label": "Peak HR",
@@ -487,7 +583,11 @@ def build_report_context(db_path: Path) -> dict[str, Any]:
     context = {
         "meta": {
             "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "report_title": "Belgium Lactate Test Analysis Report",
+            "report_title": (
+                "Two-Block CPET Analysis Report"
+                if is_two_block_cpet
+                else "Belgium Lactate Test Analysis Report"
+            ),
             "chart_count": 10,
         },
         "subject": subject,
@@ -499,6 +599,11 @@ def build_report_context(db_path: Path) -> dict[str, Any]:
         "workout_sampled": workout_sampled,
         "analysis": analysis,
         "kpis": kpis,
+        "report_profile": {
+            "has_blood": has_blood,
+            "is_two_block_cpet": is_two_block_cpet,
+            "protocol_name": protocol_name,
+        },
     }
     context["insights"] = build_insights(context)
     context["coach_summary"] = build_coach_summary(context)
@@ -659,8 +764,20 @@ def render_html(context: dict[str, Any]) -> str:
     analysis = context["analysis"]
     coach_summary = context["coach_summary"]
     metabolism = context["chart_data"].get("metabolism", {})
+    report_profile = context.get("report_profile") or {}
+    has_blood = bool(report_profile.get("has_blood"))
+    is_two_block_cpet = bool(report_profile.get("is_two_block_cpet"))
     chart_json = json.dumps(context["chart_data"], ensure_ascii=False).replace("</", "<\\/")
     data_json = json.dumps(context, ensure_ascii=False).replace("</", "<\\/")
+    report_title = context["meta"].get("report_title") or "CPET Analysis Report"
+    hero_eyebrow = "FatMax Ramp · VO2max Ramp · CPET" if is_two_block_cpet else "Belgium Protocol · Lactate · CPET"
+    hero_heading = "Two-Block CPET Analysis" if is_two_block_cpet else "Belgium Lactate Test Analysis"
+    hero_description = (
+        "첫 번째 블럭은 FatMax와 연료 효율 구간을 확인하기 위한 완만한 램프, 두 번째 블럭은 VO2max 확인을 위한 10초 램프입니다. "
+        "호흡별 대사 데이터와 FIT 파워를 통합해 기질 산화, RQ 1.0 이전 연료 기여율, 환기 반응을 한 문서로 정리했습니다."
+        if is_two_block_cpet
+        else "호흡별 대사 데이터, 혈중 lactate/glucose 샘플, 워크아웃 전 구간 FIT 기록을 하나의 정적 문서로 통합한 스포츠과학 리포트입니다. 젖산 역치, 환기 역치, 기질 산화, lactate clearance, 심박 반응, 트레이닝 존을 한 화면에서 검토할 수 있게 구성했습니다."
+    )
 
     # Energy system section
     es = analysis.get("energy_system", {})
@@ -765,17 +882,26 @@ def render_html(context: dict[str, Any]) -> str:
     metabolism_ftp = metabolism.get("ftp_anchor", {})
     metabolism_session = metabolism.get("session_anchor", {})
     metabolism_crossover = metabolism.get("primary_crossover") or {}
+    rq1_fuel_split = analysis["substrate"].get("rq1_fuel_split") or {}
     crossover_label = (
         f"Crossover {format_number(metabolism_crossover.get('power_w'), 1)}W"
         if metabolism_crossover
         else "Stable crossover not observed"
     )
+    rq1_summary = ""
+    if rq1_fuel_split.get("status") == "computed":
+        rq1_summary = (
+            f"<span>RQ 1.0 전 총 {html_text(format_number(rq1_fuel_split.get('total_kcal'), 1))} kcal · "
+            f"Fat {html_text(format_number(rq1_fuel_split.get('fat_pct'), 1))}% / "
+            f"CHO {html_text(format_number(rq1_fuel_split.get('cho_pct'), 1))}%</span>"
+        )
     metabolism_summary = f"""
       <div class="metabolism-summary">
         <strong>FatMax {html_text(format_number(metabolism_fatmax.get('power_w'), 1))}W</strong>
         <span>Band {html_text(format_number(metabolism_fatmax.get('zone_min_w'), 1))}-{html_text(format_number(metabolism_fatmax.get('zone_max_w'), 1))}W · {html_text(format_number(metabolism_fatmax.get('gmin'), 2))} g/min</span>
         <span>{html_text(format_number(metabolism_session.get('duration_label')))} ride anchor · TSS {html_text(format_number(metabolism_session.get('tss')))}</span>
         <span>1h @ FTP {html_text(format_number(metabolism_ftp.get('power_w'), 1))}W ≈ {html_text(format_number(metabolism_ftp.get('kcal_h'), 0))} kcal/h</span>
+        {rq1_summary}
         <span>{html_text(crossover_label)}</span>
       </div>
       <p class="metabolism-note">{html_text(metabolism.get('energy_note'))}</p>
@@ -786,7 +912,7 @@ def render_html(context: dict[str, Any]) -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Belgium Lactate Test Report</title>
+  <title>{html_text(report_title)}</title>
   <style>
     :root {{
       --paper: #f4efe6;
@@ -1391,11 +1517,11 @@ def render_html(context: dict[str, Any]) -> str:
     </section>
 
     <section class="hero">
-      <span class="eyebrow">Belgium Protocol · Lactate · CPET</span>
+      <span class="eyebrow">{html_text(hero_eyebrow)}</span>
       <div class="hero-grid">
         <div class="hero-copy">
-          <h1>Belgium Lactate Test Analysis</h1>
-          <p>호흡별 대사 데이터, 혈중 lactate/glucose 샘플, 워크아웃 전 구간 FIT 기록을 하나의 정적 문서로 통합한 스포츠과학 리포트입니다. 젖산 역치, 환기 역치, 기질 산화, lactate clearance, 심박 반응, 트레이닝 존을 한 화면에서 검토할 수 있게 구성했습니다.</p>
+          <h1>{html_text(hero_heading)}</h1>
+          <p>{html_text(hero_description)}</p>
           <div class="protocol-row">{render_protocol_summary(context["protocol_summary"])}</div>
           <div class="insight-box">
             <strong>핵심 해석 메모</strong>
@@ -1431,7 +1557,7 @@ def render_html(context: dict[str, Any]) -> str:
       <div class="kpi-grid">{render_kpi_cards(context["kpis"])}</div>
     </section>
 
-    <section class="section" id="block1">
+    <section class="section" id="block1"{' style="display:none;"' if not has_blood else ''}>
       <div class="section-header">
         <div>
           <span class="section-tag">Block 1</span>
@@ -1462,8 +1588,8 @@ def render_html(context: dict[str, Any]) -> str:
       <div class="section-header">
         <div>
           <span class="section-tag">Block 2</span>
-          <h2>VO2max 및 환기 역치 분석</h2>
-          <p>호흡별 산소 섭취, 환기, RER, 기질 산화, VE/VO2 · VE/VCO2 변화를 통해 최대 유산소 반응과 ventilatory thresholds를 검토합니다.</p>
+          <h2>{html_text('두 블럭 CPET 핵심 분석' if is_two_block_cpet else 'VO2max 및 환기 역치 분석')}</h2>
+          <p>{html_text('Block 1의 FatMax 완만 램프와 Block 2의 10초 VO2max 램프를 한 번에 묶어, 기질 산화·RER·환기 역치와 연료 전환 지점을 같이 검토합니다.' if is_two_block_cpet else '호흡별 산소 섭취, 환기, RER, 기질 산화, VE/VO2 · VE/VCO2 변화를 통해 최대 유산소 반응과 ventilatory thresholds를 검토합니다.')}</p>
         </div>
       </div>
       <div class="chart-grid">
@@ -1491,7 +1617,7 @@ def render_html(context: dict[str, Any]) -> str:
       </div>
     </section>
 
-    <section class="section" id="block3">
+    <section class="section" id="block3"{' style="display:none;"' if not has_blood else ''}>
       <div class="section-header">
         <div>
           <span class="section-tag">Block 3</span>
