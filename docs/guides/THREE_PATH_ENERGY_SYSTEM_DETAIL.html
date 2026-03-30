@@ -256,6 +256,18 @@
       overflow: auto;
       margin-top: 18px;
     }
+    .math-block {
+      margin-top: 18px;
+      padding: 20px 22px;
+      border-radius: 20px;
+      background: rgba(22, 32, 40, 0.94);
+      color: #f7f1e7;
+      overflow: auto;
+      font-size: 1rem;
+    }
+    .math-block .mjx-chtml {
+      color: #f7f1e7 !important;
+    }
     .table-wrap {
       overflow: auto;
       border-radius: 20px;
@@ -316,6 +328,18 @@
       }
     }
   </style>
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['\\(', '\\)']],
+        displayMath: [['\\[', '\\]']]
+      },
+      chtml: {
+        scale: 1.02
+      }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 </head>
 <body>
   <div class="page">
@@ -440,12 +464,17 @@
           <p>운동 종료 이후 <code>power &lt; 30W</code>가 되는 첫 시점부터 최대 300초를 회복 fit 후보 구간으로 둡니다.</p>
         </div>
       </div>
-      <div class="code-block"><code># exercise window
-above = np.where(power &gt; 20)[0]
-ex_start = t_sec[above[0]]
-peak_idx = np.argmax(power)
-dropout = np.where(post_peak &lt; peak_power * 0.2)[0]
-ex_end = t_sec[peak_idx + dropout[0]]</code></div>
+      <div class="math-block">
+        \[
+        \begin{aligned}
+        \mathcal{I}_{\text{start}} &= \{i \mid P_i > 20 \} \\
+        t_{\text{ex,start}} &= t_{\mathcal{I}_{\text{start},0}} \\
+        i_{\text{peak}} &= \arg\max(P) \\
+        \mathcal{I}_{\text{drop}} &= \{j \mid P_{i_{\text{peak}}+j} < 0.2 \cdot P_{\text{peak}}\} \\
+        t_{\text{ex,end}} &= t_{i_{\text{peak}} + \mathcal{I}_{\text{drop},0}}
+        \end{aligned}
+        \]
+      </div>
     </section>
 
     <section class="section">
@@ -460,30 +489,66 @@ ex_end = t_sec[peak_idx + dropout[0]]</code></div>
         <div class="formula-card">
           <strong>Oxidative Energy</strong>
           <p>운동 구간의 VO2를 시간 적분한 뒤 O2 1L당 20.9kJ를 곱합니다.</p>
-          <div class="code-block"><code>vo2_l_per_s = vo2_ml / 1000 / 60
-oxidative_kj = trapz(vo2_l_per_s, t_sec) * 20.9</code></div>
+          <div class="math-block">
+            \[
+            \dot{V}O_{2,\text{L/s}} = \frac{\dot{V}O_{2,\text{ml/min}}}{1000 \cdot 60}
+            \]
+            \[
+            E_{\text{oxidative}} = \left( \int_{t_{\text{ex,start}}}^{t_{\text{ex,end}}} \dot{V}O_{2,\text{L/s}}(t)\,dt \right) \cdot 20.9
+            \]
+          </div>
         </div>
         <div class="formula-card">
           <strong>Glycolytic Energy</strong>
           <p>휴식-최대 젖산 차이와 체중, lactate distribution volume을 사용합니다.</p>
-          <div class="code-block"><code>delta_la = la_peak - la_rest
-lactate_dist_vol = 0.73 * (1 - body_fat_pct / 100)
-glycolytic_kj =
-  (delta_la * 3.0 * bw * lactate_dist_vol / 1000.0) * 20.9</code></div>
+          <div class="math-block">
+            \[
+            \Delta La = La_{\text{peak}} - La_{\text{rest}}
+            \]
+            \[
+            V_{\text{dist}} =
+            \begin{cases}
+              0.73 \cdot \left(1 - \frac{\text{BodyFat}\%}{100}\right), & \text{if body fat is known} \\
+              0.6, & \text{otherwise}
+            \end{cases}
+            \]
+            \[
+            E_{\text{glycolytic}} =
+            \left(
+              \frac{\Delta La \cdot 3.0 \cdot BW \cdot V_{\text{dist}}}{1000}
+            \right) \cdot 20.9
+            \]
+          </div>
         </div>
         <div class="formula-card">
           <strong>Phosphagen Energy</strong>
           <p>회복기 VO2를 mono-exponential로 fit한 뒤 fast component 면적을 사용합니다.</p>
-          <div class="code-block"><code>mono_exp(t) = a * exp(-t / tau) + baseline
-phosphagen_kj = (a * tau / 60.0) * 20.9</code></div>
+          <div class="math-block">
+            \[
+            \dot{V}O_2(t) = a \cdot e^{-t/\tau} + b
+            \]
+            \[
+            E_{\text{phosphagen}} = \left(\frac{a \cdot \tau}{60}\right) \cdot 20.9
+            \]
+          </div>
         </div>
         <div class="formula-card">
           <strong>Percentages</strong>
           <p>계산 가능한 시스템만 모아 total을 만든 뒤 퍼센트를 냅니다.</p>
-          <div class="code-block"><code>total_kj = oxidative + glycolytic + phosphagen
-oxidative_pct = oxidative / total_kj * 100
-glycolytic_pct = glycolytic / total_kj * 100
-phosphagen_pct = phosphagen / total_kj * 100</code></div>
+          <div class="math-block">
+            \[
+            E_{\text{total}} = E_{\text{oxidative}} + E_{\text{glycolytic}} + E_{\text{phosphagen}}
+            \]
+            \[
+            \%\text{Oxidative} = \frac{E_{\text{oxidative}}}{E_{\text{total}}} \cdot 100
+            \]
+            \[
+            \%\text{Glycolytic} = \frac{E_{\text{glycolytic}}}{E_{\text{total}}} \cdot 100
+            \]
+            \[
+            \%\text{Phosphagen} = \frac{E_{\text{phosphagen}}}{E_{\text{total}}} \cdot 100
+            \]
+          </div>
         </div>
       </div>
     </section>
