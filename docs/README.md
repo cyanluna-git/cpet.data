@@ -19,4 +19,6 @@
 - `docs/reports/`는 과거 작업 기록 보관소입니다. 일부 문서는 레거시 스택을 설명할 수 있습니다.
 - `docs/guides/`는 v2 기준으로 재구성 중입니다.
 - [guides/TWO_BLOCK_CPET_FUEL_SPLIT.md](./guides/TWO_BLOCK_CPET_FUEL_SPLIT.md): 2블럭 CPET의 RQ 1.0 이전 연료 기여율 계산 기준과 Changmo 케이스 정리
+- [guides/TWO_BLOCK_CPET_FUEL_SPLIT_DETAIL.html](./guides/TWO_BLOCK_CPET_FUEL_SPLIT_DETAIL.html): 2블럭 CPET 연료 기여율 계산의 상세 HTML 가이드
+- [guides/THREE_PATH_ENERGY_SYSTEM_DETAIL.html](./guides/THREE_PATH_ENERGY_SYSTEM_DETAIL.html): 3-path 에너지 시스템 기여도 계산 방식과 코드 기준 공식 정리
 - 신규 활성 설계 문서는 가능하면 `docs/specs/`에 추가합니다.

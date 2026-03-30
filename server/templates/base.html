@@ -65,6 +65,15 @@
 
           {% if current_user and current_user.role in ('researcher', 'admin') %}
           <a
+            href="/notes"
+            class="px-3 py-2 rounded-md text-sm font-medium
+              {% if request.url.path == '/notes' or request.url.path.startswith('/notes/') %}
+                bg-gray-900 text-white
+              {% else %}
+                text-gray-600 hover:text-gray-900 hover:bg-gray-100
+              {% endif %}"
+          >노트</a>
+          <a
             href="/manage"
             class="px-3 py-2 rounded-md text-sm font-medium
               {% if request.url.path == '/manage' %}
@@ -120,7 +129,7 @@
   </nav>
 
   <!-- Main content -->
-  <main class="{% if request.url.path == '/dashboard' %}max-w-[1600px]{% else %}max-w-4xl{% endif %} mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <main class="{% if request.url.path == '/dashboard' or request.url.path == '/notes' or request.url.path.startswith('/notes/') %}max-w-[1600px]{% else %}max-w-4xl{% endif %} mx-auto px-4 sm:px-6 lg:px-8 py-8">
     {% block content %}{% endblock %}
   </main>
 

@@ -11,12 +11,14 @@ Usage:
 import os
 import csv
 import io
+import re
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import AsyncIterator
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -135,6 +137,18 @@ if _published_dir.exists():
         name="reports",
     )
 
+_notes_dir = _repo_dir / "docs" / "guides"
+_NOTE_SUMMARIES = {
+    "two-block-cpet-fuel-split-detail": {
+        "summary": "2블럭 CPET에서 RQ 1.0 이전 연료 기여율과 Metabolic Flexibility Index를 현재 구현 기준으로 정리한 상세 가이드입니다.",
+        "category": "Fuel Contribution",
+    },
+    "three-path-energy-system-detail": {
+        "summary": "산화적·해당적·인산계 3-path 에너지 시스템 기여도를 실제 코드 공식과 가정으로 정리한 상세 가이드입니다.",
+        "category": "Energy Systems",
+    },
+}
+
 
 # ── Template context: inject current user into every response ────────
 
@@ -180,6 +194,43 @@ def _template_response(
     if context:
         ctx.update(context)
     return templates.TemplateResponse(request, template_name, ctx)
+
+
+def _extract_note_title(html_text: str, fallback: str) -> str:
+    """Extract an HTML title for notes list cards."""
+    match = re.search(r"<title>(.*?)</title>", html_text, flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        return fallback
+    return re.sub(r"\s+", " ", match.group(1)).strip() or fallback
+
+
+def _build_notes_catalog() -> list[dict]:
+    """List protected note documents from docs/guides."""
+    notes: list[dict] = []
+    if not _notes_dir.exists():
+        return notes
+
+    for path in sorted(_notes_dir.glob("*.html"), key=lambda item: item.stat().st_mtime, reverse=True):
+        slug = path.stem.lower().replace("_", "-")
+        meta = _NOTE_SUMMARIES.get(slug, {})
+        html_text = path.read_text(encoding="utf-8")
+        notes.append({
+            "slug": slug,
+            "title": _extract_note_title(html_text, path.stem.replace("_", " ")),
+            "summary": meta.get("summary", "연구용 내부 문서입니다."),
+            "category": meta.get("category", "Research Note"),
+            "filename": path.name,
+            "updated_at": datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d"),
+        })
+    return notes
+
+
+def _get_note_entry(note_slug: str) -> dict | None:
+    """Return one note's metadata and file path."""
+    for note in _build_notes_catalog():
+        if note["slug"] == note_slug:
+            return {**note, "path": _notes_dir / note["filename"]}
+    return None
 
 
 # ── Page routes ──────────────────────────────────────────────────────
@@ -261,6 +312,47 @@ async def dashboard_page(request: Request) -> HTMLResponse:
     return _template_response(request, "dashboard.html", {
         "dashboard_tab": requested_tab,
     })
+
+
+@app.get("/notes", response_class=HTMLResponse)
+async def notes_page(request: Request) -> HTMLResponse:
+    """Render the protected notes index."""
+    auth_result = _require_notes_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+    return _template_response(request, "notes.html", {
+        "notes": _build_notes_catalog(),
+        "session_user": session_user,
+    })
+
+
+@app.get("/notes/{note_slug}", response_class=HTMLResponse)
+async def note_viewer_page(request: Request, note_slug: str) -> HTMLResponse:
+    """Render a protected note viewer shell."""
+    auth_result = _require_notes_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+    note = _get_note_entry(note_slug)
+    if note is None:
+        raise HTTPException(status_code=404, detail="note not found")
+    return _template_response(request, "note_viewer.html", {
+        "note": note,
+        "session_user": session_user,
+    })
+
+
+@app.get("/notes/{note_slug}/content", response_class=HTMLResponse)
+async def note_content_page(request: Request, note_slug: str) -> HTMLResponse:
+    """Return the raw note HTML after access control."""
+    auth_result = _require_notes_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    note = _get_note_entry(note_slug)
+    if note is None:
+        raise HTTPException(status_code=404, detail="note not found")
+    return HTMLResponse(note["path"].read_text(encoding="utf-8"))
 
 
 def _render_dashboard_analytics(
@@ -623,6 +715,11 @@ def _require_manage_access(request: Request) -> dict | RedirectResponse:
             status_code=403,
         )
     return session_user
+
+
+def _require_notes_access(request: Request) -> dict | RedirectResponse:
+    """Notes are visible only to researcher/admin users."""
+    return _require_manage_access(request)
 
 
 def _require_dashboard_access(request: Request) -> dict | RedirectResponse:
