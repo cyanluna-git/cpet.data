@@ -234,7 +234,6 @@ def _reconcile_job_artifacts(
                 started = datetime.fromisoformat(str(job["started_at"]))
                 elapsed = (datetime.now(timezone.utc) - started).total_seconds()
                 if elapsed > 600:  # 10 minutes
-                    from server.db import update_job_status
                     update_job_status(
                         get_db_path(request), str(job["id"]), "failed",
                         error_message=f"타임아웃 ({int(elapsed)}초) — 재분석을 시도하세요",
