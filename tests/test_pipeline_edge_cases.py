@@ -687,6 +687,32 @@ class TestAnalysisEdgeCases:
         assert markers["fatmax_power_w"] == pytest.approx(150.0, abs=0.1)
         assert markers["fatmax_zone_min_w"] <= 150.0 <= markers["fatmax_zone_max_w"]
 
+    def test_analyze_substrate_prefers_primary_block_for_fatmax_scope(self) -> None:
+        from pipeline.analysis import analyze_substrate
+
+        bxb = pd.DataFrame(
+            {
+                "t_s": [float(idx * 30) for idx in range(14)],
+                "vo2_ml": [1600.0, 1660.0, 1720.0, 1780.0, 1840.0, 1900.0, 1960.0, 2020.0, 2080.0, 2140.0, 2600.0, 2800.0, 3000.0, 3200.0],
+                "vco2_ml": [1200.0, 1245.0, 1290.0, 1335.0, 1380.0, 1425.0, 1470.0, 1515.0, 1560.0, 1605.0, 2280.0, 2460.0, 2700.0, 3200.0],
+                "rq": [0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.88, 0.88, 0.9, 1.0],
+                "hr_bpm": [112.0, 113.0, 114.0, 115.0, 116.0, 117.0, 118.0, 119.0, 120.0, 121.0, 142.0, 148.0, 156.0, 168.0],
+                "ve_lmin": [28.0, 28.5, 29.0, 29.5, 30.0, 30.5, 31.0, 31.5, 32.0, 32.5, 48.0, 54.0, 60.0, 66.0],
+                "bike_power_w": [120.0, 125.0, 130.0, 135.0, 140.0, 145.0, 150.0, 155.0, 160.0, 165.0, 280.0, 320.0, 350.0, 380.0],
+                "fat_gmin": [1.0, 1.1, 1.2, 1.3, 1.5, 1.7, 1.9, 1.8, 1.6, 1.4, 1.1, 2.4, 3.0, 2.6],
+                "cho_gmin": [0.5, 0.55, 0.6, 0.65, 0.7, 0.72, 0.74, 0.76, 0.78, 0.8, 1.9, 2.0, 2.6, 3.4],
+                "block": ["block_1"] * 10 + ["block_2"] * 4,
+            }
+        )
+
+        result = analyze_substrate(bxb)
+
+        assert result["fatmax_scope_block"] == "block_1"
+        assert result["fatmax_power_w"] == 150
+        assert result["metabolism_markers"]["fatmax_power_w"] == pytest.approx(150.0, abs=0.1)
+        assert result["rq1_fuel_split"]["status"] == "computed"
+        assert result["rq1_fuel_split"]["crossing_power_w"] == 380
+
     def test_analyze_efficiency_empty_bxb(self) -> None:
         from pipeline.analysis import analyze_efficiency
 
@@ -799,6 +825,27 @@ class TestReportPartialData:
         assert report_path.suffix == ".html"
         # Must be non-trivial HTML
         assert report_path.stat().st_size > 1000
+        html = report_path.read_text(encoding="utf-8")
+        assert "RQ 1.0 기준 연료 기여율" in html
+
+    def test_build_metabolic_flexibility_payload_handles_no_rq1_crossing(self) -> None:
+        from pipeline.report import build_metabolic_flexibility_payload
+
+        payload = build_metabolic_flexibility_payload(
+            {
+                "analysis": {
+                    "substrate": {
+                        "rq1_fuel_split": {"status": "no_rq1_crossing"},
+                        "metabolism_markers": {},
+                    },
+                    "ventilatory_thresholds": {},
+                }
+            }
+        )
+
+        assert payload["available"] is False
+        assert payload["status"] == "no_rq1_crossing"
+        assert payload["crossing_label"] == "미도달"
 
     def test_report_output_dir_created(self, tmp_path: Path) -> None:
         """generate_report should create output_dir if it does not exist."""

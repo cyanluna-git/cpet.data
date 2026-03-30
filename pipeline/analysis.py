@@ -96,6 +96,65 @@ def _active_bxb_window(bxb: pd.DataFrame) -> pd.DataFrame:
     return valid.sort_values("t_s").reset_index(drop=True)
 
 
+def _attach_workout_blocks_to_bxb(
+    bxb: pd.DataFrame, workout: pd.DataFrame
+) -> pd.DataFrame:
+    """Attach workout block labels to breath-by-breath rows via nearest timestamp.
+
+    COSMED BxB rows and FIT-derived workout rows are stored independently. For
+    protocol-aware substrate analysis we need to know which workout block each
+    breath belongs to. Timestamp matching is more reliable than power matching
+    when protocols include recoveries or brief surges.
+    """
+    if (
+        bxb.empty
+        or workout.empty
+        or "timestamp_kst" not in bxb.columns
+        or "timestamp_kst" not in workout.columns
+    ):
+        return bxb
+
+    left = bxb.copy()
+    right = workout.copy()
+    left["_ts"] = pd.to_datetime(left["timestamp_kst"], errors="coerce")
+    right["_ts"] = pd.to_datetime(right["timestamp_kst"], errors="coerce")
+    left = left[left["_ts"].notna()].sort_values("_ts")
+    right = right[right["_ts"].notna()].sort_values("_ts")
+    if left.empty or right.empty:
+        return bxb
+
+    right_payload = right[["_ts"]].copy()
+    for source, target in (
+        ("block", "workout_block"),
+        ("power_w", "workout_power_w"),
+        ("target_power_w", "workout_target_power_w"),
+    ):
+        if source in right.columns:
+            right_payload[target] = right[source]
+
+    merged = pd.merge_asof(
+        left,
+        right_payload,
+        on="_ts",
+        direction="nearest",
+        tolerance=pd.Timedelta(seconds=20),
+    )
+    merged = merged.sort_index()
+
+    if "workout_block" in merged.columns:
+        merged["block"] = merged["workout_block"]
+    merged = merged.drop(
+        columns=[
+            "_ts",
+            "workout_block",
+            "workout_power_w",
+            "workout_target_power_w",
+        ],
+        errors="ignore",
+    )
+    return merged
+
+
 # Target columns for BxB preprocessing (HR excluded intentionally)
 _BXB_PREPROCESS_COLS = ["vo2_ml", "vco2_ml", "ve_lmin"]
 
@@ -695,6 +754,33 @@ def _ensure_substrate_columns(valid: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _select_primary_substrate_window(valid: pd.DataFrame) -> tuple[pd.DataFrame, str | None]:
+    """Prefer the first workload block for FatMax/crossover when multiple blocks exist.
+
+    In multi-block CPET protocols, later ramps can produce larger absolute fat
+    values or unstable crossover detections that are not the intended FatMax
+    assessment window. When block labels are available, use `block_1` as the
+    primary substrate window while still keeping the full active window for
+    whole-test summaries such as RQ 1.0 crossing.
+    """
+    if valid.empty or "block" not in valid.columns:
+        return valid, None
+
+    block_series = valid["block"].fillna("").astype(str)
+    work_blocks = [block for block in pd.unique(block_series) if block.startswith("block_")]
+    if "block_1" not in work_blocks or len(work_blocks) <= 1:
+        return valid, None
+
+    primary = valid[block_series == "block_1"].copy()
+    if "bike_power_w" in primary.columns:
+        active_primary = primary[primary["bike_power_w"].fillna(0) > 0].copy()
+        if not active_primary.empty:
+            primary = active_primary
+    if len(primary) < 10:
+        return valid, None
+    return primary.reset_index(drop=True), "block_1"
+
+
 def _build_power_domain_substrate(valid: pd.DataFrame) -> dict[str, Any]:
     """Build a chart-ready power-domain substrate contract from breath data."""
     required = ["bike_power_w", "fat_gmin", "cho_gmin"]
@@ -941,40 +1027,43 @@ def analyze_substrate(bxb: pd.DataFrame) -> dict[str, Any]:
     if valid.empty:
         return results
     valid = _ensure_substrate_columns(valid)
+    substrate_window, scope_block = _select_primary_substrate_window(valid)
 
-    fat = valid["fat_gmin"].clip(lower=0)
-    cho = valid["cho_gmin"].clip(lower=0)
+    fat = substrate_window["fat_gmin"].clip(lower=0)
+    cho = substrate_window["cho_gmin"].clip(lower=0)
     if fat.notna().sum() == 0 or cho.notna().sum() == 0:
         return results
 
     fatmax_idx = fat.idxmax()
     results["fatmax_gmin"] = round(float(fat.loc[fatmax_idx]), 3)
-    results["fatmax_time_s"] = round(float(valid.loc[fatmax_idx, "t_s"]), 1)
-    if "bike_power_w" in valid.columns and pd.notna(
-        valid.loc[fatmax_idx, "bike_power_w"]
+    results["fatmax_time_s"] = round(float(substrate_window.loc[fatmax_idx, "t_s"]), 1)
+    if "bike_power_w" in substrate_window.columns and pd.notna(
+        substrate_window.loc[fatmax_idx, "bike_power_w"]
     ):
-        results["fatmax_power_w"] = int(valid.loc[fatmax_idx, "bike_power_w"])
-    results["fatmax_hr"] = int(valid.loc[fatmax_idx, "hr_bpm"])
+        results["fatmax_power_w"] = int(substrate_window.loc[fatmax_idx, "bike_power_w"])
+    results["fatmax_hr"] = int(substrate_window.loc[fatmax_idx, "hr_bpm"])
+    if scope_block:
+        results["fatmax_scope_block"] = scope_block
 
     diff = fat.values - cho.values
     crossover_candidates = np.where(np.diff(np.sign(diff)) != 0)[0]
     if len(crossover_candidates) > 0:
         cx_idx = crossover_candidates[0]
-        cx_row = valid.iloc[cx_idx]
+        cx_row = substrate_window.iloc[cx_idx]
         results["crossover_time_s"] = round(float(cx_row["t_s"]), 1)
-        if "bike_power_w" in valid.columns and pd.notna(
+        if "bike_power_w" in substrate_window.columns and pd.notna(
             cx_row["bike_power_w"]
         ):
             results["crossover_power_w"] = int(cx_row["bike_power_w"])
         results["crossover_hr"] = int(cx_row["hr_bpm"])
 
     results["substrate_series"] = {
-        "t_s": valid["t_s"].tolist(),
+        "t_s": substrate_window["t_s"].tolist(),
         "fat_gmin": fat.tolist(),
         "cho_gmin": cho.tolist(),
     }
 
-    power_domain_payload = _build_power_domain_substrate(valid)
+    power_domain_payload = _build_power_domain_substrate(substrate_window)
     power_domain_payload = _anchor_power_domain_markers(
         power_domain_payload,
         results.get("fatmax_power_w"),
@@ -1456,6 +1545,10 @@ def run_analysis(db_path: Path) -> dict[str, Any]:
     # BxB preprocessing: 5s smoothing + 30% outlier removal
     if not data["breath_by_breath"].empty:
         data["breath_by_breath"] = _preprocess_bxb(data["breath_by_breath"])
+        if not data["workout_data"].empty:
+            data["breath_by_breath"] = _attach_workout_blocks_to_bxb(
+                data["breath_by_breath"], data["workout_data"]
+            )
 
     print("\n1. Lactate Threshold Analysis...")
     if not data["blood_samples"].empty:

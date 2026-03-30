@@ -357,6 +357,7 @@ def build_metabolism_chart_payload(
     analysis: dict[str, dict[str, Any]],
     bxb_rows: list[dict[str, Any]],
     subject: dict[str, Any],
+    has_blood: bool,
 ) -> dict[str, Any]:
     """Build the annotated metabolism chart payload used by the standalone report."""
     substrate = analysis["substrate"]
@@ -384,7 +385,11 @@ def build_metabolism_chart_payload(
     kcal_h = interpolate_series(energy_x, energy_y, power_axis)
     valid_kcal_h = [value for value in kcal_h if value is not None]
 
-    ftp_power = float(subject.get("ftp_w")) if subject.get("ftp_w") is not None else None
+    ftp_power = (
+        float(subject.get("ftp_w"))
+        if has_blood and subject.get("ftp_w") is not None
+        else None
+    )
     fatmax_power = markers.get("fatmax_power_w")
     fatmax_kcal_h = interpolate_at(power_axis, kcal_h, fatmax_power) if valid_kcal_h else None
     ftp_kcal_h = interpolate_at(power_axis, kcal_h, ftp_power) if valid_kcal_h else None
@@ -421,8 +426,24 @@ def build_metabolic_flexibility_payload(context: dict[str, Any]) -> dict[str, An
     analysis = context["analysis"]
     substrate = analysis["substrate"]
     rq1 = substrate.get("rq1_fuel_split") or {}
-    if rq1.get("status") != "computed":
-        return {}
+    status = rq1.get("status")
+    if status != "computed":
+        if status == "no_rq1_crossing":
+            note = "이번 테스트에서는 RQ 1.0에 도달하지 않아 연료 기여율을 RQ1 기준으로 계산할 수 없습니다."
+            crossing_label = "미도달"
+        elif status == "insufficient_data":
+            note = "RQ 1.0 기준 연료 기여율을 계산하기에 호흡 데이터가 충분하지 않습니다."
+            crossing_label = "데이터 부족"
+        else:
+            note = "RQ 1.0 기준 연료 기여율은 이번 테스트에서 계산되지 않았습니다."
+            crossing_label = "계산 불가"
+        return {
+            "status": status or "unavailable",
+            "available": False,
+            "note": note,
+            "crossing_label": crossing_label,
+            "formula_note": "RQ 1.0 도달 시점이 확인되면 그 지점까지의 누적 kcal를 기준으로 지방/탄수화물 기여율을 계산합니다.",
+        }
 
     vt = analysis["ventilatory_thresholds"]
     markers = substrate.get("metabolism_markers") or {}
@@ -461,6 +482,8 @@ def build_metabolic_flexibility_payload(context: dict[str, Any]) -> dict[str, An
         note = "저중강도 지방 활용과 고강도 전환 사이 간격을 더 다듬을 필요가 있습니다."
 
     return {
+        "status": "computed",
+        "available": True,
         "score": score,
         "band": band,
         "note": note,
@@ -702,7 +725,12 @@ def build_chart_data(context: dict[str, Any], bxb_rows: list[dict[str, Any]]) ->
             "cho_gmin": {"radius": 2, "rel_threshold": 0.22, "abs_threshold": 0.8, "smooth_window": 7},
         },
     )
-    metabolism_chart = build_metabolism_chart_payload(analysis, bxb_rows, context["subject"])
+    metabolism_chart = build_metabolism_chart_payload(
+        analysis,
+        bxb_rows,
+        context["subject"],
+        bool(context["blood_samples"]),
+    )
     vt_series = smooth_chart_series(
         analysis["ventilatory_thresholds"].get("vt_series", {}),
         {
@@ -869,6 +897,23 @@ def render_html(context: dict[str, Any]) -> str:
     fuel_contribution_section = ""
     energy_system_section = ""
     if fuel_flex:
+        fuel_available = bool(fuel_flex.get("available"))
+        crossing_display = (
+            format_number(fuel_flex.get("crossing_power_w"))
+            if fuel_available
+            else (fuel_flex.get("crossing_label") or "-")
+        )
+        crossing_unit = "W" if fuel_available else ""
+        crossing_note = (
+            f"HR {html_text(format_number(fuel_flex.get('crossing_hr_bpm')))} bpm · 총 {html_text(format_number(fuel_flex.get('total_kcal'), 1))} kcal"
+            if fuel_available
+            else html_text(fuel_flex.get("note"))
+        )
+        fuel_chart_block = (
+            '<div class="chart-shell chart-shell--compact"><canvas id="chart-fuel-split"></canvas><div class="chart-fallback" data-fallback="chart-fuel-split"></div></div>'
+            if fuel_available
+            else f'<div class="note-card" style="min-height:220px;display:flex;align-items:center;"><p>{html_text(fuel_flex.get("note"))}</p></div>'
+        )
         fuel_contribution_section = f"""
     <section class="section" id="fuel-flex">
       <div class="section-header">
@@ -881,26 +926,26 @@ def render_html(context: dict[str, Any]) -> str:
       <div class="kpi-grid">
         <article class="kpi-card">
           <span class="kpi-label">Fat Contribution</span>
-          <strong class="kpi-value">{html_text(format_number(fuel_flex.get('fat_contribution_pct'), 1))}</strong>
+          <strong class="kpi-value">{html_text(format_number(fuel_flex.get('fat_contribution_pct'), 1) if fuel_available else '-')}</strong>
           <span class="kpi-unit">%</span>
           <p class="kpi-note">RQ 1.0 이전 지방 기여율</p>
         </article>
         <article class="kpi-card">
           <span class="kpi-label">CHO Contribution</span>
-          <strong class="kpi-value">{html_text(format_number(fuel_flex.get('cho_contribution_pct'), 1))}</strong>
+          <strong class="kpi-value">{html_text(format_number(fuel_flex.get('cho_contribution_pct'), 1) if fuel_available else '-')}</strong>
           <span class="kpi-unit">%</span>
           <p class="kpi-note">RQ 1.0 이전 탄수화물 기여율</p>
         </article>
         <article class="kpi-card">
           <span class="kpi-label">RQ 1.0 Crossing</span>
-          <strong class="kpi-value">{html_text(format_number(fuel_flex.get('crossing_power_w')))}</strong>
-          <span class="kpi-unit">W</span>
-          <p class="kpi-note">HR {html_text(format_number(fuel_flex.get('crossing_hr_bpm')))} bpm · 총 {html_text(format_number(fuel_flex.get('total_kcal'), 1))} kcal</p>
+          <strong class="kpi-value">{html_text(crossing_display)}</strong>
+          <span class="kpi-unit">{crossing_unit}</span>
+          <p class="kpi-note">{crossing_note}</p>
         </article>
         <article class="kpi-card">
           <span class="kpi-label">Metabolic Flexibility Index</span>
-          <strong class="kpi-value">{html_text(format_number(fuel_flex.get('score'), 1))}</strong>
-          <span class="kpi-unit">/100</span>
+          <strong class="kpi-value">{html_text(format_number(fuel_flex.get('score'), 1) if fuel_available else '-')}</strong>
+          <span class="kpi-unit">{'/100' if fuel_available else ''}</span>
           <p class="kpi-note">{html_text(fuel_flex.get('note'))}</p>
         </article>
       </div>
@@ -908,7 +953,7 @@ def render_html(context: dict[str, Any]) -> str:
         <article class="chart-card chart-card--full">
           <h3>Fuel Split Before RQ 1.0</h3>
           <p>RQ 1.0 도달 전까지 누적된 총 kcal에서 지방과 탄수화물 기여 비율을 바로 읽을 수 있도록 도넛 차트로 표시합니다.</p>
-          <div class="chart-shell chart-shell--compact"><canvas id="chart-fuel-split"></canvas><div class="chart-fallback" data-fallback="chart-fuel-split"></div></div>
+          {fuel_chart_block}
         </article>
       </div>
       <div class="note-card" style="margin-top:18px;">
@@ -1016,6 +1061,11 @@ def render_html(context: dict[str, Any]) -> str:
     metabolism_ftp = metabolism.get("ftp_anchor", {})
     metabolism_session = metabolism.get("session_anchor", {})
     metabolism_crossover = metabolism.get("primary_crossover") or {}
+    metabolism_ftp_line = (
+        f"<span>1h @ FTP {html_text(format_number(metabolism_ftp.get('power_w'), 1))}W ≈ {html_text(format_number(metabolism_ftp.get('kcal_h'), 0))} kcal/h</span>"
+        if metabolism_ftp.get("power_w") is not None and metabolism_ftp.get("kcal_h") is not None
+        else "<span>Measured FTP unavailable for this protocol</span>"
+    )
     rq1_fuel_split = analysis["substrate"].get("rq1_fuel_split") or {}
     crossover_label = (
         f"Crossover {format_number(metabolism_crossover.get('power_w'), 1)}W"
@@ -1034,7 +1084,7 @@ def render_html(context: dict[str, Any]) -> str:
         <strong>FatMax {html_text(format_number(metabolism_fatmax.get('power_w'), 1))}W</strong>
         <span>Band {html_text(format_number(metabolism_fatmax.get('zone_min_w'), 1))}-{html_text(format_number(metabolism_fatmax.get('zone_max_w'), 1))}W · {html_text(format_number(metabolism_fatmax.get('gmin'), 2))} g/min</span>
         <span>{html_text(format_number(metabolism_session.get('duration_label')))} ride anchor · TSS {html_text(format_number(metabolism_session.get('tss')))}</span>
-        <span>1h @ FTP {html_text(format_number(metabolism_ftp.get('power_w'), 1))}W ≈ {html_text(format_number(metabolism_ftp.get('kcal_h'), 0))} kcal/h</span>
+        {metabolism_ftp_line}
         {rq1_summary}
         <span>{html_text(crossover_label)}</span>
       </div>
