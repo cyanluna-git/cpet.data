@@ -849,6 +849,8 @@ async def manage_page(
         return auth_result
     session_user = auth_result
 
+    active_tab = tab if tab in ("users", "subjects", "submissions", "snapshots", "feature_sets") else "users"
+
     db_path = request.app.state.db_path
     users = list_users(db_path)
     subjects = list_subjects(db_path)
@@ -858,33 +860,46 @@ async def manage_page(
         unlinked_only=submissions_unlinked_only,
         sort_by=submissions_sort_by,
     )
-    snapshots = list_subject_metric_snapshots(
-        db_path,
-        subject_id=subject_id or None,
-        source_kind=source_kind or None,
-        date_from=date_from or None,
-        date_to=date_to or None,
-    )
+    snapshots: list[dict] = []
     snapshot_compare_defaults = {
-        "baseline_snapshot_id": snapshots[1]["snapshot_id"] if len(snapshots) >= 2 else "",
-        "current_snapshot_id": snapshots[0]["snapshot_id"] if len(snapshots) >= 2 else "",
+        "baseline_snapshot_id": "",
+        "current_snapshot_id": "",
     }
-    feature_sets = list_subject_feature_sets(
-        db_path,
-        subject_id=feature_subject_id or None,
-        feature_spec_key=feature_spec_key or None,
-        window_label=feature_window_label or None,
-        anchor_source_kind=feature_anchor_source_kind or None,
-    )
-    feature_set_summary = summarize_subject_feature_sets(
-        db_path,
-        subject_id=feature_subject_id or None,
-        feature_spec_key=feature_spec_key or None,
-        window_label=feature_window_label or None,
-        anchor_source_kind=feature_anchor_source_kind or None,
-    )
+    if active_tab == "snapshots":
+        snapshots = list_subject_metric_snapshots(
+            db_path,
+            subject_id=subject_id or None,
+            source_kind=source_kind or None,
+            date_from=date_from or None,
+            date_to=date_to or None,
+        )
+        snapshot_compare_defaults = {
+            "baseline_snapshot_id": snapshots[1]["snapshot_id"] if len(snapshots) >= 2 else "",
+            "current_snapshot_id": snapshots[0]["snapshot_id"] if len(snapshots) >= 2 else "",
+        }
 
-    active_tab = tab if tab in ("users", "subjects", "submissions", "snapshots", "feature_sets") else "users"
+    feature_sets: list[dict] = []
+    feature_set_summary = {
+        "total": 0,
+        "by_spec": {},
+        "by_window": {},
+        "by_source": {},
+    }
+    if active_tab == "feature_sets":
+        feature_sets = list_subject_feature_sets(
+            db_path,
+            subject_id=feature_subject_id or None,
+            feature_spec_key=feature_spec_key or None,
+            window_label=feature_window_label or None,
+            anchor_source_kind=feature_anchor_source_kind or None,
+        )
+        feature_set_summary = summarize_subject_feature_sets(
+            db_path,
+            subject_id=feature_subject_id or None,
+            feature_spec_key=feature_spec_key or None,
+            window_label=feature_window_label or None,
+            anchor_source_kind=feature_anchor_source_kind or None,
+        )
 
     return _template_response(request, "manage.html", {
         "users": users,

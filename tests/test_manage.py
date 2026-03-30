@@ -340,6 +340,18 @@ class TestManagePage:
         assert resp.status_code == 200
         assert "유저 관리" in resp.text
 
+    def test_users_tab_does_not_require_snapshot_or_feature_queries(self, client: TestClient) -> None:
+        """Default/users tabs should render even if explorer queries fail."""
+        _login_as(client, role="admin", google_id="safe-gid", email="safe@test.com", name="Safe Admin")
+        with patch("server.main.list_subject_metric_snapshots", side_effect=RuntimeError("snapshots unavailable")):
+            with patch("server.main.list_subject_feature_sets", side_effect=RuntimeError("feature sets unavailable")):
+                with patch("server.main.summarize_subject_feature_sets", side_effect=RuntimeError("feature summary unavailable")):
+                    resp = client.get("/manage?tab=users")
+
+        assert resp.status_code == 200
+        assert "유저 관리" in resp.text
+        assert "Safe Admin" in resp.text
+
     def test_subjects_tab_shows_name_edit_controls_for_admin(self, client: TestClient) -> None:
         """Admin sees modal-based subject rename controls on the subjects tab."""
         _login_as(client, role="admin", google_id="subject-admin", email="subject-admin@test.com")
