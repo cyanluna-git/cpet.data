@@ -325,6 +325,91 @@
     <section class="section">
       <div class="section-header">
         <div>
+          <span class="section-tag">Beginner Lens</span>
+          <h2>초심자용 한 번역</h2>
+          <p>이 연구가 실제로 무엇을 하려는지 아주 단순한 말로 먼저 풀었습니다.</p>
+        </div>
+      </div>
+      <div class="card-grid">
+        <article class="card">
+          <h3>핵심 질문</h3>
+          <p>마스크를 쓰고 VO2를 직접 재지 않아도, 다른 센서 값만으로 “지금 산소를 얼마나 쓸 것 같은가”를 맞출 수 있을까?</p>
+        </article>
+        <article class="card">
+          <h3>쓰는 입력</h3>
+          <p><code>심박수</code>, <code>파워</code>, <code>케이던스</code>, <code>호흡수</code>를 시간 순서대로 넣어 예측합니다.</p>
+        </article>
+        <article class="card">
+          <h3>좋아 보이는 점</h3>
+          <p>실험실 밖의 riding data에도 oxygen-demand story를 붙일 가능성을 보여줍니다.</p>
+        </article>
+        <article class="card">
+          <h3>아직 부족한 점</h3>
+          <p>사람 수가 적고, 입력 조건이 현실과 다르며, 실측 VO2를 바로 대체한다고 말하긴 어렵습니다.</p>
+        </article>
+      </div>
+      <div class="callout">
+        <ul>
+          <li>쉽게 말하면: “가슴에 마스크를 안 써도 산소 사용 패턴을 대략 추정할 수 있을까?”를 시험한 연구입니다.</li>
+          <li>하지만 현재 단계에선 “추정 도구”이지 “실측 대체 장비”가 아닙니다.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <span class="section-tag">Glossary</span>
+          <h2>용어를 아주 짧게 풀면</h2>
+          <p>모델링 논문은 약어가 많아서, 여기만 알아도 절반은 이해가 쉬워집니다.</p>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>용어</th>
+            <th>뜻</th>
+            <th>쉽게 말하면</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>VO2</code></td>
+            <td>산소 섭취량</td>
+            <td>운동 중 몸이 얼마나 산소를 쓰는지</td>
+          </tr>
+          <tr>
+            <td><code>HR</code></td>
+            <td>Heart Rate</td>
+            <td>심박수</td>
+          </tr>
+          <tr>
+            <td><code>power</code></td>
+            <td>자전거 파워</td>
+            <td>얼마나 강하게 밟는지</td>
+          </tr>
+          <tr>
+            <td><code>cadence</code></td>
+            <td>페달 회전수</td>
+            <td>얼마나 빨리 돌리는지</td>
+          </tr>
+          <tr>
+            <td><code>RF</code></td>
+            <td>Respiratory Frequency</td>
+            <td>호흡수</td>
+          </tr>
+          <tr>
+            <td><code>RNN</code></td>
+            <td>시간 흐름을 읽는 신경망</td>
+            <td>이전 순간의 정보를 기억하며 다음 값을 예측하는 모델</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
           <span class="section-tag">Overview</span>
           <h2>한 페이지 결론</h2>
           <p>논문에서 지금 바로 취할 것과 보류할 것을 먼저 구분합니다.</p>
