@@ -1107,6 +1107,30 @@ def list_submissions_by_user(db_path: Path, user_id: str) -> list[dict]:
     return results
 
 
+def list_submissions_by_ids(
+    db_path: Path, submission_ids: list[str],
+) -> dict[str, dict]:
+    """Fetch many submissions in one query and return them keyed by id."""
+    if not submission_ids:
+        return {}
+
+    conn = _connect(db_path)
+    placeholders = ", ".join("?" for _ in submission_ids)
+    rows = conn.execute(
+        f"SELECT * FROM submissions WHERE id IN ({placeholders})",
+        submission_ids,
+    ).fetchall()
+    conn.close()
+
+    result: dict[str, dict] = {}
+    for row in rows:
+        item = dict(row)
+        if item.get("file_manifest"):
+            item["file_manifest"] = json.loads(item["file_manifest"])
+        result[str(item["id"])] = item
+    return result
+
+
 # ── Fitness Trends (from workspace analysis.db files) ─────────────
 
 

@@ -17,6 +17,7 @@ import hashlib
 from pathlib import Path
 import re
 import threading
+import time
 
 import httpx
 from fastapi import APIRouter, Form, Query, Request, UploadFile
@@ -33,6 +34,7 @@ from server.db import (
     get_user,
     list_jobs,
     list_jobs_by_user,
+    list_submissions_by_ids,
     list_subjects,
     update_job_status,
 )
@@ -56,6 +58,9 @@ SUBJECT_NAME_ALIASES = {
     "Changsun Hong": "홍창선",
     "Daesoon Kim": "김대순",
 }
+
+_PUBLISHED_SCAN_TTL_SECONDS = 15.0
+_PUBLISHED_SCAN_CACHE: dict[str, dict] = {}
 
 
 # ── Dependencies ─────────────────────────────────────────────────────
@@ -465,6 +470,19 @@ def _scan_published_reports(published_dir: Path) -> list[dict]:
     return rows
 
 
+def _scan_published_reports_cached(published_dir: Path) -> list[dict]:
+    """Cache published report scans briefly to avoid repeated HTML parsing."""
+    cache_key = str(published_dir.resolve())
+    now = time.monotonic()
+    cached = _PUBLISHED_SCAN_CACHE.get(cache_key)
+    if cached and (now - float(cached["ts"])) < _PUBLISHED_SCAN_TTL_SECONDS:
+        return [dict(item) for item in cached["rows"]]
+
+    rows = _scan_published_reports(published_dir)
+    _PUBLISHED_SCAN_CACHE[cache_key] = {"ts": now, "rows": rows}
+    return [dict(item) for item in rows]
+
+
 def _list_dashboard_entries(
     request: Request, status: str | None = None, user_id: str | None = None,
 ) -> list[dict]:
@@ -474,23 +492,31 @@ def _list_dashboard_entries(
     are returned (the published-directory scan is skipped).
     """
     db_path = get_db_path(request)
-    # Always fetch all jobs; user filtering happens after merging with published
     jobs = list_jobs(db_path, status=status)
+    submission_ids = [str(job["submission_id"]) for job in jobs if job.get("submission_id")]
+    submissions_by_id = list_submissions_by_ids(db_path, submission_ids)
 
     enriched: list[dict] = []
     job_slugs: set[str] = set()
     published_dir = get_published_dir(request)
+    published_rows: list[dict] = []
+    published_by_slug: dict[str, dict] = {}
+    if status in (None, "done"):
+        published_rows = _scan_published_reports_cached(published_dir)
+        published_by_slug = {
+            str(item["report_slug"]): item for item in published_rows if item.get("report_slug")
+        }
+
     for job in jobs:
-        sub = get_submission(db_path, job["submission_id"])
+        sub = submissions_by_id.get(str(job["submission_id"]))
         job = _reconcile_job_artifacts(request, job, sub)
         report_slug = str(job.get("report_slug") or "")
         analysis_method = "대기 중"
         if report_slug:
-            index_file = published_dir / report_slug / "index.html"
-            if index_file.is_file():
-                analysis_method = _extract_report_metadata(index_file)[
-                    "analysis_method"
-                ]
+            analysis_method = (
+                published_by_slug.get(report_slug, {}).get("analysis_method")
+                or analysis_method
+            )
         elif job.get("status") == "processing":
             analysis_method = "생성 중"
         elif job.get("status") == "failed":
@@ -528,43 +554,10 @@ def _list_dashboard_entries(
     if status not in (None, "done"):
         return enriched
 
-    published_rows = _scan_published_reports(published_dir)
     for row in published_rows:
         if row["report_slug"] in job_slugs:
             continue
         enriched.append(row)
-
-    # Fill missing file_tags by scanning workspace raw/ directories
-    data_dir = get_data_dir(request)
-    if data_dir:
-        workspaces_dir = Path(data_dir) / "workspaces"
-        if workspaces_dir.is_dir():
-            for row in enriched:
-                if row.get("file_tags"):
-                    continue
-                # Try submission workspace_path
-                sub_id = row.get("submission_id")
-                if sub_id:
-                    sub = get_submission(db_path, sub_id)
-                    if sub and sub.get("workspace_path"):
-                        row["file_tags"] = _extract_file_tags_from_workspace(sub["workspace_path"])
-                        continue
-                # Try matching workspace by ID patterns
-                slug = row.get("report_slug", "")
-                for ws in workspaces_dir.iterdir():
-                    if not ws.is_dir():
-                        continue
-                    ws_report = ws / "report" / "index.html"
-                    if ws_report.is_file():
-                        tags = _extract_file_tags_from_workspace(str(ws))
-                        if tags:
-                            try:
-                                pub_index = published_dir / slug / "index.html"
-                                if pub_index.is_file() and _report_identity(pub_index) == _report_identity(ws_report):
-                                    row["file_tags"] = tags
-                                    break
-                            except Exception:
-                                pass
 
     # Mark ownership via submission.user_id, subject_id, and report_user_links
     from server.db import get_report_user_links

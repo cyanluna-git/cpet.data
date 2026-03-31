@@ -173,6 +173,7 @@ class TestDashboardFeatureAnalyticsPartial:
         assert 'id="filter-tabs"' in resp.text
         assert 'id="job-list-body"' in resp.text
         assert 'hx-get="/api/jobs/partial"' in resp.text
+        assert 'hx-trigger="load, every 10s"' in resp.text
 
     def test_dashboard_analytics_overview_partial_renders_summary(self, tmp_path: Path) -> None:
         db_path = _setup_app(tmp_path)
