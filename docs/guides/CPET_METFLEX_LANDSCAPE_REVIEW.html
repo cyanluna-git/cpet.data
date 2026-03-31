@@ -1,989 +1,780 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>CPET-Derived Metabolic Flexibility Metric</title>
-    <style>
-      :root {
-        --primary: #054E5A;
-        --primary-l: #0A6E7E;
-        --gray: #A1A9B4;
-        --gray-light: #DFE4E7;
-        --gray-bg: #F4F6F8;
-        --gold: #E1B77E;
-        --gold-dark: #C89B5E;
-        --sage: #5D7875;
-        --navy: #123F6D;
-        --navy-dark: #06315B;
-        --coral: #F68363;
-        --white: #FFFFFF;
-        --text: #2C3E50;
-        --text-light: #5A6A7A;
-        --success: #27AE60;
-        --danger: #E74C3C;
-        --warning: #F39C12;
-        --shadow: 0 22px 54px rgba(6, 49, 91, 0.10);
-        --page-glow: rgba(10, 110, 126, 0.15);
-        --page-bg-start: #eef3f5;
-        --page-bg-end: #e6ecef;
-        --cover-dark: #043A44;
-        --cover-glow: rgba(225,183,126,0.18);
-        --cover-panel-end: #edf2f5;
-        --cover-grid-dot: rgba(161,169,180,0.28);
-        --cover-summary-shadow: rgba(18, 63, 109, 0.08);
-        --logo-shadow: rgba(0,0,0,0.12);
-      }
-
-      * { box-sizing: border-box; }
-
-      html, body {
-        margin: 0;
-        padding: 0;
-        background:
-          radial-gradient(circle at top left, var(--page-glow), transparent 24rem),
-          linear-gradient(180deg, var(--page-bg-start) 0%, var(--page-bg-end) 100%);
-        color: var(--text);
-        font-family: "Segoe UI", "Noto Sans KR", "Pretendard", system-ui, -apple-system, sans-serif;
-      }
-
-      body {
-        padding: 32px;
-      }
-
-      .report-shell {
-        max-width: 1080px;
-        margin: 0 auto;
-      }
-
-      body.page-landscape .report-shell {
-        max-width: 1460px;
-      }
-
-      .page {
-        position: relative;
-        background: var(--white);
-        border-radius: 24px;
-        box-shadow: var(--shadow);
-        margin-bottom: 28px;
-        overflow: hidden;
-      }
-
-      .page::before {
-        content: "";
-        position: absolute;
-        inset: 0 0 auto 0;
-        height: 8px;
-        background: linear-gradient(90deg, var(--primary) 0%, var(--primary-l) 45%, var(--gold) 100%);
-      }
-
-      .page-inner {
-        padding: 42px 44px 40px;
-      }
-
-      body.page-landscape .page-inner {
-        padding: 30px 34px 28px;
-      }
-
-      .cover {
-        background: linear-gradient(180deg, var(--white) 0%, #fbfcfd 100%);
-      }
-
-      .cover-hero {
-        display: grid;
-        grid-template-columns: 0.95fr 1.05fr;
-        min-height: 460px;
-      }
-
-      body.page-landscape .cover-hero {
-        grid-template-columns: 0.82fr 1.18fr;
-        min-height: 330px;
-      }
-
-      .cover-left {
-        position: relative;
-        padding: 52px 42px 44px;
-        background: linear-gradient(180deg, var(--cover-dark) 0%, var(--primary) 46%, var(--primary-l) 100%);
-        color: var(--white);
-      }
-
-      body.page-landscape .cover-left,
-      body.page-landscape .cover-right {
-        padding: 32px 30px 28px;
-      }
-
-      .cover-left::before {
-        content: "";
-        position: absolute;
-        inset: 0 auto 0 0;
-        width: 6px;
-        background: linear-gradient(180deg, var(--gold) 0%, rgba(225,183,126,0) 65%);
-      }
-
-      .cover-left::after {
-        content: "";
-        position: absolute;
-        right: -120px;
-        bottom: -120px;
-        width: 320px;
-        height: 320px;
-        border-radius: 50%;
-        border: 1px solid rgba(225,183,126,0.12);
-      }
-
-      .brand {
-        color: var(--gold);
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.24em;
-        text-transform: uppercase;
-      }
-
-      .brand-lockup {
-        display: flex;
-        align-items: flex-start;
-        gap: 16px;
-        margin-bottom: 18px;
-      }
-
-      .brand-logo {
-        width: 190px;
-        height: auto;
-        display: block;
-        filter: drop-shadow(0 6px 12px var(--logo-shadow));
-      }
-
-      .brand-copy {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        padding-top: 8px;
-      }
-
-      .doc-type {
-        display: inline-flex;
-        padding: 8px 12px;
-        border-radius: 999px;
-        background: rgba(255,255,255,0.12);
-        border: 1px solid rgba(255,255,255,0.18);
-        color: rgba(255,255,255,0.88);
-        font-size: 12px;
-        font-weight: 600;
-      }
-
-      .department-line {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        color: rgba(255,255,255,0.82);
-        font-size: 13px;
-        font-weight: 600;
-        line-height: 1.5;
-      }
-
-      .department-line strong {
-        color: var(--white);
-        font-weight: 700;
-      }
-
-      .cover-left h1 {
-        margin: 44px 0 18px;
-        font-size: 42px;
-        line-height: 1.12;
-        letter-spacing: -0.04em;
-      }
-
-      body.page-landscape .cover-left h1 {
-        margin: 26px 0 12px;
-        font-size: 34px;
-      }
-
-      .cover-intro p {
-        margin: 0 0 12px;
-        color: rgba(255,255,255,0.78);
-        font-size: 16px;
-        line-height: 1.72;
-      }
-
-      body.page-landscape .cover-intro p {
-        font-size: 14px;
-        line-height: 1.58;
-      }
-
-      .cover-divider {
-        width: 70px;
-        height: 4px;
-        margin: 18px 0 22px;
-        border-radius: 999px;
-        background: var(--gold);
-      }
-
-      body.page-landscape .cover-divider {
-        margin: 12px 0 16px;
-      }
-
-      .cover-left-footer {
-        position: absolute;
-        left: 42px;
-        bottom: 38px;
-        color: rgba(255,255,255,0.52);
-        font-size: 13px;
-        line-height: 1.5;
-      }
-
-      body.page-landscape .cover-left-footer {
-        left: 30px;
-        bottom: 22px;
-        font-size: 12px;
-      }
-
-      .cover-right {
-        position: relative;
-        padding: 52px 44px 40px;
-        background:
-          radial-gradient(circle at top right, var(--cover-glow), transparent 18rem),
-          linear-gradient(180deg, var(--gray-bg) 0%, var(--cover-panel-end) 100%);
-      }
-
-      .cover-right::before {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background-image: radial-gradient(var(--cover-grid-dot) 1px, transparent 1px);
-        background-size: 22px 22px;
-        opacity: 0.26;
-        pointer-events: none;
-      }
-
-      .cover-panel {
-        position: relative;
-        z-index: 1;
-      }
-
-      .section-tag {
-        color: var(--gray);
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        margin-bottom: 20px;
-      }
-
-      .cover-summary {
-        background: rgba(255,255,255,0.92);
-        border-radius: 16px;
-        border-left: 4px solid var(--gold);
-        padding: 20px 22px;
-        box-shadow: 0 10px 28px var(--cover-summary-shadow);
-      }
-
-      body.page-landscape .cover-summary {
-        padding: 16px 18px;
-      }
-
-      .cover-summary p {
-        margin: 0 0 12px;
-        font-size: 15px;
-        line-height: 1.72;
-        color: var(--text);
-      }
-
-      body.page-landscape .cover-summary p {
-        font-size: 13px;
-        line-height: 1.56;
-      }
-
-      .cover-summary p:last-child {
-        margin-bottom: 0;
-      }
-
-      .meta-grid {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 16px;
-        padding: 24px 44px 40px;
-        background: var(--white);
-      }
-
-      body.page-landscape .meta-grid {
-        gap: 12px;
-        padding: 18px 34px 26px;
-      }
-
-      .meta-card,
-      .subcard {
-        background: var(--white);
-        border-radius: 14px;
-        border: 1px solid var(--gray-light);
-      }
-
-      .meta-card {
-        padding: 18px 18px 20px;
-      }
-
-      body.page-landscape .meta-card {
-        padding: 14px 14px 15px;
-      }
-
-      .meta-card:nth-child(1) { border-top: 4px solid var(--primary); }
-      .meta-card:nth-child(2) { border-top: 4px solid var(--gold); }
-      .meta-card:nth-child(3) { border-top: 4px solid var(--sage); }
-
-      .meta-label {
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        color: var(--gray);
-        margin-bottom: 10px;
-      }
-
-      .meta-value {
-        font-size: 18px;
-        font-weight: 700;
-        line-height: 1.45;
-        color: var(--navy-dark);
-      }
-
-      .page-header {
-        display: flex;
-        justify-content: space-between;
-        gap: 24px;
-        align-items: flex-start;
-        margin-bottom: 24px;
-      }
-
-      body.page-landscape .page-header {
-        margin-bottom: 18px;
-      }
-
-      .page-kicker {
-        color: var(--primary);
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        margin-bottom: 8px;
-      }
-
-      .page-title {
-        margin: 0;
-        color: var(--navy-dark);
-        font-size: 34px;
-        line-height: 1.18;
-        letter-spacing: -0.03em;
-      }
-
-      body.page-landscape .page-title {
-        font-size: 28px;
-      }
-
-      .page-title-bar {
-        width: 82px;
-        height: 4px;
-        border-radius: 999px;
-        background: var(--gold);
-        margin-top: 10px;
-      }
-
-      .page-note {
-        max-width: 320px;
-        color: var(--text-light);
-        font-size: 15px;
-        line-height: 1.66;
-      }
-
-      body.page-landscape .page-note {
-        max-width: 380px;
-        font-size: 13px;
-        line-height: 1.5;
-      }
-
-      .toc {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px 28px;
-      }
-
-      body.page-landscape .toc {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 8px 22px;
-      }
-
-      .toc li {
-        display: flex;
-        align-items: baseline;
-        gap: 14px;
-        padding: 12px 0;
-        border-bottom: 1px solid var(--gray-light);
-      }
-
-      body.page-landscape .toc li {
-        padding: 8px 0;
-      }
-
-      .toc-index {
-        min-width: 28px;
-        color: var(--coral);
-        font-size: 13px;
-        font-weight: 800;
-      }
-
-      .toc-title {
-        color: var(--text);
-        font-size: 17px;
-        line-height: 1.48;
-      }
-
-      body.page-landscape .toc-title {
-        font-size: 14px;
-        line-height: 1.34;
-      }
-
-      .section-heading {
-        margin-bottom: 18px;
-      }
-
-      .section-kicker {
-        display: inline-flex;
-        padding: 7px 12px;
-        border-radius: 999px;
-        background: rgba(5, 78, 90, 0.08);
-        color: var(--primary);
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-      }
-
-      .report-section h2 {
-        margin: 14px 0 0;
-        color: var(--navy-dark);
-        font-size: 28px;
-        line-height: 1.2;
-        letter-spacing: -0.03em;
-      }
-
-      body.page-landscape .report-section h2 {
-        font-size: 24px;
-      }
-
-      .section-body p,
-      .subcard p {
-        margin: 0 0 14px;
-        color: var(--text);
-        font-size: 15px;
-        line-height: 1.76;
-      }
-
-      body.page-landscape .section-body p,
-      body.page-landscape .subcard p {
-        margin: 0 0 10px;
-        font-size: 13px;
-        line-height: 1.5;
-      }
-
-      .report-list {
-        margin: 0;
-        padding-left: 20px;
-      }
-
-      .report-list > li {
-        margin: 0 0 10px;
-        color: var(--text);
-        font-size: 15px;
-        line-height: 1.7;
-      }
-
-      body.page-landscape .report-list > li {
-        margin: 0 0 7px;
-        font-size: 13px;
-        line-height: 1.46;
-      }
-
-      .report-list > li::marker {
-        color: var(--primary);
-      }
-
-      .list-continuation {
-        margin-top: 8px;
-        color: var(--text-light);
-      }
-
-      .subcard-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 18px;
-        margin-top: 18px;
-      }
-
-      .subcard {
-        padding: 22px;
-      }
-
-      body.page-landscape .subcard {
-        padding: 16px;
-      }
-
-      .subcard h3 {
-        margin: 0 0 12px;
-        color: var(--navy-dark);
-        font-size: 18px;
-        letter-spacing: -0.02em;
-      }
-
-      body.page-landscape .subcard h3 {
-        margin: 0 0 10px;
-        font-size: 16px;
-      }
-
-      .source {
-        display: flex;
-        justify-content: space-between;
-        gap: 24px;
-        padding: 16px 44px 28px;
-        border-top: 1px solid var(--gray-light);
-        color: var(--gray);
-        font-size: 12px;
-        font-weight: 600;
-      }
-
-      code {
-        background: rgba(18, 63, 109, 0.08);
-        border-radius: 6px;
-        padding: 2px 6px;
-        font-size: 0.92em;
-      }
-
-      strong {
-        color: var(--navy-dark);
-      }
-
-      @media print {
-        @page {
-          size: A4 portrait;
-          margin: 0;
-        }
-
-        body {
-          padding: 0;
-          background: #ffffff;
-        }
-
-        .report-shell {
-          max-width: none;
-        }
-
-        body.page-landscape .report-shell {
-          max-width: none;
-        }
-
-        .page {
-          border-radius: 0;
-          box-shadow: none;
-          margin: 0;
-          page-break-after: always;
-          break-after: page;
-        }
-
-        .page:last-child {
-          page-break-after: auto;
-          break-after: auto;
-        }
-      }
-    </style>
-  </head>
-  <body class="page-portrait">
-    <main class="report-shell">
-      <section class="page cover">
-        <div class="cover-hero">
-          <div class="cover-left">
-            <div class="brand-lockup">
-              <img class="brand-logo" src="file:///Users/cyanluna-pro16/dev/cpet.db/server/static/brand/zelia-logo-v2.webp" alt="Brand logo" />
-              <div class="brand-copy">
-                <div class="brand">ZeLIA Research Note</div>
-                <div class="doc-type">Paper Review</div>
-                <div class="department-line">
-                         <span>Department</span>
-                         <strong>CPET Research Notes</strong>
-                       </div>
-              </div>
-            </div>
-            <h1>CPET-Derived Metabolic Flexibility Metric</h1>
-            <div class="cover-divider"></div>
-            <div class="cover-intro"></div>
-            <div class="cover-left-footer">
-              <div>Prepared as a printable HTML/PDF report</div>
-              <div>CPET_METFLEX_LANDSCAPE_REVIEW.md</div>
-            </div>
-          </div>
-          <div class="cover-right">
-            <div class="cover-panel">
-              <div class="section-tag">Overview</div>
-              <div class="cover-summary"></div>
-            </div>
-          </div>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CPET-Derived Metabolic Flexibility Metric</title>
+  <style>
+    :root {
+      --paper: #f4efe6;
+      --paper-strong: #efe6d8;
+      --ink: #162028;
+      --muted: #5f6d74;
+      --line: rgba(22, 32, 40, 0.12);
+      --accent: #8f3b2f;
+      --accent-soft: rgba(143, 59, 47, 0.12);
+      --teal: #184e59;
+      --gold: #a17b37;
+      --shadow: 0 24px 60px rgba(17, 25, 32, 0.12);
+      --radius: 22px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(143, 59, 47, 0.08), transparent 32%),
+        radial-gradient(circle at top right, rgba(24, 78, 89, 0.10), transparent 28%),
+        linear-gradient(180deg, #f7f2ea 0%, #f2ece2 100%);
+      color: var(--ink);
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      line-height: 1.58;
+      word-break: keep-all;
+      overflow-wrap: break-word;
+    }
+    .page {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+    .coach-brief {
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 24px;
+      padding: 30px 32px;
+      border-radius: 34px;
+      background: linear-gradient(135deg, rgba(22, 32, 40, 0.96), rgba(24, 78, 89, 0.94));
+      color: #f7f1e7;
+      box-shadow: var(--shadow);
+    }
+    .coach-brief::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.14), transparent 32%),
+        linear-gradient(135deg, rgba(161, 123, 55, 0.2), transparent 42%);
+      pointer-events: none;
+    }
+    .coach-grid {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+      gap: 24px;
+      align-items: start;
+    }
+    .hero {
+      position: relative;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.58);
+      backdrop-filter: blur(18px);
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      border-radius: 34px;
+      padding: 36px;
+      box-shadow: var(--shadow);
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(135deg, rgba(24, 78, 89, 0.08), transparent 40%),
+        linear-gradient(315deg, rgba(161, 123, 55, 0.07), transparent 35%);
+      pointer-events: none;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.8fr) minmax(320px, 1fr);
+      gap: 28px;
+      margin-top: 24px;
+      position: relative;
+      z-index: 1;
+    }
+    .eyebrow {
+      display: inline-flex;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(22, 32, 40, 0.06);
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3 {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", serif;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    h1 {
+      margin-top: 18px;
+      font-size: clamp(2.2rem, 3.5vw, 3.4rem);
+      line-height: 1.05;
+    }
+    .coach-brief h2 {
+      font-size: clamp(2rem, 3.2vw, 3rem);
+      line-height: 1;
+      margin-top: 12px;
+    }
+    .hero-copy p,
+    .coach-brief p {
+      margin: 18px 0 0;
+      color: var(--muted);
+      max-width: 68ch;
+      font-size: 1.02rem;
+    }
+    .coach-brief p { color: rgba(247, 241, 231, 0.82); }
+    .coach-list {
+      margin: 20px 0 0;
+      padding-left: 20px;
+    }
+    .coach-list li + li { margin-top: 8px; }
+    .coach-note,
+    .info-card {
+      padding: 22px 24px;
+      border-radius: 24px;
+    }
+    .coach-note {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: rgba(247, 241, 231, 0.94);
+    }
+    .coach-note strong,
+    .mini-label {
+      display: block;
+      margin-bottom: 8px;
+      color: #f2d7a6;
+      font-size: 0.82rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .info-card {
+      background: rgba(22, 32, 40, 0.92);
+      color: #f5efe7;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0;
+    }
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px 20px;
+      font-size: 1rem;
+      margin-top: 18px;
+    }
+    .info-grid span {
+      display: block;
+      color: rgba(245, 239, 231, 0.68);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 4px;
+    }
+    .section {
+      margin-top: 28px;
+      padding: 28px;
+      border-radius: 28px;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.42);
+      box-shadow: var(--shadow);
+      break-inside: avoid;
+    }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: end;
+      margin-bottom: 22px;
+    }
+    .section-header p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      max-width: 72ch;
+    }
+    .section-tag {
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+    }
+    .insight-box,
+    .callout {
+      margin-top: 22px;
+      padding: 18px 20px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, rgba(24, 78, 89, 0.08), rgba(143, 59, 47, 0.08));
+      border: 1px solid rgba(22, 32, 40, 0.08);
+    }
+    .insight-box ul,
+    .callout ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .kpi-card {
+      min-height: 172px;
+      padding: 18px;
+      border-radius: 22px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(240, 233, 222, 0.86));
+      border: 1px solid rgba(22, 32, 40, 0.08);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .kpi-label {
+      color: var(--muted);
+      font-size: 0.84rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .kpi-value {
+      font-size: 2.05rem;
+      font-family: "Iowan Old Style", "Palatino Linotype", serif;
+      line-height: 1.05;
+      margin-top: 10px;
+    }
+    .kpi-note {
+      margin: 14px 0 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+    .formula-grid,
+    .step-grid,
+    .detail-grid {
+      display: grid;
+      gap: 18px;
+    }
+    .formula-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .detail-grid { grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr); }
+    .step-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .equation-card,
+    .step-card,
+    .metric-card,
+    .table-card {
+      padding: 20px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.86);
+      border: 1px solid var(--line);
+    }
+    .equation-card h3,
+    .step-card h3,
+    .metric-card h3,
+    .table-card h3 {
+      margin-bottom: 8px;
+      font-size: 1.24rem;
+    }
+    .equation-card p,
+    .step-card p,
+    .metric-card p,
+    .table-card p {
+      margin: 0 0 12px;
+      color: var(--muted);
+    }
+    .equation-block {
+      margin-top: 14px;
+      padding: 16px 18px;
+      border-radius: 18px;
+      background: rgba(24, 78, 89, 0.08);
+      border: 1px solid rgba(24, 78, 89, 0.12);
+      overflow-x: auto;
+    }
+    .math-line {
+      font-family: "Iowan Old Style", "Palatino Linotype", serif;
+      font-size: 1.06rem;
+      line-height: 1.8;
+    }
+    .math-line + .math-line { margin-top: 6px; }
+    .process-list,
+    .tight-list {
+      margin: 0;
+      padding-left: 20px;
+    }
+    .process-list li + li,
+    .tight-list li + li { margin-top: 8px; }
+    .subtle {
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+    .note-chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .note-chip {
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(22, 32, 40, 0.06);
+      color: var(--ink);
+      font-size: 0.9rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.82);
+      font-size: 0.94rem;
+    }
+    th, td {
+      padding: 11px 12px;
+      border-bottom: 1px solid rgba(22, 32, 40, 0.08);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: var(--paper-strong);
+      color: var(--ink);
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    tbody tr:nth-child(even) { background: rgba(22, 32, 40, 0.03); }
+    code {
+      font-family: "SFMono-Regular", "Menlo", monospace;
+      font-size: 0.92em;
+      background: rgba(22, 32, 40, 0.06);
+      padding: 2px 6px;
+      border-radius: 8px;
+    }
+    .path-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .path-item {
+      padding: 16px 18px;
+      border-radius: 18px;
+      background: rgba(24, 78, 89, 0.08);
+      border: 1px solid rgba(24, 78, 89, 0.12);
+    }
+    .path-item strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--teal);
+    }
+    .footer-note {
+      margin-top: 28px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      text-align: right;
+    }
+    a { color: var(--teal); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    @media (max-width: 1040px) {
+      .page { padding: 28px 18px 64px; }
+      .hero, .coach-brief, .section { padding: 24px; }
+      .coach-grid, .hero-grid, .formula-grid, .detail-grid, .kpi-grid, .step-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 720px) {
+      body { font-size: 15px; }
+      .page { padding: 18px 12px 40px; }
+      .hero, .coach-brief, .section { padding: 18px; border-radius: 22px; }
+      .coach-grid, .hero-grid, .formula-grid, .detail-grid, .info-grid, .kpi-grid, .step-grid { grid-template-columns: 1fr; }
+      .section-header { flex-direction: column; align-items: flex-start; margin-bottom: 16px; }
+      .equation-card, .step-card, .metric-card, .table-card, .coach-note, .info-card, .kpi-card { padding: 16px; border-radius: 18px; }
+      .kpi-value { font-size: 1.8rem; }
+      th, td { padding: 10px 9px; font-size: 0.85rem; }
+    }
+    @media print {
+      body { background: #fff; }
+      .page { max-width: none; padding: 0; }
+      .hero, .section, .coach-brief {
+        box-shadow: none;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        background: #fff;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="coach-brief">
+      <div class="coach-grid">
+        <div>
+          <span class="eyebrow">Paper Review Brief</span>
+          <h2>이 논문은 새로운 생리학보다 기존 과학을 잘 포장한 구현 전략에 가깝다</h2>
+          <p>
+            <code>VO2</code>/<code>VCO2</code>에서 기질 산화를 구하고, <code>RER = 1.0</code> 이전까지 지방·탄수화물 기여를 적분하고,
+            <code>FatMax</code>, <code>crossover</code>, optional lactate coupling을 묶어 하나의 metabolic flexibility metric으로
+            제시하는 접근은 제품 기능으로는 가치가 있지만, 생리학적 신규성이나 broad patent claim으로는 방어가 약합니다.
+          </p>
+          <ul class="coach-list">
+            <li>가장 가까운 prior art는 2025 graded-exercise intervention study입니다.</li>
+            <li>방어 가능한 차별점은 개념보다 breath-by-breath 처리, crossing interpolation, artifact handling, validation입니다.</li>
+            <li>ZeLIA는 당분간 <code>RQ 1.0 fuel contribution</code>과 해석형 리포트 기능을 중심으로 가는 편이 안전합니다.</li>
+          </ul>
         </div>
-        <div class="meta-grid">
-          <div class="meta-card">
-            <div class="meta-label">Date</div>
-            <div class="meta-value">2026-03-31</div>
-          </div>
-          <div class="meta-card">
-            <div class="meta-label">Purpose</div>
-            <div class="meta-value">논문 탐색 결과를 바탕으로 ZeLIA/CPET 리포트에 적용할 수 있는 해석 포인트와 IP 리스크를 내부용으로 정리한다.</div>
-          </div>
-          <div class="meta-card">
-            <div class="meta-label">Audience</div>
-            <div class="meta-value">researcher, admin, product owner</div>
-          </div>
-        </div>
-        <div class="source">
-          <div>Source: CPET_METFLEX_LANDSCAPE_REVIEW.md</div>
-          <div>Prepared as a printable HTML/PDF report</div>
-        </div>
-      </section>
-
-      <section class="page">
-        <div class="page-inner">
-          <div class="page-header">
-            <div>
-              <div class="page-kicker">Contents</div>
-              <h2 class="page-title">Table of Contents</h2>
-              <div class="page-title-bar"></div>
-            </div>
-            <div class="page-note"></div>
-          </div>
-          <ul class="toc">
-        <li>
-          <span class="toc-index">01</span>
-          <span class="toc-title">1. One-Page Conclusion</span>
-        </li>
-      
-        <li>
-          <span class="toc-index">02</span>
-          <span class="toc-title">2. What the Paper Actually Defines</span>
-        </li>
-      
-        <li>
-          <span class="toc-index">03</span>
-          <span class="toc-title">3. Closest Scientific Prior Art</span>
-        </li>
-      
-        <li>
-          <span class="toc-index">04</span>
-          <span class="toc-title">4. Patent Landscape Read</span>
-        </li>
-      
-        <li>
-          <span class="toc-index">05</span>
-          <span class="toc-title">5. Implications for the Current Repo</span>
-        </li>
-      
-        <li>
-          <span class="toc-index">06</span>
-          <span class="toc-title">6. Recommended Product and Research Position</span>
-        </li>
-      
-        <li>
-          <span class="toc-index">07</span>
-          <span class="toc-title">7. Recommended Internal Guardrails</span>
-        </li>
-      
-        <li>
-          <span class="toc-index">08</span>
-          <span class="toc-title">8. Suggested Next Steps</span>
-        </li>
-      
-        <li>
-          <span class="toc-index">09</span>
-          <span class="toc-title">9. Primary Sources Mentioned in the Paper</span>
-        </li>
-      
-        <li>
-          <span class="toc-index">10</span>
-          <span class="toc-title">10. ZeLIA Takeaway</span>
-        </li>
-      </ul>
-        </div>
-      </section>
-
-      
-            <section class="page">
-              <div class="page-inner">
-    <section class="report-section">
-      <div class="section-heading">
-        <div class="section-kicker">Section</div>
-        <h2>1. One-Page Conclusion</h2>
+        <aside class="coach-note">
+          <strong>Internal Position</strong>
+          <p>
+            현재 코드베이스의 연료 기여율, FatMax, crossover 해석은 계속 가져가도 됩니다. 다만
+            <code>Metabolic Flexibility Index</code> 같은 단일 점수는 연구용 레이어로 낮추고,
+            raw observables와 composite score를 분리해 설명해야 합니다.
+          </p>
+        </aside>
       </div>
-      <div class="section-body"><p>이 문서의 결론은 명확하다. <code>VO2/VCO2</code>에서 기질 산화를 구하고, <code>RER = 1.0</code> 이전까지 지방/탄수화물 기여를 적분하고, <code>FatMax</code>, <code>crossover</code>, <code>lactate coupling</code>을 조합해 하나의 metabolic flexibility metric을 만드는 아이디어 자체는 새로운 생리학적 발견이 아니다.</p>
-<p>반대로, 제품 기능으로는 충분히 가치가 있다. 이유는 아래와 같다.</p>
-<ul class="report-list"><li>기초 수식은 이미 확립돼 있다.</li><li><code>RER &lt;= 1.0</code>까지 분석하는 관행도 학술적으로 널리 받아들여진다.</li><li><code>lactate + gas exchange</code>를 같이 보는 해석도 충분한 과학적 근거가 있다.</li><li>따라서 리포트 기능으로는 설득력이 높고, 해석형 제품으로는 바로 사용할 수 있다.</li></ul>
-<p>문제는 <code>특허</code>와 <code>독점적 주장</code>이다.</p>
-<ul class="report-list"><li>broad claim은 매우 어렵다.</li><li>특히 2025년 graded exercise 논문이 <code>RER &lt; 1.0</code> 구간까지 fat/CHO oxidation과 lactate AUC를 함께 계산해, novelty/obviousness에 가장 큰 압박을 준다.</li><li>남는 차별화 지점은 <code>breath-by-breath interpolation</code>, <code>partial-interval integration</code>, <code>artifact handling</code>, <code>lactate-informed correction</code>, <code>repeatability validation</code> 같은 구현 세부와 검증 데이터다.</li></ul>
-<p>즉, 현재 ZeLIA의 방향은 이렇게 잡는 편이 맞다.</p>
-<ul class="report-list"><li><code>RQ 1.0 fuel contribution</code>은 제품 기능으로 유지</li><li>단일 <code>metabolic flexibility score</code>는 연구용/실험용 레이어로 분리</li><li>제품 문구는 <code>설명 가능한 해석형 feature</code> 중심으로 유지</li><li>특허 가능성은 <code>기본 공식</code>이 아니라 <code>강건한 처리 파이프라인 + 검증 결과</code>에 걸어야 한다</li></ul></div>
-      
     </section>
-  </div>
-            </section>
-          
 
-            <section class="page">
-              <div class="page-inner">
-    <section class="report-section">
-      <div class="section-heading">
-        <div class="section-kicker">Section</div>
-        <h2>2. What the Paper Actually Defines</h2>
+    <section class="hero">
+      <span class="eyebrow">CPET Research Note</span>
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <h1>CPET-Derived Metabolic Flexibility Metric</h1>
+          <p>
+            이 문서는 <code>CPET-Derived Metabolic Flexibility Metric: Literature and Patent Landscape</code> PDF를
+            ZeLIA 관점에서 다시 읽은 내부용 정리본입니다. 초점은 “논문이 무엇을 새롭다고 말하는가”가 아니라,
+            “현재 우리 리포트와 연구 파이프라인에 어떤 부분이 바로 유효하고, 어떤 부분은 과장하면 안 되는가”에 있습니다.
+          </p>
+          <div class="insight-box">
+            <strong>이 문서가 답하는 질문</strong>
+            <ul>
+              <li>이 논문이 제안한 metric은 실제로 어디까지가 기존 과학인가</li>
+              <li>2025 논문과 기존 특허가 현재 주장 범위를 얼마나 좁히는가</li>
+              <li>ZeLIA repo에서 지금 제품화 가능한 부분은 무엇인가</li>
+              <li>앞으로 validation과 IP를 어떤 순서로 다뤄야 하는가</li>
+            </ul>
+          </div>
+        </div>
+        <aside class="info-card">
+          <h2>문서 범위</h2>
+          <div class="info-grid">
+            <div><span>Date</span>2026-03-31</div>
+            <div><span>Audience</span>researcher, admin, product owner</div>
+            <div><span>Source</span>Literature + patent landscape review PDF</div>
+            <div><span>Primary Lens</span>product positioning + IP risk</div>
+            <div><span>Repo Relevance</span>RQ 1.0 fuel contribution, FatMax, crossover</div>
+            <div><span>Output</span>내부 연구 노트 / HTML 상세 가이드</div>
+            <div><span>Recommended Tone</span>descriptive analytics first</div>
+            <div><span>Do Not Claim</span>novel proprietary physiology metric</div>
+          </div>
+        </aside>
       </div>
-      <div class="section-body"><p>논문은 최종 점수 공식을 명시하지 않는다. 대신 <code>metric definition</code> 관점에서 아래 파이프라인을 정의한다.</p></div>
-      <div class="subcard-grid">
-        <article class="subcard">
-          <h3>Inputs</h3>
-          <ul class="report-list"><li>breath-by-breath 또는 고빈도 <code>VO2</code>, <code>VCO2</code>, timestamp</li><li>external workload: cycling power 또는 treadmill speed/grade</li><li>optional heart rate</li><li>optional blood lactate with time or stage alignment</li></ul>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <span class="section-tag">Overview</span>
+          <h2>한 페이지 결론</h2>
+          <p>이 논문이 현재 ZeLIA 제품과 연구 방향에 주는 실질적 결론만 먼저 압축했습니다.</p>
+        </div>
+      </div>
+      <div class="kpi-grid">
+        <article class="kpi-card">
+          <div>
+            <span class="kpi-label">Product Value</span>
+            <div class="kpi-value">High</div>
+          </div>
+          <p class="kpi-note">리포트 기능으로서의 설명 가능성, 사용자 설득력, 해석 가치는 충분합니다.</p>
         </article>
-      
-        <article class="subcard">
+        <article class="kpi-card">
+          <div>
+            <span class="kpi-label">Broad Patentability</span>
+            <div class="kpi-value">Weak</div>
+          </div>
+          <p class="kpi-note">기초 수식과 <code>RER 1.0</code> boundary, lactate coupling은 이미 prior art가 두텁습니다.</p>
+        </article>
+        <article class="kpi-card">
+          <div>
+            <span class="kpi-label">Safest Product Phrase</span>
+            <div class="kpi-value">RQ 1.0<br>Fuel Split</div>
+          </div>
+          <p class="kpi-note">현재 repo 기능과 가장 잘 맞고, 과장 없이 설명 가능한 명칭입니다.</p>
+        </article>
+        <article class="kpi-card">
+          <div>
+            <span class="kpi-label">Future Differentiator</span>
+            <div class="kpi-value">Validation</div>
+          </div>
+          <p class="kpi-note">차별화는 점수 이름이 아니라 interpolation, QC, repeatability, protocol robustness에서 나옵니다.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <span class="section-tag">Metric Definition</span>
+          <h2>논문이 실제로 정의하는 것</h2>
+          <p>최종 점수 공식을 명시하기보다, 어떤 입력과 어떤 처리 파이프라인을 묶어 metabolic flexibility라고 부르는지가 핵심입니다.</p>
+        </div>
+      </div>
+      <div class="detail-grid">
+        <article class="equation-card">
           <h3>Core pipeline</h3>
-          <ul class="report-list"><li><code>RER = VCO2 / VO2</code> 계산</li><li>보통 <code>RER &lt;= 1.0</code>의 submax domain 선택</li><li>stoichiometric equation으로 fat oxidation / CHO oxidation 계산</li><li>이를 <code>kcal/min</code>으로 변환</li><li><code>RER = 1.0</code> crossing 시점과 강도를 interpolation</li><li>시작 시점부터 그 crossing까지 trapezoidal integration</li><li><code>FatMax</code>, <code>MFO</code>, <code>crossover</code>, <code>RQ kinetics</code>, <code>lactate-coupled features</code> 추출</li><li>마지막에 composite metabolic flexibility score 구성</li></ul>
+          <p>논문이 사실상 제안하는 것은 아래 처리 흐름입니다.</p>
+          <div class="equation-block">
+            <div class="math-line">VO2, VCO2, time, workload, optional HR, optional lactate</div>
+            <div class="math-line">&darr;</div>
+            <div class="math-line">RER = VCO2 / VO2</div>
+            <div class="math-line">&darr;</div>
+            <div class="math-line">fat / CHO oxidation + kcal conversion</div>
+            <div class="math-line">&darr;</div>
+            <div class="math-line">RER 1.0 crossing interpolation</div>
+            <div class="math-line">&darr;</div>
+            <div class="math-line">integration to boundary + FatMax + crossover + optional lactate features</div>
+          </div>
+          <p class="subtle">즉 novelty가 생긴다면 점수 이름보다 exact crossing 처리와 noisy breath data handling 쪽이 더 중요합니다.</p>
         </article>
-      
-        <article class="subcard">
-          <h3>Important observation</h3>
-          <p>여기서 정말 구체적인 것은 <code>pipeline</code>이지, 최종 score formula는 아니다. 따라서 novelty가 생긴다면 점수 이름보다는 아래가 중요하다.</p>
-<ul class="report-list"><li>exact crossing interpolation</li><li>partial interval integration</li><li>noise/artifact handling</li><li>lactate-informed correction near acidosis</li><li>validation showing better repeatability or discrimination</li></ul>
+        <article class="metric-card">
+          <h3>Not actually new</h3>
+          <ul class="tight-list">
+            <li><code>VO2/VCO2</code> 기반 substrate oxidation</li>
+            <li><code>RER &le; 1.0</code> 실무 cut-off</li>
+            <li><code>FatMax</code>, <code>MFO</code>, crossover 해석</li>
+            <li>lactate와 substrate oxidation을 함께 읽는 접근</li>
+          </ul>
         </article>
+      </div>
+      <div class="callout">
+        <ul>
+          <li>논문이 새롭게 포장하는 것은 physiology 그 자체보다, 여러 established observable을 하나의 operational metric으로 묶는 방식입니다.</li>
+          <li>따라서 ZeLIA의 현재 기능을 제품 feature로 유지하는 것은 타당하지만, 강한 proprietary claim은 피해야 합니다.</li>
+        </ul>
       </div>
     </section>
-  </div>
-            </section>
-          
 
-            <section class="page">
-              <div class="page-inner">
-    <section class="report-section">
-      <div class="section-heading">
-        <div class="section-kicker">Section</div>
-        <h2>3. Closest Scientific Prior Art</h2>
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <span class="section-tag">Prior Art</span>
+          <h2>가장 중요한 학술 선행기술</h2>
+          <p>이 논문이 기대는 과학적 바닥과, 우리 주장 범위를 직접 좁히는 핵심 prior art를 분리해서 보면 판단이 쉬워집니다.</p>
+        </div>
       </div>
-      <div class="section-body"><p>문서는 “가장 가까운 선행기술”을 꽤 분명하게 정리한다.</p></div>
-      <div class="subcard-grid">
-        <article class="subcard">
+      <div class="formula-grid">
+        <article class="equation-card">
           <h3>Foundational science</h3>
-          <ul class="report-list"><li>Weir 1949: energy expenditure from <code>VO2/VCO2</code></li><li>Frayn 1983: substrate oxidation from gas exchange</li><li>Péronnet–Massicotte 1991: non-protein RQ tables and stoichiometric basis</li><li>Jeukendrup &amp; Wallis 2005: practical guidance and limitations</li></ul>
-<p>이 네 축만으로도 <code>VO2/VCO2 -&gt; fat/CHO oxidation</code>은 이미 공지기술임이 분명하다.</p>
+          <p>아래 네 축만으로도 <code>VO2/VCO2 -> fat/CHO oxidation</code>은 충분히 공지기술입니다.</p>
+          <ul class="tight-list">
+            <li>Weir 1949</li>
+            <li>Frayn 1983</li>
+            <li>P&eacute;ronnet &amp; Massicotte 1991</li>
+            <li>Jeukendrup &amp; Wallis 2005</li>
+          </ul>
         </article>
-      
-        <article class="subcard">
-          <h3>Exercise metabolism concepts already established</h3>
-          <ul class="report-list"><li>crossover concept: intensity가 올라갈수록 지방에서 탄수화물 우세로 이동</li><li>FatMax / MFO: graded exercise에서 관측되는 well-known output</li><li>lactate accumulation vs fat oxidation: 음의 상관 관계가 잘 보고됨</li></ul>
-<p>즉, 아래 개별 요소는 대부분 이미 잘 알려져 있다.</p>
-<ul class="report-list"><li><code>FatMax</code></li><li><code>crossover</code></li><li><code>RER = 1.0 boundary</code></li><li>lactate와 substrate oxidation의 결합 해석</li></ul>
+        <article class="equation-card">
+          <h3>Exercise metabolism concepts</h3>
+          <p>아래 요소도 이미 정착된 해석 축입니다.</p>
+          <ul class="tight-list">
+            <li>crossover concept</li>
+            <li>FatMax / MFO</li>
+            <li>lactate accumulation vs fat oxidation</li>
+            <li>submax domain using RER boundary</li>
+          </ul>
         </article>
-      
-        <article class="subcard">
-          <h3>The most important prior-art pressure point</h3>
-          <p>문서가 가장 경계하는 것은 2025년 graded-exercise intervention study다.</p>
-<p>이 논문은 이미:</p>
-<ul class="report-list"><li><code>RER = 1.00</code>까지 fat/CHO oxidation 계산</li><li><code>RER &lt; 1.00</code> 구간의 total energy 계산</li><li>fat oxidation, CHO oxidation, lactate의 AUC 계산</li></ul>
-<p>을 수행한다.</p>
-<p>우리와 차이가 있다면:</p>
-<ul class="report-list"><li>stage-averaged values 기반이라는 점</li><li>breath-by-breath trapezoidal integration + interpolated crossing이 아니라는 점</li></ul>
-<p>즉 차별점은 “개념”이 아니라 “계산 정밀도와 구현” 쪽이다.</p>
+        <article class="equation-card">
+          <h3>Closest pressure point</h3>
+          <p>2025 graded-exercise intervention study는 아래를 이미 수행합니다.</p>
+          <ul class="tight-list">
+            <li><code>RER = 1.00</code>까지 fat/CHO oxidation 계산</li>
+            <li><code>RER &lt; 1.00</code> 구간의 total energy 계산</li>
+            <li>fat, CHO, lactate AUC 계산</li>
+          </ul>
         </article>
-      </div>
-    </section>
-  </div>
-            </section>
-          
-
-            <section class="page">
-              <div class="page-inner">
-    <section class="report-section">
-      <div class="section-heading">
-        <div class="section-kicker">Section</div>
-        <h2>4. Patent Landscape Read</h2>
-      </div>
-      <div class="section-body"><p>논문은 patent landscape도 같이 읽는다. 요지는 다음과 같다.</p></div>
-      <div class="subcard-grid">
-        <article class="subcard">
-          <h3>Older zone / threshold patents</h3>
-          <ul class="report-list"><li><code>US5297558A</code></li><li><code>US6554776B1</code></li></ul>
-<p>둘 다 RER, fat-metabolization curve, training zone, threshold 같은 주제를 다루며, 문서상 expired로 보인다. 직접 집행 리스크는 낮을 수 있지만, novelty reference로는 강하다.</p>
-        </article>
-      
-        <article class="subcard">
-          <h3>Abandoned metabolic fuel type application</h3>
-          <ul class="report-list"><li><code>US20160338618A1</code></li></ul>
-<p><code>metabolic switch point</code>, exhaled <code>O2/CO2</code>, fuel-type estimation, calorie estimation 등 우리가 생각하는 서술과 개념적으로 상당히 가깝다. abandoned라 enforceable right는 약하지만, “이미 누군가 이렇게 생각했다”는 prior art로는 충분하다.</p>
-        </article>
-      
-        <article class="subcard">
-          <h3>KR acidosis-aware RQ/RER filing</h3>
-          <ul class="report-list"><li><code>KR20160127161A</code></li></ul>
-<p><code>RQ vs RER distinction</code>, acidosis, excess CO2, fuel-use inference가 붙어 있어 개념상 꽤 인접하다. 다만 문서는 legal status 확정 없이 conceptually adjacent라고만 본다.</p>
-        </article>
-      
-        <article class="subcard">
-          <h3>Practical reading for us</h3>
-          <p>지금 단계에서 broad patent narrative는 위험하다. 특히 아래 문장은 피해야 한다.</p>
-<ul class="report-list"><li>“We invented calculating metabolic flexibility from CPET gas exchange.”</li><li>“We invented using RER 1.0 as the integration boundary.”</li><li>“We invented lactate-coupled substrate flexibility interpretation.”</li></ul>
-<p>더 안전한 포지션은 이렇다.</p>
-<ul class="report-list"><li>우리는 established science를 ZeLIA report feature로 operationalize한다.</li><li>novelty가 있다면 robust processing / interpolation / correction / validation 레벨에 있다.</li></ul>
+        <article class="equation-card">
+          <h3>What may still differ</h3>
+          <p>차별화가 있다면 concept가 아니라 implementation detail입니다.</p>
+          <ul class="tight-list">
+            <li>breath-by-breath interpolation</li>
+            <li>partial-interval integration</li>
+            <li>artifact rejection</li>
+            <li>lactate-informed correction</li>
+          </ul>
         </article>
       </div>
     </section>
-  </div>
-            </section>
-          
 
-            <section class="page">
-              <div class="page-inner">
-    <section class="report-section">
-      <div class="section-heading">
-        <div class="section-kicker">Section</div>
-        <h2>5. Implications for the Current Repo</h2>
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <span class="section-tag">Patent Landscape</span>
+          <h2>특허 지형을 읽는 실전 요약</h2>
+          <p>현재 시점에서 broad claim은 위험하고, operational product feature와 narrow technical implementation claim을 분리해야 합니다.</p>
+        </div>
       </div>
-      <div class="section-body"><p>현재 repo는 이미 논문에서 말하는 핵심 제품 기능 중 일부를 구현했다.</p></div>
-      <div class="subcard-grid">
-        <article class="subcard">
-          <h3>Already aligned with the paper</h3>
-          <ul class="report-list"><li><code>RQ 1.0</code> 이전 연료 기여율 계산</li><li>exact crossing handling</li><li><code>FatMax</code>, <code>crossover</code> 등 해석형 output</li><li>일부 리포트에서 <code>Metabolic Flexibility Index</code> 카드 제공</li></ul>
-        </article>
-      
-        <article class="subcard">
-          <h3>What this paper says about our current positioning</h3>
-          <p>현재 기능은 제품으로서는 충분히 의미가 있다. 하지만 표현을 조심해야 한다.</p>
-<ul class="report-list"><li><code>RQ 1.0 fuel contribution</code></li><li><code>submax fuel-use summary</code></li><li><code>crossover / FatMax / lactate-coupled interpretation</code></li></ul>
-<p>이 정도는 설명 가능한 product feature다.</p>
-<p>반면 아래는 아직 과하다.</p>
-<ul class="report-list"><li>“validated metabolic flexibility biomarker”</li><li>“novel proprietary physiology metric”</li><li>“patentable composite score”</li></ul>
-        </article>
-      
-        <article class="subcard">
-          <h3>Why the current score should stay experimental</h3>
-          <p>현재 단일 점수는 알려진 output의 weighted combination처럼 읽힐 수 있다.</p>
-<ul class="report-list"><li>fat share</li><li>crossing proximity</li><li>FatMax proximity to VT1</li></ul>
-<p>논문 관점에서는 이런 방식이 가장 <code>obvious aggregation</code>으로 공격받기 쉽다. 따라서 score는:</p>
-<ul class="report-list"><li>research label 유지</li><li>raw observables보다 subordinate</li><li>reproducibility/versioning/QC 함께 노출</li></ul>
-<p>이 방향이 맞다.</p>
-        </article>
+      <table>
+        <thead>
+          <tr>
+            <th>Reference</th>
+            <th>What it touches</th>
+            <th>Practical meaning for ZeLIA</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>US5297558A</code></td>
+            <td>RER, fat curve, training zone, threshold</td>
+            <td>집행 리스크보다 novelty reference로 중요합니다.</td>
+          </tr>
+          <tr>
+            <td><code>US6554776B1</code></td>
+            <td>threshold / zone logic</td>
+            <td>zone-like claim을 broad하게 가져가기 어렵습니다.</td>
+          </tr>
+          <tr>
+            <td><code>US20160338618A1</code></td>
+            <td>metabolic switch point, exhaled O2/CO2, fuel-type estimation</td>
+            <td>abandoned여도 concept prior art로는 충분히 부담됩니다.</td>
+          </tr>
+          <tr>
+            <td><code>KR20160127161A</code></td>
+            <td>RQ vs RER distinction, acidosis, excess CO2</td>
+            <td>lactate or acidosis coupling narrative를 독점적으로 말하기 어렵습니다.</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="note-chip-row">
+        <div class="note-chip">Do not claim: proprietary physiology discovery</div>
+        <div class="note-chip">Safer claim: robust signal processing + validation</div>
+        <div class="note-chip">Best current use: descriptive analytics feature</div>
       </div>
     </section>
-  </div>
-            </section>
-          
 
-            <section class="page">
-              <div class="page-inner">
-    <section class="report-section">
-      <div class="section-heading">
-        <div class="section-kicker">Section</div>
-        <h2>6. Recommended Product and Research Position</h2>
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <span class="section-tag">Repo Implication</span>
+          <h2>현재 코드베이스에 주는 의미</h2>
+          <p>이미 repo 안에 들어간 기능과, 표현을 낮춰야 하는 기능을 구분하는 것이 중요합니다.</p>
+        </div>
       </div>
-      
-      <div class="subcard-grid">
-        <article class="subcard">
-          <h3>Product message</h3>
-          <p>ZeLIA는 지금 당장 이렇게 말하는 것이 가장 안전하다.</p>
-<ul class="report-list"><li>CPET 기반 <code>RQ 1.0 fuel contribution</code></li><li><code>FatMax</code>, <code>crossover</code>, <code>lactate-coupled</code> summary</li><li>protocol-aware, report-oriented interpretation</li></ul>
-        </article>
-      
-        <article class="subcard">
-          <h3>Research / IP message</h3>
-          <p>연구용으로는 아래를 더 발전시킬 가치가 있다.</p>
-<ul class="report-list"><li>breath-by-breath artifact handling</li><li>boundary-confidence around <code>RER = 1.0</code></li><li>lactate-informed correction near acidosis</li><li>protocol robustness across ramp/stage variants</li><li>test-retest reliability vs stage-based AUC methods</li></ul>
-        </article>
-      
-        <article class="subcard">
-          <h3>What would make a stronger future claim</h3>
-          <ul class="report-list"><li>동일 프로토콜 반복 측정에서 CV/ICC 개선</li><li>stage-based summary보다 더 안정적임을 증명</li><li>lactate correction이 <code>RER &gt; 1.0</code> 인접 구간 해석을 개선함을 증명</li><li>여러 protocol에서 일관되게 작동함을 증명</li></ul>
-<p>즉 앞으로 필요한 것은 “더 멋진 이름”이 아니라 “더 강한 validation”이다.</p>
-        </article>
+      <div class="path-list">
+        <div class="path-item">
+          <strong>지금 그대로 가져가도 되는 것</strong>
+          <div><code>RQ 1.0 fuel contribution</code>, exact crossing handling, <code>FatMax</code>, <code>crossover</code>, protocol-aware interpretation</div>
+        </div>
+        <div class="path-item">
+          <strong>연구용으로 낮춰야 하는 것</strong>
+          <div><code>Metabolic Flexibility Index</code>, weighted single-score messaging, biomarker처럼 들리는 표현</div>
+        </div>
+        <div class="path-item">
+          <strong>앞으로 차별화가 가능한 것</strong>
+          <div>boundary-confidence, noisy breath QC, lactate-informed correction, repeatability and protocol sensitivity validation</div>
+        </div>
       </div>
     </section>
-  </div>
-            </section>
-          
 
-            <section class="page">
-              <div class="page-inner">
-    <section class="report-section">
-      <div class="section-heading">
-        <div class="section-kicker">Section</div>
-        <h2>7. Recommended Internal Guardrails</h2>
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <span class="section-tag">Guardrails</span>
+          <h2>내부 운영 원칙</h2>
+          <p>논문을 읽고 난 뒤 최소한 이 원칙들은 고정해두는 편이 좋습니다.</p>
+        </div>
       </div>
-      <div class="section-body"><p>이 논문을 읽은 뒤 내부적으로 최소한 아래 원칙은 잡아두는 편이 좋다.</p>
-<ul class="report-list"><li><code>RQ</code>와 <code>RER</code>는 구현/리포트에서 혼용하지 않는다.</li><li><code>RER = 1.0</code> boundary는 convention이자 practical cutoff로 설명한다.</li><li>no crossing, noisy breath data, missing lactate, protocol mismatch에는 explicit warning을 둔다.</li><li>score는 반드시 versioned experimental layer로 둔다.</li><li>raw observables와 composite interpretation을 분리한다.</li></ul></div>
-      
-    </section>
-  </div>
-            </section>
-          
-
-            <section class="page">
-              <div class="page-inner">
-    <section class="report-section">
-      <div class="section-heading">
-        <div class="section-kicker">Section</div>
-        <h2>8. Suggested Next Steps</h2>
-      </div>
-      
-      <div class="subcard-grid">
-        <article class="subcard">
-          <h3>Immediate</h3>
-          <ul class="report-list"><li>현재 ZeLIA 리포트의 <code>Metabolic Flexibility Index</code> 표현을 연구용 톤으로 조정</li><li><code>RQ 1.0 fuel contribution</code>과 score를 분리된 레이어로 설명</li><li><code>boundary-confidence</code> / <code>no crossing</code> / <code>protocol suitability</code> 메시지 추가</li></ul>
+      <div class="step-grid">
+        <article class="step-card">
+          <h3>Terminology</h3>
+          <p><code>RQ</code>와 mouth-level <code>RER</code>를 혼용하지 않습니다. 구현은 사실상 <code>RER = VCO2 / VO2</code>입니다.</p>
         </article>
-      
-        <article class="subcard">
+        <article class="step-card">
+          <h3>Boundary honesty</h3>
+          <p><code>RER = 1.0</code>는 practical cutoff이지 절대적인 physiological truth가 아니라는 점을 설명합니다.</p>
+        </article>
+        <article class="step-card">
+          <h3>Protocol safety</h3>
+          <p>no crossing, missing lactate, protocol mismatch, noisy breath data는 리포트에서 분명히 경고합니다.</p>
+        </article>
+      </div>
+      <div class="callout">
+        <ul>
+          <li>single score는 반드시 versioned experimental layer로 둡니다.</li>
+          <li>raw observables와 composite interpretation을 같은 위상으로 놓지 않습니다.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <span class="section-tag">Next Steps</span>
+          <h2>바로 이어서 할 일</h2>
+          <p>제품, 연구, IP 검토를 한 줄로 섞지 말고 순서를 분리해야 합니다.</p>
+        </div>
+      </div>
+      <div class="step-grid">
+        <article class="step-card">
+          <h3>Immediate product</h3>
+          <ul class="tight-list">
+            <li><code>RQ 1.0 fuel contribution</code>을 공통 해석 레이어로 유지</li>
+            <li>current score 문구를 research tone으로 낮추기</li>
+            <li>boundary-confidence / no-crossing 안내 강화</li>
+          </ul>
+        </article>
+        <article class="step-card">
           <h3>Short-term research</h3>
-          <ul class="report-list"><li>repeated-test reliability study</li><li>protocol sensitivity study</li><li>lactate-aligned correction experiment</li><li>stage-AUC vs breath-by-breath interpolation comparison</li></ul>
+          <ul class="tight-list">
+            <li>repeated-test reliability study</li>
+            <li>protocol sensitivity study</li>
+            <li>lactate-aligned correction experiment</li>
+            <li>stage-AUC vs breath interpolation comparison</li>
+          </ul>
         </article>
-      
-        <article class="subcard">
-          <h3>If IP is ever revisited</h3>
-          <ul class="report-list"><li>broad claim은 지양</li><li>구현 세부 + technical effect + validation 데이터 중심으로만 검토</li><li>KR/US family status는 변리사와 최신 데이터로 재검토</li></ul>
+        <article class="step-card">
+          <h3>If IP is revisited</h3>
+          <ul class="tight-list">
+            <li>broad claim은 지양</li>
+            <li>technical effect + validation dataset 중심 검토</li>
+            <li>KR/US family status는 변리사와 최신 데이터로 재검토</li>
+          </ul>
         </article>
       </div>
     </section>
-  </div>
-            </section>
-          
 
-            <section class="page">
-              <div class="page-inner">
-    <section class="report-section">
-      <div class="section-heading">
-        <div class="section-kicker">Section</div>
-        <h2>9. Primary Sources Mentioned in the Paper</h2>
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <span class="section-tag">Sources</span>
+          <h2>논문이 직접 언급한 주요 레퍼런스</h2>
+          <p>paper review의 판단 근거가 된 학술·특허 레퍼런스를 간단히 다시 묶었습니다.</p>
+        </div>
       </div>
-      <div class="section-body"><ul class="report-list"><li>Weir 1949</li><li>Frayn 1983</li><li>Péronnet &amp; Massicotte 1991</li><li>Jeukendrup &amp; Wallis 2005</li><li>San-Millán &amp; Brooks 2018</li><li>Murru et al. 2024</li><li>Kripp et al. 2025</li><li>US5297558A</li><li>US6554776B1</li><li>US20160338618A1</li><li>KR20160127161A</li></ul></div>
-      
+      <table>
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Reference</th>
+            <th>Role in this review</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Science</td>
+            <td>Weir 1949, Frayn 1983, P&eacute;ronnet &amp; Massicotte 1991, Jeukendrup &amp; Wallis 2005</td>
+            <td>substrate oxidation과 energy conversion의 foundational basis</td>
+          </tr>
+          <tr>
+            <td>Science</td>
+            <td>San-Mill&aacute;n &amp; Brooks 2018, Murru et al. 2024</td>
+            <td>metabolic flexibility, lactate-linked interpretation context</td>
+          </tr>
+          <tr>
+            <td>Science</td>
+            <td>Kripp et al. 2025</td>
+            <td>가장 직접적인 methodological pressure point</td>
+          </tr>
+          <tr>
+            <td>Patent</td>
+            <td>US5297558A, US6554776B1, US20160338618A1, KR20160127161A</td>
+            <td>zone, switch point, acidosis/RER interpretation 쪽 prior art signal</td>
+          </tr>
+        </tbody>
+      </table>
     </section>
-  </div>
-            </section>
-          
 
-            <section class="page">
-              <div class="page-inner">
-    <section class="report-section">
-      <div class="section-heading">
-        <div class="section-kicker">Section</div>
-        <h2>10. ZeLIA Takeaway</h2>
-      </div>
-      <div class="section-body"><p>이 논문은 ZeLIA가 지금 하는 일을 멈추라고 말하지 않는다. 오히려 제품 기능으로는 충분히 설득력 있다고 본다.</p>
-<p>다만 말하는 방식은 바꿔야 한다.</p>
-<ul class="report-list"><li><code>설명 가능한 연료/대사 해석 feature</code>로는 강하다.</li><li><code>독점적이고 새로운 biomarker</code>처럼 말하면 약하다.</li></ul>
-<p>따라서 지금의 최선은:</p>
-<ul class="report-list"><li>feature는 계속 제품화</li><li>score는 연구용으로 보수적 운영</li><li>validation이 쌓이면 그때 더 강한 주장 검토</li></ul></div>
-      
-    </section>
-  </div>
-            </section>
-          
-    </main>
-  </body>
+    <p class="footer-note">
+      Internal research note for ZeLIA CPET. Source PDF: <code>docs/papers/CPET-Derived Metabolic Flexibility Metric_ Literature and Patent Landscape.pdf</code>
+    </p>
+  </main>
+</body>
 </html>
