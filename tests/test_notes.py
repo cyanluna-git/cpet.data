@@ -65,6 +65,7 @@ def test_notes_index_lists_guides_for_researcher(tmp_path) -> None:
     assert "Two-Block CPET Fuel Split Detailed Guide" in resp.text
     assert "3-Path Energy System Detailed Guide" in resp.text
     assert "CPET-Derived Metabolic Flexibility Metric" in resp.text
+    assert "Cycling VO2 RNN Pilot Study Review" in resp.text
     assert ">노트<" in resp.text
 
 

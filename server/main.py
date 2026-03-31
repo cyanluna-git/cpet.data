@@ -151,6 +151,10 @@ _NOTE_SUMMARIES = {
         "summary": "CPET-derived metabolic flexibility metric 논문의 문헌·특허 지형과 ZeLIA 적용 함의를 정리한 내부 리뷰입니다.",
         "category": "Paper Review",
     },
+    "cycling-vo2-rnn-review": {
+        "summary": "Cycling VO2 RNN pilot study를 읽고, ZeLIA에서 VO2 surrogate 모델을 어디까지 연구용으로 받아들일 수 있는지 정리한 내부 리뷰입니다.",
+        "category": "Modeling Review",
+    },
 }
 
 

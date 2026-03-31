@@ -22,4 +22,5 @@
 - [guides/TWO_BLOCK_CPET_FUEL_SPLIT_DETAIL.html](./guides/TWO_BLOCK_CPET_FUEL_SPLIT_DETAIL.html): 2블럭 CPET 연료 기여율 계산의 상세 HTML 가이드
 - [guides/THREE_PATH_ENERGY_SYSTEM_DETAIL.html](./guides/THREE_PATH_ENERGY_SYSTEM_DETAIL.html): 3-path 에너지 시스템 기여도 계산 방식과 코드 기준 공식 정리
 - [guides/CPET_METFLEX_LANDSCAPE_REVIEW.html](./guides/CPET_METFLEX_LANDSCAPE_REVIEW.html): CPET-derived metabolic flexibility metric 논문의 문헌·특허 지형과 ZeLIA 적용 함의를 정리한 내부 HTML 리뷰
+- [guides/CYCLING_VO2_RNN_REVIEW.html](./guides/CYCLING_VO2_RNN_REVIEW.html): Cycling VO2 RNN pilot study를 읽고 ZeLIA의 VO2 surrogate 연구 방향을 정리한 내부 HTML 리뷰
 - 신규 활성 설계 문서는 가능하면 `docs/specs/`에 추가합니다.
