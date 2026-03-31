@@ -147,6 +147,10 @@ _NOTE_SUMMARIES = {
         "summary": "산화적·해당적·인산계 3-path 에너지 시스템 기여도를 실제 코드 공식과 가정으로 정리한 상세 가이드입니다.",
         "category": "Energy Systems",
     },
+    "cpet-metflex-landscape-review": {
+        "summary": "CPET-derived metabolic flexibility metric 논문의 문헌·특허 지형과 ZeLIA 적용 함의를 정리한 내부 리뷰입니다.",
+        "category": "Paper Review",
+    },
 }
 
 
