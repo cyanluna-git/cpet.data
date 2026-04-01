@@ -165,6 +165,10 @@ _NOTE_SUMMARIES = {
         "summary": "젖산 surrogate model 주제를 별도 연구 페이지로 분리해, 현재 연구 맥락과 Gemini Deep Research용 탐색 프롬프트를 함께 정리한 노트입니다.",
         "category": "Research Planning",
     },
+    "cpet-lactate-surrogate-strategy": {
+        "summary": "Gemini Deep Research 결과를 바탕으로 정리한 CPET 기반 혈중 젖산 대리 모델링 연구 전략 전문입니다.",
+        "category": "Deep Research Report",
+    },
 }
 
 

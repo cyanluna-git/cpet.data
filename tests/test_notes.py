@@ -68,6 +68,7 @@ def test_notes_index_lists_guides_for_researcher(tmp_path) -> None:
     assert "Cycling VO2 RNN Pilot Study Review" in resp.text
     assert "CPET + Lactate + AI Masters Thesis Topics" in resp.text
     assert "Lactate Surrogate Model Research Brief" in resp.text
+    assert "CPET 데이터 기반 혈중 젖산 대리 모델링 연구 전략" in resp.text
     assert ">노트<" in resp.text
 
 
