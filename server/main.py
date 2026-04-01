@@ -45,6 +45,7 @@ from server.db import (
     get_user,
     get_user_profile,
     delete_submission,
+    delete_report_catalog_entry,
     init_db,
     link_report_to_user,
     link_submission_user,
@@ -70,7 +71,7 @@ from server.db import (
     update_user_role,
     upsert_user_profile,
 )
-from server.api import _list_dashboard_entries
+from server.api import _list_dashboard_entries, sync_published_report_catalog
 
 load_dotenv()
 
@@ -79,6 +80,7 @@ load_dotenv()
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Initialize platform database on startup."""
     init_db(app.state.db_path)
+    sync_published_report_catalog(app.state.db_path, app.state.published_dir)
     yield
 
 
@@ -1836,12 +1838,14 @@ async def manage_delete_entry(request: Request, entry_id: str) -> HTMLResponse:
                 pub_dir = Path(request.app.state.published_dir) / job["report_slug"]
                 if pub_dir.exists():
                     shutil.rmtree(pub_dir, ignore_errors=True)
+                delete_report_catalog_entry(db_path, str(job["report_slug"]))
         delete_submission(db_path, entry_id)
     else:
         # Standalone published report — delete by slug (entry_id = report_slug)
         pub_dir = Path(request.app.state.published_dir) / entry_id
         if pub_dir.exists():
             shutil.rmtree(pub_dir, ignore_errors=True)
+        delete_report_catalog_entry(db_path, entry_id)
 
     # Return empty to trigger HTMX refresh
     return HTMLResponse("")

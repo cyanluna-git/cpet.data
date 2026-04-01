@@ -6,6 +6,7 @@ Uses raw sqlite3, WAL mode, TEXT primary keys (UUID).
 """
 
 import html
+import hashlib
 import json
 import sqlite3
 import uuid
@@ -84,6 +85,21 @@ CREATE TABLE IF NOT EXISTS report_notes (
     note TEXT NOT NULL DEFAULT '',
     updated_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS report_catalog (
+    report_slug TEXT PRIMARY KEY,
+    subject_name TEXT NOT NULL,
+    test_date TEXT,
+    analysis_method TEXT NOT NULL DEFAULT '알 수 없음',
+    report_version TEXT NOT NULL DEFAULT '기본 리포트',
+    report_url TEXT NOT NULL,
+    completed_at TEXT,
+    file_tags_json TEXT NOT NULL DEFAULT '[]',
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_report_catalog_test_date
+ON report_catalog(test_date DESC, completed_at DESC);
 
 CREATE TABLE IF NOT EXISTS user_profiles (
     user_id TEXT PRIMARY KEY REFERENCES users(id),
@@ -931,6 +947,93 @@ def get_report_name_overrides(db_path: Path) -> dict[str, str]:
     rows = conn.execute("SELECT report_slug, subject_name FROM report_name_overrides").fetchall()
     conn.close()
     return {row["report_slug"]: row["subject_name"] for row in rows}
+
+
+def upsert_report_catalog_entry(
+    db_path: Path,
+    *,
+    report_slug: str,
+    subject_name: str,
+    test_date: str,
+    analysis_method: str,
+    report_version: str,
+    report_url: str,
+    completed_at: str | None,
+    file_tags: list[str] | None = None,
+) -> None:
+    """Insert or update a published report metadata row."""
+    conn = _connect(db_path)
+    conn.execute(
+        """INSERT OR REPLACE INTO report_catalog (
+               report_slug,
+               subject_name,
+               test_date,
+               analysis_method,
+               report_version,
+               report_url,
+               completed_at,
+               file_tags_json,
+               updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))""",
+        (
+            report_slug,
+            subject_name.strip(),
+            test_date.strip(),
+            analysis_method.strip() or "알 수 없음",
+            report_version.strip() or "기본 리포트",
+            report_url.strip(),
+            completed_at,
+            json.dumps(file_tags or []),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_report_catalog_entry(db_path: Path, report_slug: str) -> None:
+    """Delete a published report metadata row by slug."""
+    conn = _connect(db_path)
+    conn.execute("DELETE FROM report_catalog WHERE report_slug = ?", (report_slug,))
+    conn.commit()
+    conn.close()
+
+
+def list_report_catalog(db_path: Path) -> list[dict]:
+    """List cached published report metadata rows, newest first."""
+    conn = _connect(db_path)
+    rows = conn.execute(
+        """SELECT report_slug,
+                  subject_name,
+                  test_date,
+                  analysis_method,
+                  report_version,
+                  report_url,
+                  completed_at,
+                  file_tags_json
+           FROM report_catalog
+           ORDER BY COALESCE(test_date, ''), COALESCE(completed_at, ''), report_slug DESC"""
+    ).fetchall()
+    conn.close()
+
+    items: list[dict] = []
+    for row in rows:
+        item = dict(row)
+        try:
+            item["file_tags"] = json.loads(item.pop("file_tags_json") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            item["file_tags"] = []
+        completed_at = str(item.get("completed_at") or "")
+        item["id"] = str(item["report_slug"])
+        item["display_id"] = hashlib.md5(str(item["report_slug"]).encode("utf-8")).hexdigest()[:8]
+        item["submission_id"] = ""
+        item["status"] = "done"
+        item["error_message"] = None
+        item["started_at"] = None
+        item["created_at"] = completed_at
+        item["created_at_display"] = completed_at[:16].replace("T", " ") if completed_at else ""
+        item["is_latest"] = False
+        items.append(item)
+    return list(reversed(items))
 
 
 def delete_submission(db_path: Path, submission_id: str) -> bool:

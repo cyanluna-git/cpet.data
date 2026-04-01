@@ -17,7 +17,6 @@ import hashlib
 from pathlib import Path
 import re
 import threading
-import time
 
 import httpx
 from fastapi import APIRouter, Form, Query, Request, UploadFile
@@ -27,6 +26,7 @@ from server.db import (
     create_job,
     create_submission,
     create_subject,
+    delete_report_catalog_entry,
     get_job,
     get_job_by_submission,
     get_subject,
@@ -34,8 +34,10 @@ from server.db import (
     get_user,
     list_jobs,
     list_jobs_by_user,
+    list_report_catalog,
     list_submissions_by_ids,
     list_subjects,
+    upsert_report_catalog_entry,
     update_job_status,
 )
 from server.publish import publish_report
@@ -58,10 +60,6 @@ SUBJECT_NAME_ALIASES = {
     "Changsun Hong": "홍창선",
     "Daesoon Kim": "김대순",
 }
-
-_PUBLISHED_SCAN_TTL_SECONDS = 15.0
-_PUBLISHED_SCAN_CACHE: dict[str, dict] = {}
-
 
 # ── Dependencies ─────────────────────────────────────────────────────
 
@@ -264,6 +262,29 @@ def _reconcile_job_artifacts(
             or datetime.now(timezone.utc).strftime("%Y-%m-%d")
         )
         slug = publish_report(workspace, subject_name, test_date, published_dir)
+    else:
+        subject_name = (
+            str(submission.get("subject_name") or "")
+            or metadata.get("subject_name")
+            or "subject"
+        )
+        test_date = (
+            str(submission.get("test_date") or "")
+            or metadata.get("test_date")
+            or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        )
+
+    upsert_report_catalog_entry(
+        get_db_path(request),
+        report_slug=slug,
+        subject_name=subject_name,
+        test_date=test_date,
+        analysis_method=str(metadata.get("analysis_method") or "알 수 없음"),
+        report_version=_describe_report_version(slug),
+        report_url=f"/report/{slug}/",
+        completed_at=datetime.now(timezone.utc).isoformat(),
+        file_tags=_get_file_tags(submission, str(workspace)),
+    )
 
     update_job_status(
         get_db_path(request),
@@ -313,6 +334,18 @@ def _run_pipeline_job(
         safe_subject = subject_name or "subject"
         safe_test_date = test_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
         slug = publish_report(workspace, safe_subject, safe_test_date, publish_dir)
+        metadata = _extract_report_metadata(workspace / "report" / "index.html")
+        upsert_report_catalog_entry(
+            db_path,
+            report_slug=slug,
+            subject_name=safe_subject,
+            test_date=safe_test_date,
+            analysis_method=str(metadata.get("analysis_method") or "알 수 없음"),
+            report_version=_describe_report_version(slug),
+            report_url=f"{report_url_prefix.rstrip('/')}/{slug}/",
+            completed_at=datetime.now(timezone.utc).isoformat(),
+            file_tags=_get_file_tags(None, str(workspace)),
+        )
         update_job_status(
             db_path,
             job_id,
@@ -470,17 +503,28 @@ def _scan_published_reports(published_dir: Path) -> list[dict]:
     return rows
 
 
-def _scan_published_reports_cached(published_dir: Path) -> list[dict]:
-    """Cache published report scans briefly to avoid repeated HTML parsing."""
-    cache_key = str(published_dir.resolve())
-    now = time.monotonic()
-    cached = _PUBLISHED_SCAN_CACHE.get(cache_key)
-    if cached and (now - float(cached["ts"])) < _PUBLISHED_SCAN_TTL_SECONDS:
-        return [dict(item) for item in cached["rows"]]
+def sync_published_report_catalog(db_path: Path, published_dir: Path) -> None:
+    """Sync published HTML metadata into the SQLite report catalog."""
+    current_slugs: set[str] = set()
+    for row in _scan_published_reports(published_dir):
+        report_slug = str(row["report_slug"])
+        current_slugs.add(report_slug)
+        upsert_report_catalog_entry(
+            db_path,
+            report_slug=report_slug,
+            subject_name=str(row["subject_name"] or ""),
+            test_date=str(row["test_date"] or ""),
+            analysis_method=str(row["analysis_method"] or "알 수 없음"),
+            report_version=str(row["report_version"] or "기본 리포트"),
+            report_url=str(row["report_url"] or f"/report/{report_slug}/"),
+            completed_at=str(row["completed_at"] or ""),
+            file_tags=list(row.get("file_tags") or []),
+        )
 
-    rows = _scan_published_reports(published_dir)
-    _PUBLISHED_SCAN_CACHE[cache_key] = {"ts": now, "rows": rows}
-    return [dict(item) for item in rows]
+    for row in list_report_catalog(db_path):
+        report_slug = str(row["report_slug"])
+        if report_slug not in current_slugs:
+            delete_report_catalog_entry(db_path, report_slug)
 
 
 def _list_dashboard_entries(
@@ -498,11 +542,10 @@ def _list_dashboard_entries(
 
     enriched: list[dict] = []
     job_slugs: set[str] = set()
-    published_dir = get_published_dir(request)
     published_rows: list[dict] = []
     published_by_slug: dict[str, dict] = {}
     if status in (None, "done"):
-        published_rows = _scan_published_reports_cached(published_dir)
+        published_rows = list_report_catalog(db_path)
         published_by_slug = {
             str(item["report_slug"]): item for item in published_rows if item.get("report_slug")
         }
