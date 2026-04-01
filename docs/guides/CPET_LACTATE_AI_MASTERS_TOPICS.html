@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CPET + Lactate + AI Masters Thesis Topics</title>
+  <style>
+    :root {
+      --paper: #f4efe6;
+      --paper-strong: #efe6d8;
+      --ink: #162028;
+      --muted: #5f6d74;
+      --line: rgba(22, 32, 40, 0.12);
+      --accent: #8f3b2f;
+      --teal: #184e59;
+      --gold: #a17b37;
+      --shadow: 0 24px 60px rgba(17, 25, 32, 0.12);
+      --radius: 22px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(143, 59, 47, 0.08), transparent 32%),
+        radial-gradient(circle at top right, rgba(24, 78, 89, 0.10), transparent 28%),
+        linear-gradient(180deg, #f7f2ea 0%, #f2ece2 100%);
+      color: var(--ink);
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      line-height: 1.58;
+      word-break: keep-all;
+      overflow-wrap: break-word;
+    }
+    .page {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+    .hero {
+      position: relative;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.42);
+      border-radius: 34px;
+      padding: 36px;
+      box-shadow: var(--shadow);
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(135deg, rgba(24, 78, 89, 0.08), transparent 40%),
+        linear-gradient(315deg, rgba(161, 123, 55, 0.07), transparent 35%);
+      pointer-events: none;
+    }
+    .eyebrow {
+      display: inline-flex;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(22, 32, 40, 0.06);
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3 {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", serif;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    h1 {
+      margin-top: 18px;
+      font-size: clamp(2.2rem, 3.5vw, 3.4rem);
+      line-height: 1.05;
+    }
+    h2 {
+      font-size: clamp(1.5rem, 2.2vw, 2.2rem);
+      line-height: 1.1;
+    }
+    .hero p {
+      margin: 18px 0 0;
+      color: var(--muted);
+      max-width: 74ch;
+      font-size: 1.02rem;
+      position: relative;
+      z-index: 1;
+    }
+    .hero-grid {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+      gap: 24px;
+      margin-top: 24px;
+    }
+    .summary-card,
+    .section,
+    .topic-card {
+      background: rgba(255, 255, 255, 0.76);
+      border: 1px solid rgba(255, 255, 255, 0.42);
+      box-shadow: var(--shadow);
+    }
+    .summary-card {
+      border-radius: 24px;
+      padding: 22px 24px;
+      background: rgba(22, 32, 40, 0.92);
+      color: #f5efe7;
+    }
+    .summary-card p,
+    .summary-card li {
+      color: rgba(245, 239, 231, 0.84);
+    }
+    .summary-card ul {
+      margin: 14px 0 0;
+      padding-left: 18px;
+    }
+    .section {
+      margin-top: 28px;
+      padding: 28px;
+      border-radius: 28px;
+    }
+    .section-tag {
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      margin-bottom: 8px;
+    }
+    .section > p {
+      color: var(--muted);
+      margin: 10px 0 0;
+      max-width: 72ch;
+    }
+    .topic-grid {
+      margin-top: 22px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+    .topic-card {
+      border-radius: 24px;
+      padding: 22px;
+    }
+    .topic-rank {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 42px;
+      height: 42px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, rgba(24, 78, 89, 0.12), rgba(161, 123, 55, 0.16));
+      color: var(--teal);
+      font-size: 0.95rem;
+      font-weight: 800;
+      margin-bottom: 14px;
+    }
+    .topic-card p {
+      color: var(--muted);
+      margin: 12px 0 0;
+    }
+    .topic-card ul {
+      margin: 16px 0 0;
+      padding-left: 18px;
+    }
+    .topic-card li + li { margin-top: 8px; }
+    .two-col {
+      margin-top: 22px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+    .callout {
+      padding: 20px 22px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, rgba(24, 78, 89, 0.08), rgba(143, 59, 47, 0.08));
+      border: 1px solid rgba(22, 32, 40, 0.08);
+    }
+    .callout h3 {
+      font-size: 1.18rem;
+    }
+    .callout p, .callout li {
+      color: var(--muted);
+    }
+    .callout ul {
+      margin: 14px 0 0;
+      padding-left: 18px;
+    }
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      overflow: hidden;
+      border-radius: 18px;
+    }
+    .compare-table th,
+    .compare-table td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    .compare-table th {
+      color: var(--muted);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      background: rgba(22, 32, 40, 0.04);
+    }
+    .footer-note {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    @media (max-width: 980px) {
+      .hero-grid,
+      .topic-grid,
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+      .page { padding: 24px 16px 64px; }
+      .hero, .section { padding: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <div class="eyebrow">Research Note</div>
+      <h1>CPET + Lactate + AI 석사 논문 주제 후보</h1>
+      <p>
+        지금 쌓이고 있는 CPET, 호흡가스, lactate, 반복 측정 데이터를 바탕으로 실제로 수행 가능한
+        석사 논문 주제 4개를 한 장에서 비교한 노트입니다. 목표는 “재밌어 보이는 주제”가 아니라
+        “데이터로 끝까지 밀 수 있는 주제”를 고르는 것입니다.
+      </p>
+      <div class="hero-grid">
+        <div class="summary-card">
+          <strong style="display:block; letter-spacing:.12em; text-transform:uppercase; font-size:.78rem; color:#f2d7a6;">Quick Take</strong>
+          <p>
+            가장 안정적인 주제는 <strong>1번</strong>, 현재 데이터와 제품 구조를 가장 잘 활용하는 주제는
+            <strong>2번</strong>, 가장 AI스럽고 매력적이지만 리스크가 큰 주제는 <strong>4번</strong>입니다.
+          </p>
+          <ul>
+            <li>교수님 설득용으로는 1번이 가장 무난합니다.</li>
+            <li>제품/리포트 기능으로 이어가려면 2번이 가장 강합니다.</li>
+            <li>반복 제출 데이터가 계속 쌓이면 3번의 가치가 커집니다.</li>
+            <li>4번은 “젖산 완전 대체”가 아니라 “surrogate feasibility study”로 좁혀야 안전합니다.</li>
+          </ul>
+        </div>
+        <div class="summary-card">
+          <strong style="display:block; letter-spacing:.12em; text-transform:uppercase; font-size:.78rem; color:#f2d7a6;">Decision Frame</strong>
+          <ul>
+            <li><strong>석사 논문 안정성</strong>: 1번 &gt; 2번 &gt; 3번 &gt; 4번</li>
+            <li><strong>지금 시스템과의 연결성</strong>: 2번 &gt; 3번 &gt; 1번 &gt; 4번</li>
+            <li><strong>AI 느낌</strong>: 4번 &gt; 2번 &gt; 3번 &gt; 1번</li>
+            <li><strong>데이터 부족 리스크</strong>: 4번이 가장 큼</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-tag">Topics</div>
+      <h2>네 가지 후보를 한 번에 비교</h2>
+      <p>아래 네 주제는 모두 현재 ZeLIA 데이터 자산으로 연결 가능하지만, 필요한 데이터 밀도와 논문 방어 난이도가 다릅니다.</p>
+
+      <div class="topic-grid">
+        <article class="topic-card">
+          <div class="topic-rank">1</div>
+          <h3>LT1/LT2 통합 추정 비교</h3>
+          <p>호흡가스 기반 threshold와 lactate 기반 threshold가 얼마나 일치하는지 비교하고, 개인별 차이가 왜 발생하는지 설명하는 연구.</p>
+          <ul>
+            <li><strong>연구문제</strong>: 두 방식은 언제 일치하고 언제 어긋나는가?</li>
+            <li><strong>가설</strong>: 집단 평균은 비슷하지만 개인 수준 차이는 분명하다.</li>
+            <li><strong>필요 데이터</strong>: VO2/VCO2/VE/HR/Power + stage lactate + 프로토콜 메타</li>
+            <li><strong>분석방법</strong>: Bland-Altman, ICC, mixed-effect model, 통합 threshold 추정 비교</li>
+            <li><strong>예상 한계</strong>: 채혈 포인트 부족, 프로토콜 차이, 통합 모델 과적합 가능성</li>
+          </ul>
+        </article>
+
+        <article class="topic-card">
+          <div class="topic-rank">2</div>
+          <h3>대사 유연성 지표 개발</h3>
+          <p>FatMax, crossover, LT1, LT2, RQ 1.0 이전 연료 기여율을 합쳐서 개인의 metabolic flexibility를 설명하는 composite index를 만드는 연구.</p>
+          <ul>
+            <li><strong>연구문제</strong>: 단일 지표보다 composite index가 상태를 더 잘 설명하는가?</li>
+            <li><strong>가설</strong>: 지방 활용과 threshold 구조를 같이 쓰면 더 풍부한 설명이 가능하다.</li>
+            <li><strong>필요 데이터</strong>: substrate, FatMax, crossover, LT1/LT2, body composition, 반복 측정</li>
+            <li><strong>분석방법</strong>: 상관구조 분석, PCA/factor analysis, weighted score 후보 비교</li>
+            <li><strong>예상 한계</strong>: gold standard 부재, score weighting 타당성 설명 필요</li>
+          </ul>
+        </article>
+
+        <article class="topic-card">
+          <div class="topic-rank">3</div>
+          <h3>반복 측정 longitudinal 분석</h3>
+          <p>같은 사람이 여러 번 CPET를 했을 때 어떤 지표가 먼저 변하고, 어떤 지표가 늦게 따라오는지 보는 시간축 연구.</p>
+          <ul>
+            <li><strong>연구문제</strong>: 개선은 VO2max보다 submaximal 지표에서 먼저 나타나는가?</li>
+            <li><strong>가설</strong>: LT1/FatMax가 초기 적응을 더 먼저 포착한다.</li>
+            <li><strong>필요 데이터</strong>: subject x time 반복 CPET, lactate curve, body composition</li>
+            <li><strong>분석방법</strong>: snapshot table, delta/slope, growth model, responder subtype 분류</li>
+            <li><strong>예상 한계</strong>: 반복 측정 수 부족, 측정 간격 불규칙성</li>
+          </ul>
+        </article>
+
+        <article class="topic-card">
+          <div class="topic-rank">4</div>
+          <h3>lactate surrogate model</h3>
+          <p>호흡가스, 심박, 파워만으로 혈중 젖산 반응을 얼마나 추정할 수 있는지 보는 가장 AI다운 주제.</p>
+          <ul>
+            <li><strong>연구문제</strong>: 채혈 없이 lactate curve 또는 threshold zone을 어느 정도 복원할 수 있는가?</li>
+            <li><strong>가설</strong>: 절대 수치보다 threshold-aware 분류가 더 안정적이다.</li>
+            <li><strong>필요 데이터</strong>: stage lactate + 동기화된 VO2/VCO2/VE/RER/HR/Power + protocol metadata</li>
+            <li><strong>분석방법</strong>: ridge/XGBoost/sequence baseline 비교, subject-wise CV, calibration 실험</li>
+            <li><strong>예상 한계</strong>: 과적합 위험, 데이터 수 부족, “대체 가능성” 해석 과장 위험</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-tag">Comparison</div>
+      <h2>어떤 주제를 고르면 좋은가</h2>
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>주제</th>
+            <th>강점</th>
+            <th>약점</th>
+            <th>추천도</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>LT1/LT2 통합 추정 비교</td>
+            <td>해석이 쉽고 논문 구조가 안정적</td>
+            <td>새로움이 상대적으로 약할 수 있음</td>
+            <td>매우 높음</td>
+          </tr>
+          <tr>
+            <td>대사 유연성 지표 개발</td>
+            <td>현재 데이터와 제품 구조에 가장 잘 맞음</td>
+            <td>지표 정의의 타당성을 잘 설명해야 함</td>
+            <td>매우 높음</td>
+          </tr>
+          <tr>
+            <td>반복 측정 longitudinal 분석</td>
+            <td>snapshot/feature 구조 활용성이 큼</td>
+            <td>반복 데이터 밀도에 성패가 좌우됨</td>
+            <td>높음</td>
+          </tr>
+          <tr>
+            <td>lactate surrogate model</td>
+            <td>가장 AI스럽고 흥미롭다</td>
+            <td>과적합과 해석 과장 리스크가 큼</td>
+            <td>중간~높음</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="footer-note">
+        개인적으로 4번이 끌린다면, 제목은 “젖산 완전 대체 모델”보다 “surrogate feasibility study”로 줄이는 편이 훨씬 안전합니다.
+      </p>
+    </section>
+
+    <section class="section">
+      <div class="section-tag">Recommendation</div>
+      <h2>가장 현실적인 전략</h2>
+      <div class="two-col">
+        <div class="callout">
+          <h3>옵션 A: 2번을 메인, 4번을 부가 실험</h3>
+          <p>가장 추천하는 구조입니다. 메인 논문은 대사 유연성 지표 개발로 안정적으로 끌고 가고, lactate surrogate는 exploratory analysis로 붙입니다.</p>
+          <ul>
+            <li>논문 방어가 상대적으로 쉽습니다.</li>
+            <li>지금 시스템과 제품 기능으로 바로 이어집니다.</li>
+            <li>AI 실험도 넣되 과장하지 않을 수 있습니다.</li>
+          </ul>
+        </div>
+        <div class="callout">
+          <h3>옵션 B: 4번 단독, 다만 범위를 줄이기</h3>
+          <p>정말 AI 모델링을 메인으로 하고 싶다면, “lactate replacement”가 아니라 “threshold-aware surrogate feasibility”로 범위를 좁혀야 합니다.</p>
+          <ul>
+            <li>목표를 완전 대체가 아니라 가능성 평가로 둡니다.</li>
+            <li>subject-wise cross validation을 강하게 걸어야 합니다.</li>
+            <li>해석 가능성과 한계 분석을 같이 써야 합니다.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-tag">Next Step</div>
+      <h2>바로 이어서 할 일</h2>
+      <p>다음 단계에서는 아래 셋 중 하나로 바로 확장할 수 있습니다.</p>
+      <ul>
+        <li>지도교수 상담용 2페이지 연구계획서로 축약</li>
+        <li>최종 후보 1~2개에 대해 변수표와 분석 파이프라인 작성</li>
+        <li>실제 ZeLIA 데이터 기준으로 “현재 바로 가능한 분석”과 “추가 수집이 필요한 분석” 분리</li>
+      </ul>
+    </section>
+  </div>
+</body>
+</html>

@@ -157,6 +157,10 @@ _NOTE_SUMMARIES = {
         "summary": "Cycling VO2 RNN pilot study를 읽고, ZeLIA에서 VO2 surrogate 모델을 어디까지 연구용으로 받아들일 수 있는지 정리한 내부 리뷰입니다.",
         "category": "Modeling Review",
     },
+    "cpet-lactate-ai-masters-topics": {
+        "summary": "CPET + lactate + AI 데이터를 바탕으로 현실적인 석사 논문 주제 4개를 연구문제, 가설, 데이터, 분석방법, 한계 기준으로 비교한 노트입니다.",
+        "category": "Research Planning",
+    },
 }
 
 
