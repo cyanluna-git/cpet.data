@@ -476,6 +476,88 @@ CPET, substrate, threshold, lactate 지표를 이용해 피험자를 몇 가지 
 
 ---
 
+## 주제별 추천 학회/저널
+
+기본 전략은 대체로 아래 순서가 안전하다.
+
+1. 국내 또는 국제 학회 초록 발표
+2. 피드백 반영
+3. 중간급 저널 투고
+4. 필요하면 확장판으로 상위 저널 도전
+
+### 1. LT1/LT2 통합 추정 비교
+
+- 학회 1순위: `KSEP Annual Meeting`
+- 학회 2순위: `ACSM Annual Meeting`
+- 저널 1순위: `Exercise Science`
+- 저널 2순위: `BMC Sports Science, Medicine and Rehabilitation`
+- 도전 저널: `Journal of Science and Medicine in Sport`
+
+왜 맞는가:
+
+- threshold 비교와 exercise physiology 해석이 중심이라 전통적인 운동생리 저널과 잘 맞는다.
+- AI보다 생리 해석이 중심이므로, physiology-friendly 저널이 유리하다.
+
+### 2. 대사 유연성 지표 개발
+
+- 학회 1순위: `KSEP Annual Meeting`
+- 학회 2순위: `ECSS Annual Congress`
+- 저널 1순위: `BMC Sports Science, Medicine and Rehabilitation`
+- 저널 2순위: `Frontiers in Physiology - Exercise Physiology`
+- 도전 저널: `Journal of Science and Medicine in Sport`
+
+왜 맞는가:
+
+- metabolism, substrate use, training adaptation을 함께 다루는 applied physiology 성격이 강하다.
+- 새 지표 개발은 너무 임상저널보다 physiology 또는 broad sports-science 저널이 잘 맞는다.
+
+### 3. 반복 측정 longitudinal 분석
+
+- 학회 1순위: `KSEP Annual Meeting`
+- 학회 2순위: `ACSM Annual Meeting`
+- 저널 1순위: `Exercise Science`
+- 저널 2순위: `BMC Sports Science, Medicine and Rehabilitation`
+- 도전 저널: `Frontiers in Physiology - Exercise Physiology`
+
+왜 맞는가:
+
+- longitudinal change, training response, repeated testing은 운동생리와 applied sport science 양쪽과 연결된다.
+- 논문 구조가 깔끔하면 국내 학회/저널에서 시작하기 좋다.
+
+### 4. lactate surrogate model
+
+- 학회 1순위: `ACSM Annual Meeting`
+- 학회 2순위: `ECSS Annual Congress`
+- 저널 1순위: `Frontiers in Physiology - Exercise Physiology`
+- 저널 2순위: `BMC Sports Science, Medicine and Rehabilitation`
+- 도전 저널: `Journal of Science and Medicine in Sport`
+
+왜 맞는가:
+
+- 이 주제는 가장 AI스럽기 때문에, abstract 단계에서 기술적 흥미를 끌기 쉽다.
+- 다만 저널 투고 시에는 “젖산 대체”보다 “surrogate feasibility”로 framing하는 것이 안전하다.
+
+### 5. phenotype clustering
+
+- 학회 1순위: `ECSS Annual Congress`
+- 학회 2순위: `ACSM Annual Meeting`
+- 저널 1순위: `Frontiers in Physiology - Exercise Physiology`
+- 저널 2순위: `BMC Sports Science, Medicine and Rehabilitation`
+- 도전 저널: `Journal of Science and Medicine in Sport`
+
+왜 맞는가:
+
+- clustering은 비지도학습처럼 보이지만, 결국 중요한 것은 생리적 해석과 개인화 응용이다.
+- physiology와 technology를 함께 포용하는 학회/저널이 더 잘 맞는다.
+
+### 한 줄 권고
+
+- 가장 안전한 출발: `KSEP 학회 -> Exercise Science`
+- 영어 저널의 균형점: `BMC Sports Science, Medicine and Rehabilitation` 또는 `Frontiers in Physiology`
+- 가장 공격적인 도전: `Journal of Science and Medicine in Sport`
+
+---
+
 ## 개인적인 추천
 
 당신이 4번을 끌린다고 했기 때문에, 현실적인 석사 설계는 아래 세 가지 중 하나가 좋다.
