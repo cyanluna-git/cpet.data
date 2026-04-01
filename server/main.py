@@ -169,6 +169,10 @@ _NOTE_SUMMARIES = {
         "summary": "Gemini Deep Research 결과를 바탕으로 정리한 CPET 기반 혈중 젖산 대리 모델링 연구 전략 전문입니다.",
         "category": "Deep Research Report",
     },
+    "thesis-direction-lactate-surrogate-modeling": {
+        "summary": "docx 원문을 notes 템플릿으로 옮긴, 젖산 surrogate modeling 연구 방향 전문 문서입니다.",
+        "category": "Research Planning",
+    },
 }
 
 

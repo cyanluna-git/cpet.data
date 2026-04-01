@@ -27,4 +27,5 @@
 - [guides/LACTATE_SURROGATE_RESEARCH_BRIEF.html](./guides/LACTATE_SURROGATE_RESEARCH_BRIEF.html): 젖산 surrogate model 주제를 별도 연구 페이지로 분리해 연구 framing과 Gemini Deep Research 프롬프트를 정리한 노트
 - [papers/LACTATE_SURROGATE_RESEARCH_BRIEF.md](./papers/LACTATE_SURROGATE_RESEARCH_BRIEF.md): 위 노트의 원문 마크다운
 - [guides/CPET_LACTATE_SURROGATE_STRATEGY.html](./guides/CPET_LACTATE_SURROGATE_STRATEGY.html): Gemini Deep Research가 작성한 CPET 기반 혈중 젖산 대리 모델링 연구 전략 전문
+- [guides/THESIS_DIRECTION_LACTATE_SURROGATE_MODELING.html](./guides/THESIS_DIRECTION_LACTATE_SURROGATE_MODELING.html): docx 원문 전문을 notes 템플릿으로 옮긴 젖산 surrogate modeling 연구 방향 문서
 - 신규 활성 설계 문서는 가능하면 `docs/specs/`에 추가합니다.
