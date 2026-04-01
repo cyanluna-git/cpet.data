@@ -233,7 +233,7 @@
       <h1>CPET + Lactate + AI 석사 논문 주제 후보</h1>
       <p>
         지금 쌓이고 있는 CPET, 호흡가스, lactate, 반복 측정 데이터를 바탕으로 실제로 수행 가능한
-        석사 논문 주제 4개를 한 장에서 비교한 노트입니다. 목표는 “재밌어 보이는 주제”가 아니라
+        석사 논문 주제 5개를 한 장에서 비교한 노트입니다. 목표는 “재밌어 보이는 주제”가 아니라
         “데이터로 끝까지 밀 수 있는 주제”를 고르는 것입니다.
       </p>
       <div class="hero-grid">
@@ -241,21 +241,23 @@
           <strong style="display:block; letter-spacing:.12em; text-transform:uppercase; font-size:.78rem; color:#f2d7a6;">Quick Take</strong>
           <p>
             가장 안정적인 주제는 <strong>1번</strong>, 현재 데이터와 제품 구조를 가장 잘 활용하는 주제는
-            <strong>2번</strong>, 가장 AI스럽고 매력적이지만 리스크가 큰 주제는 <strong>4번</strong>입니다.
+            <strong>2번</strong>, 가장 AI스럽고 매력적이지만 리스크가 큰 주제는 <strong>4번</strong>,
+            개인화 전략으로 확장하기 좋은 후보는 <strong>5번 군집화</strong>입니다.
           </p>
           <ul>
             <li>교수님 설득용으로는 1번이 가장 무난합니다.</li>
             <li>제품/리포트 기능으로 이어가려면 2번이 가장 강합니다.</li>
             <li>반복 제출 데이터가 계속 쌓이면 3번의 가치가 커집니다.</li>
             <li>4번은 “젖산 완전 대체”가 아니라 “surrogate feasibility study”로 좁혀야 안전합니다.</li>
+            <li>5번은 군집 생성보다 군집의 의미와 안정성 검증이 중요합니다.</li>
           </ul>
         </div>
         <div class="summary-card">
           <strong style="display:block; letter-spacing:.12em; text-transform:uppercase; font-size:.78rem; color:#f2d7a6;">Decision Frame</strong>
           <ul>
-            <li><strong>석사 논문 안정성</strong>: 1번 &gt; 2번 &gt; 3번 &gt; 4번</li>
-            <li><strong>지금 시스템과의 연결성</strong>: 2번 &gt; 3번 &gt; 1번 &gt; 4번</li>
-            <li><strong>AI 느낌</strong>: 4번 &gt; 2번 &gt; 3번 &gt; 1번</li>
+            <li><strong>석사 논문 안정성</strong>: 1번 &gt; 2번 &gt; 3번 &gt; 5번 &gt; 4번</li>
+            <li><strong>지금 시스템과의 연결성</strong>: 2번 &gt; 3번 &gt; 5번 &gt; 1번 &gt; 4번</li>
+            <li><strong>AI 느낌</strong>: 4번 &gt; 5번 &gt; 2번 &gt; 3번 &gt; 1번</li>
             <li><strong>데이터 부족 리스크</strong>: 4번이 가장 큼</li>
           </ul>
         </div>
@@ -264,8 +266,8 @@
 
     <section class="section">
       <div class="section-tag">Topics</div>
-      <h2>네 가지 후보를 한 번에 비교</h2>
-      <p>아래 네 주제는 모두 현재 ZeLIA 데이터 자산으로 연결 가능하지만, 필요한 데이터 밀도와 논문 방어 난이도가 다릅니다.</p>
+      <h2>다섯 가지 후보를 한 번에 비교</h2>
+      <p>아래 다섯 주제는 모두 현재 ZeLIA 데이터 자산으로 연결 가능하지만, 필요한 데이터 밀도와 논문 방어 난이도가 다릅니다.</p>
 
       <div class="topic-grid">
         <article class="topic-card">
@@ -319,6 +321,66 @@
             <li><strong>예상 한계</strong>: 과적합 위험, 데이터 수 부족, “대체 가능성” 해석 과장 위험</li>
           </ul>
         </article>
+
+        <article class="topic-card">
+          <div class="topic-rank">5</div>
+          <h3>phenotype clustering</h3>
+          <p>CPET, substrate, threshold, lactate feature를 이용해 피험자를 몇 가지 대사 phenotype으로 나누고, 그 의미를 해석하는 연구.</p>
+          <ul>
+            <li><strong>연구문제</strong>: 재현 가능한 phenotype cluster가 실제로 형성되는가?</li>
+            <li><strong>가설</strong>: 군집은 단순 VO2max 고저가 아니라 연료 사용과 threshold 구조 조합으로 나뉜다.</li>
+            <li><strong>필요 데이터</strong>: feature set, lactate curve feature, body composition, 가능하면 반복 측정</li>
+            <li><strong>분석방법</strong>: scaling, 결측 처리, clustering 비교, stability analysis, cluster 해석</li>
+            <li><strong>예상 한계</strong>: 군집이 예쁘게 나와도 생리적 의미가 약하면 가치가 떨어짐</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-tag">AI Role</div>
+      <h2>각 주제에서 AI가 실제로 기여하는 부분</h2>
+      <div class="topic-grid">
+        <article class="topic-card">
+          <h3>1. LT1/LT2 통합 추정 비교</h3>
+          <ul>
+            <li>통합 threshold estimator 구축</li>
+            <li>feature selection으로 불일치 원인 설명</li>
+            <li>개인차와 집단 경향 분리 모델링</li>
+          </ul>
+        </article>
+        <article class="topic-card">
+          <h3>2. 대사 유연성 지표 개발</h3>
+          <ul>
+            <li>PCA, factor analysis, regularized regression 기반 가중치 설계</li>
+            <li>반복 측정 데이터가 쌓일수록 score update rule 보정</li>
+            <li>explainability로 점수 구성 근거 제시</li>
+          </ul>
+        </article>
+        <article class="topic-card">
+          <h3>3. 반복 측정 longitudinal 분석</h3>
+          <ul>
+            <li>time-series feature engineering</li>
+            <li>change velocity, momentum, delayed response 같은 파생변수 생성</li>
+            <li>future response prediction 실험 가능</li>
+          </ul>
+        </article>
+        <article class="topic-card">
+          <h3>4. lactate surrogate model</h3>
+          <ul>
+            <li>회귀, tree-based, sequence model 비교</li>
+            <li>subject-specific calibration</li>
+            <li>uncertainty estimation과 SHAP 해석</li>
+          </ul>
+        </article>
+        <article class="topic-card">
+          <h3>5. phenotype clustering</h3>
+          <ul>
+            <li>비지도학습과 차원축소가 핵심</li>
+            <li>cluster stability analysis가 중요</li>
+            <li>해석 가능한 cluster labeling이 AI 기여를 명확하게 만듦</li>
+          </ul>
+        </article>
       </div>
     </section>
 
@@ -359,6 +421,12 @@
             <td>과적합과 해석 과장 리스크가 큼</td>
             <td>중간~높음</td>
           </tr>
+          <tr>
+            <td>phenotype clustering</td>
+            <td>개인화 전략으로 확장 가능</td>
+            <td>군집 안정성과 해석 타당성 확보가 어려움</td>
+            <td>중간~높음</td>
+          </tr>
         </tbody>
       </table>
       <p class="footer-note">
@@ -386,6 +454,15 @@
             <li>목표를 완전 대체가 아니라 가능성 평가로 둡니다.</li>
             <li>subject-wise cross validation을 강하게 걸어야 합니다.</li>
             <li>해석 가능성과 한계 분석을 같이 써야 합니다.</li>
+          </ul>
+        </div>
+        <div class="callout">
+          <h3>옵션 C: 5번 군집화를 메인으로 하기</h3>
+          <p>군집화 자체보다는, 각 cluster가 어떤 생리적 의미를 갖는지와 이후 변화 패턴과의 연결을 설명하는 방향으로 가야 합니다.</p>
+          <ul>
+            <li>지금 만든 snapshot/feature 구조와 잘 맞습니다.</li>
+            <li>개인화 리포트나 phenotype labeling으로 확장하기 좋습니다.</li>
+            <li>군집 수를 예쁘게 만드는 것보다 해석 가능성이 더 중요합니다.</li>
           </ul>
         </div>
       </div>
