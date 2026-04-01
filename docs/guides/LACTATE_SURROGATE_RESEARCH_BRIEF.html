@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lactate Surrogate Model Research Brief</title>
+  <style>
+    :root {
+      --paper: #f4efe6;
+      --paper-strong: #efe6d8;
+      --ink: #162028;
+      --muted: #5f6d74;
+      --line: rgba(22, 32, 40, 0.12);
+      --accent: #8f3b2f;
+      --accent-soft: rgba(143, 59, 47, 0.12);
+      --teal: #184e59;
+      --gold: #a17b37;
+      --shadow: 0 24px 60px rgba(17, 25, 32, 0.12);
+      --radius: 22px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(143, 59, 47, 0.08), transparent 32%),
+        radial-gradient(circle at top right, rgba(24, 78, 89, 0.10), transparent 28%),
+        linear-gradient(180deg, #f7f2ea 0%, #f2ece2 100%);
+      color: var(--ink);
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      line-height: 1.58;
+      word-break: keep-all;
+      overflow-wrap: break-word;
+    }
+    .page {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+    .coach-brief {
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 24px;
+      padding: 30px 32px;
+      border-radius: 34px;
+      background: linear-gradient(135deg, rgba(22, 32, 40, 0.96), rgba(24, 78, 89, 0.94));
+      color: #f7f1e7;
+      box-shadow: var(--shadow);
+    }
+    .coach-brief::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.14), transparent 32%),
+        linear-gradient(135deg, rgba(161, 123, 55, 0.2), transparent 42%);
+      pointer-events: none;
+    }
+    .coach-grid {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+      gap: 24px;
+      align-items: start;
+    }
+    .hero {
+      position: relative;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.58);
+      backdrop-filter: blur(18px);
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      border-radius: 34px;
+      padding: 36px;
+      box-shadow: var(--shadow);
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(135deg, rgba(24, 78, 89, 0.08), transparent 40%),
+        linear-gradient(315deg, rgba(161, 123, 55, 0.07), transparent 35%);
+      pointer-events: none;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr);
+      gap: 28px;
+      margin-top: 24px;
+      position: relative;
+      z-index: 1;
+    }
+    .eyebrow {
+      display: inline-flex;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(22, 32, 40, 0.06);
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3 {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", serif;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    h1 { margin-top: 18px; font-size: clamp(2.2rem, 3.5vw, 3.4rem); line-height: 1.05; }
+    .coach-brief h2 { font-size: clamp(2rem, 3.2vw, 3rem); line-height: 1; margin-top: 12px; }
+    .hero-copy p, .coach-brief p {
+      margin: 18px 0 0;
+      color: var(--muted);
+      max-width: 68ch;
+      font-size: 1.02rem;
+    }
+    .coach-brief p { color: rgba(247, 241, 231, 0.82); }
+    .coach-list { margin: 20px 0 0; padding-left: 20px; }
+    .coach-list li + li { margin-top: 8px; }
+    .coach-note, .info-card { padding: 22px 24px; border-radius: 24px; }
+    .coach-note {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: rgba(247, 241, 231, 0.94);
+    }
+    .coach-note strong, .mini-label {
+      display: block;
+      margin-bottom: 8px;
+      color: #f2d7a6;
+      font-size: 0.82rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .info-card {
+      background: rgba(22, 32, 40, 0.92);
+      color: #f5efe7;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0;
+    }
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px 20px;
+      font-size: 1rem;
+      margin-top: 18px;
+    }
+    .info-grid span {
+      display: block;
+      color: rgba(245, 239, 231, 0.68);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 4px;
+    }
+    .section {
+      margin-top: 28px;
+      padding: 28px;
+      border-radius: 28px;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.42);
+      box-shadow: var(--shadow);
+      break-inside: avoid;
+    }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: end;
+      margin-bottom: 22px;
+    }
+    .section-header p { margin: 8px 0 0; color: var(--muted); max-width: 72ch; }
+    .section-tag {
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+    }
+    .callout, .insight-box {
+      margin-top: 22px;
+      padding: 18px 20px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, rgba(24, 78, 89, 0.08), rgba(143, 59, 47, 0.08));
+      border: 1px solid rgba(22, 32, 40, 0.08);
+    }
+    .callout ul, .insight-box ul { margin: 0; padding-left: 20px; }
+    .kpi-grid, .topic-grid, .callout-grid {
+      display: grid;
+      gap: 16px;
+    }
+    .kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .topic-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .callout-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .kpi-card, .topic-card {
+      padding: 22px 22px 20px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.8);
+      border: 1px solid var(--line);
+    }
+    .kpi-card h3, .topic-card h3 { font-size: 1.1rem; margin-bottom: 10px; }
+    .kpi-value {
+      font-size: clamp(1.8rem, 3vw, 2.5rem);
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+    .metric-sub { margin-top: 10px; color: var(--muted); font-size: 0.95rem; }
+    .prompt-box {
+      margin-top: 18px;
+      padding: 20px;
+      border-radius: 22px;
+      background: rgba(22, 32, 40, 0.96);
+      color: #f4efe6;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.92rem;
+      line-height: 1.65;
+    }
+    .footer-note {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    a { color: var(--teal); }
+    @media (max-width: 980px) {
+      .coach-grid, .hero-grid, .topic-grid, .callout-grid, .kpi-grid {
+        grid-template-columns: 1fr;
+      }
+      .page { padding: 22px 16px 56px; }
+      .hero, .coach-brief, .section { padding: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="coach-brief">
+      <div class="coach-grid">
+        <div>
+          <strong class="mini-label">Research Focus</strong>
+          <h2>Lactate Surrogate Model</h2>
+          <p>
+            CPET 중 수집되는 호흡가스, 심박, 파워, 시간축 정보를 사용해 혈중 젖산 반응 또는 threshold-relevant zone을 얼마나 근사할 수 있는지,
+            과장 없이 연구 주제로 정리하기 위한 전용 브리프입니다.
+          </p>
+          <ul class="coach-list">
+            <li>핵심 framing은 “대체 모델”이 아니라 “surrogate feasibility study”입니다.</li>
+            <li>절대 lactate 수치 회귀보다 threshold-aware classification이 더 현실적일 수 있습니다.</li>
+            <li>논문 방어 포인트는 정확도보다도 leakage 방지, validation, 실패 패턴 해석입니다.</li>
+          </ul>
+        </div>
+        <div class="coach-note">
+          <strong>Why This Page Exists</strong>
+          4번 주제는 가장 매력적이지만 동시에 가장 위험합니다. 그래서 일반 후보 비교 페이지와 분리해,
+          연구 방향, 위험 지점, 그리고 Gemini Deep Research에 바로 넣을 탐색 프롬프트를 한 곳에 모았습니다.
+        </div>
+      </div>
+    </section>
+
+    <section class="hero">
+      <div class="eyebrow">Research Planning</div>
+      <h1>젖산 surrogate 모델을 석사 논문으로 가져가는 법</h1>
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <p>
+            이 주제의 매력은 분명합니다. 채혈 없이도 lactate 반응을 어느 정도 읽을 수 있다면, 검사 프로세스 자체가 달라질 수 있기 때문입니다.
+            하지만 바로 그 이유 때문에, 주장 범위를 조심하지 않으면 가장 쉽게 과장되는 주제이기도 합니다.
+          </p>
+          <div class="insight-box">
+            <ul>
+              <li>좋은 질문: “어디까지 근사 가능한가?”</li>
+              <li>나쁜 질문: “AI가 젖산을 완전히 대체할 수 있는가?”</li>
+              <li>좋은 결과: threshold-relevant zone classification feasibility</li>
+              <li>위험한 결과: 절대 수치 regression 하나만 보고 임상 대체를 주장하는 것</li>
+            </ul>
+          </div>
+        </div>
+        <div class="info-card">
+          <strong class="mini-label">Recommended Framing</strong>
+          <div class="info-grid">
+            <div><span>Main Claim</span>Feasibility Study</div>
+            <div><span>Primary Target</span>Threshold-aware Zone</div>
+            <div><span>Secondary Target</span>Absolute Lactate Regression</div>
+            <div><span>Validation Priority</span>Subject-wise Split</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-tag">Core Questions</div>
+          <h2>이 연구에서 반드시 물어야 하는 질문</h2>
+          <p>논문이 흔들리지 않으려면, 처음부터 질문을 좁게 잡아야 합니다.</p>
+        </div>
+      </div>
+      <div class="topic-grid">
+        <article class="topic-card">
+          <h3>1. 무엇을 예측할 것인가</h3>
+          <ul>
+            <li>stage별 absolute lactate 값</li>
+            <li>threshold zone 분류</li>
+            <li>lactate turning point / LT1-LT2 relevant transition</li>
+          </ul>
+        </article>
+        <article class="topic-card">
+          <h3>2. 무엇이 더 설득력 있는가</h3>
+          <ul>
+            <li>숫자를 맞추는 것보다 zone을 맞추는 것이 더 현실적일 수 있음</li>
+            <li>global model보다 subject-calibrated model이 더 나을 수 있음</li>
+            <li>성공 사례보다 실패 조건 설명이 더 중요할 수 있음</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-tag">Pragmatic Thesis Framing</div>
+      <h2>가장 안전한 논문 framing</h2>
+      <div class="callout-grid">
+        <div class="callout">
+          <h3>권장 제목 방향</h3>
+          <ul>
+            <li><em>surrogate model의 가능성 평가</em></li>
+            <li><em>threshold-aware classification feasibility</em></li>
+            <li><em>subject-specific calibration effect</em></li>
+          </ul>
+        </div>
+        <div class="callout">
+          <h3>피해야 할 framing</h3>
+          <ul>
+            <li>AI가 혈중 젖산을 완전히 대체한다</li>
+            <li>비침습적으로 lactate를 정확히 측정한다</li>
+            <li>임상 준비가 끝난 실사용 모델이라는 주장</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-tag">Gemini Prompt</div>
+      <h2>Gemini Deep Research에 넣을 프롬프트</h2>
+      <p>아래 문안을 그대로 넣고, 마지막에 우리 데이터 제약이나 추가 요청을 덧붙이면 됩니다.</p>
+      <div class="prompt-box">You are preparing a deep research report for a master's thesis in exercise physiology / sports data science.
+
+Topic:
+Building and evaluating a surrogate model for blood lactate response during graded exercise testing using CPET-derived variables such as VO2, VCO2, VE, RER, heart rate, power, and time-series structure.
+
+Important framing:
+- Do NOT frame this as “AI fully replaces blood lactate measurement.”
+- Frame it as a feasibility study or surrogate modeling problem.
+- Distinguish between:
+  1) absolute blood lactate regression
+  2) threshold-aware zone classification
+  3) prediction of lactate turning points / LT1-LT2 relevant transitions
+
+My real-world context:
+- I have CPET data, respiratory gas data, stage/ramp metadata, heart rate, power, and some tests with measured blood lactate.
+- Some subjects are measured repeatedly over time.
+- My goal is to identify a defensible master's thesis direction, not to exaggerate clinical readiness.
+
+Please produce a rigorous research report with the following sections:
+
+1. Research landscape overview
+- Summarize the overall state of the field on lactate estimation, lactate threshold prediction, and surrogate modeling from exercise test data.
+- Separate classical physiology studies from machine learning studies.
+- Explain what is already well established and what remains uncertain.
+
+2. Prior literature mapping
+- Identify and summarize the most relevant prior studies.
+- Include studies on:
+  - ventilatory threshold vs lactate threshold comparison
+  - machine learning prediction of lactate or lactate threshold
+  - non-invasive lactate estimation approaches
+  - CPET / cycling / graded exercise modeling papers
+- For each important paper, provide:
+  - citation
+  - study design
+  - sample size
+  - inputs
+  - outputs
+  - modeling approach
+  - validation strategy
+  - key findings
+  - limitations
+
+3. Methodology patterns in the literature
+- Compare common modeling choices:
+  - linear / ridge / lasso
+  - tree-based models
+  - sequence models
+  - hybrid physiology-informed models
+- Explain what targets were modeled:
+  - blood lactate concentration
+  - lactate threshold
+  - anaerobic threshold
+  - zone classification
+- Explain which validation strategies are defensible and which are weak.
+- Pay special attention to subject-wise split, leakage risk, and calibration.
+
+4. What kind of thesis is actually defensible
+- Based on the literature, assess whether a master's thesis should aim for:
+  - absolute lactate regression
+  - threshold-aware classification
+  - subject-specific calibration study
+  - feasibility study only
+- Tell me which framing is most realistic and defensible for a master's thesis with limited data.
+
+5. Data requirement analysis
+- Estimate the approximate amount of data needed for each possible study design:
+  - absolute regression
+  - threshold zone classification
+  - subject-calibrated modeling
+- Distinguish between number of subjects, number of tests, and number of stage-level paired samples.
+- Explain what minimum data might be publishable and what would be considered strong evidence.
+
+6. Novelty gap
+- Identify what gaps still remain in the field.
+- Tell me where a small but meaningful contribution is still possible.
+- Explicitly distinguish:
+  - crowded topics
+  - still-open questions
+  - topics likely to be too ambitious for a master's thesis
+
+7. Publication path
+- Recommend suitable conferences and journals for this topic.
+- Separate:
+  - safest domestic / lower-risk venues
+  - realistic English-language journals
+  - ambitious journals
+- Explain why each venue fits this topic.
+
+8. Recommended thesis directions
+- Give me 3 concrete thesis direction options:
+  - conservative option
+  - balanced option
+  - ambitious option
+- For each option provide:
+  - suggested thesis title
+  - core hypothesis
+  - required data
+  - analysis plan
+  - main risks
+  - expected contribution
+
+9. Bottom-line recommendation
+- If you were advising a master's student with limited but growing CPET + lactate data, what exact version of this topic would you recommend?
+- Be explicit and pragmatic.
+
+Output requirements:
+- Write clearly enough for a non-expert graduate student to follow.
+- Use structured headings and tables where useful.
+- Include direct links or DOIs for key papers when possible.
+- Prioritize primary papers, strong reviews, and reputable journals.
+- Do not overclaim.
+- Be honest about weak evidence and common failure modes.</div>
+      <p class="footer-note">이 프롬프트는 “관련 논문 많이 찾아줘” 수준이 아니라, 실제 석사 논문 방향 결정을 위한 evidence review를 목표로 설계했습니다.</p>
+    </section>
+  </div>
+</body>
+</html>

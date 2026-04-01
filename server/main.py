@@ -158,7 +158,11 @@ _NOTE_SUMMARIES = {
         "category": "Modeling Review",
     },
     "cpet-lactate-ai-masters-topics": {
-        "summary": "CPET + lactate + AI 데이터를 바탕으로 현실적인 석사 논문 주제 4개를 연구문제, 가설, 데이터, 분석방법, 한계 기준으로 비교한 노트입니다.",
+        "summary": "CPET + lactate + AI 데이터를 바탕으로 현실적인 석사 논문 주제 5개를 연구문제, 가설, 데이터, 분석방법, 한계 기준으로 비교한 노트입니다.",
+        "category": "Research Planning",
+    },
+    "lactate-surrogate-research-brief": {
+        "summary": "젖산 surrogate model 주제를 별도 연구 페이지로 분리해, 현재 연구 맥락과 Gemini Deep Research용 탐색 프롬프트를 함께 정리한 노트입니다.",
         "category": "Research Planning",
     },
 }

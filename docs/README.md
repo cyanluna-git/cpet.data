@@ -23,4 +23,7 @@
 - [guides/THREE_PATH_ENERGY_SYSTEM_DETAIL.html](./guides/THREE_PATH_ENERGY_SYSTEM_DETAIL.html): 3-path 에너지 시스템 기여도 계산 방식과 코드 기준 공식 정리
 - [guides/CPET_METFLEX_LANDSCAPE_REVIEW.html](./guides/CPET_METFLEX_LANDSCAPE_REVIEW.html): CPET-derived metabolic flexibility metric 논문의 문헌·특허 지형과 ZeLIA 적용 함의를 정리한 내부 HTML 리뷰
 - [guides/CYCLING_VO2_RNN_REVIEW.html](./guides/CYCLING_VO2_RNN_REVIEW.html): Cycling VO2 RNN pilot study를 읽고 ZeLIA의 VO2 surrogate 연구 방향을 정리한 내부 HTML 리뷰
+- [papers/CPET_LACTATE_AI_MASTERS_THESIS_TOPICS.md](./papers/CPET_LACTATE_AI_MASTERS_THESIS_TOPICS.md): CPET + lactate + AI 기반 석사 논문 주제 후보 4개를 연구문제, 가설, 데이터, 분석방법, 한계 기준으로 정리한 초안
+- [guides/LACTATE_SURROGATE_RESEARCH_BRIEF.html](./guides/LACTATE_SURROGATE_RESEARCH_BRIEF.html): 젖산 surrogate model 주제를 별도 연구 페이지로 분리해 연구 framing과 Gemini Deep Research 프롬프트를 정리한 노트
+- [papers/LACTATE_SURROGATE_RESEARCH_BRIEF.md](./papers/LACTATE_SURROGATE_RESEARCH_BRIEF.md): 위 노트의 원문 마크다운
 - 신규 활성 설계 문서는 가능하면 `docs/specs/`에 추가합니다.
