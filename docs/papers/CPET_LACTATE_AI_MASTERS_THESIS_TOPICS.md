@@ -84,6 +84,12 @@
 2. 이후 수집에서는 `stage별 채혈 지점`을 가능한 한 표준화한다.
 3. 프로토콜 종류와 검사 메타를 같이 보관해 `protocol effect`를 공변량으로 넣을 수 있게 한다.
 
+### 핵심 선행연구
+
+- Faude O, Kindermann W, Meyer T. *Lactate threshold concepts: how valid are they?* https://pubmed.ncbi.nlm.nih.gov/19453206/
+- Bentley DJ et al. *Predictive validity of ventilatory and lactate thresholds for cycling time trial performance.* https://pubmed.ncbi.nlm.nih.gov/16430678/
+- Jamnick NA et al. *The Relationship Between Lactate and Ventilatory Thresholds in Runners.* https://pubmed.ncbi.nlm.nih.gov/30319439/
+
 ### 이 주제가 잘 맞는 경우
 
 - 교수님이 운동생리/스포츠과학 배경일 때
@@ -170,6 +176,13 @@
 2. 가능한 피험자에는 `body composition`을 연결해 score 해석 변수를 보강한다.
 3. 반복 제출 집단에서 `score responsiveness`를 따로 본다.
 
+### 핵심 선행연구
+
+- Rosenkilde M et al. *Limited benefit of Fatmax-test to derive training prescriptions.* https://pubmed.ncbi.nlm.nih.gov/24022578/
+- Maunder E et al. *Exercise Fat Oxidation Is Positively Associated with Body Fatness in Men with Obesity: Defying the Metabolic Flexibility Paradigm.* https://pubmed.ncbi.nlm.nih.gov/34209545/
+- Frandsen J et al. *Chronic Effect of Fatmax Training on Body Weight, Fat Mass, and Cardiorespiratory Fitness in Obese Subjects: A Meta-Analysis.* https://pubmed.ncbi.nlm.nih.gov/33126461/
+- Burke LM et al. *Low carbohydrate high fat ketogenic diets on the exercise crossover point and glucose homeostasis.* https://pubmed.ncbi.nlm.nih.gov/37057184/
+
 ### 이 주제가 잘 맞는 경우
 
 - 당신처럼 실제 리포트/제품 기능으로 이어가고 싶은 경우
@@ -251,6 +264,13 @@
 1. 반복 제출 집단을 별도 cohort로 운영한다.
 2. 검사 간 간격을 가능하면 `8~12주` window로 맞춘다.
 3. 훈련량, 식이, 부상 여부 같은 간단한 추적 설문도 같이 받는다.
+
+### 핵심 선행연구
+
+- Skinner JS et al. *Changes in ventilatory threshold with exercise training in a sedentary population: the HERITAGE Family Study.* https://pubmed.ncbi.nlm.nih.gov/11719894/
+- Helgerud J et al. *Aerobic high-intensity intervals improve VO2max more than moderate training.* https://pubmed.ncbi.nlm.nih.gov/17414804/
+- Santtila M et al. *The ability of a submaximal cycle ergometer test to detect longitudinal changes in VO2max.* https://bmcsportsscimedrehabil.biomedcentral.com/articles/10.1186/s13102-021-00387-w
+- Boidin A et al. *The Time Course of Cardiorespiratory Adaptations to Rowing Indoor Training in Post-Menopausal Women.* https://pubmed.ncbi.nlm.nih.gov/36833933/
 
 ### 이 주제가 잘 맞는 경우
 
@@ -339,6 +359,13 @@
 2. 각 stage의 `VO2/VCO2/VE/HR/power/lactate`를 정렬한 학습 테이블을 만든다.
 3. 초기 목표는 `absolute lactate regression`보다 `threshold zone classification`으로 잡는다.
 
+### 핵심 선행연구
+
+- Díaz V et al. *Estimation of lactate threshold with machine learning techniques in recreational runners.* https://www.sciencedirect.com/science/article/pii/S1568494617306993
+- Ueno T et al. *Prediction for blood lactate during exercise using an artificial intelligence-enabled electrocardiogram: a feasibility study.* https://pubmed.ncbi.nlm.nih.gov/37954448/
+- Pilcher N et al. *Modeling Physiological Predictors of Running Velocity for Endurance Athletes.* https://pubmed.ncbi.nlm.nih.gov/36431165/
+- Nonogaki A et al. *A novel device for detecting anaerobic threshold using sweat lactate during exercise.* https://www.nature.com/articles/s41598-021-84381-9
+
 ### 이 주제가 잘 맞는 경우
 
 - 당신처럼 AI 모델링에 흥미가 클 때
@@ -417,6 +444,12 @@ CPET, substrate, threshold, lactate 지표를 이용해 피험자를 몇 가지 
 1. `subject_feature_sets`에서 해석력 높은 feature만 골라 clustering 테이블을 만든다.
 2. body composition, lactate-derived feature를 붙여 cluster 해석력을 높인다.
 3. 새로 유입되는 피험자를 hold-out처럼 써서 cluster assignment 안정성을 점검한다.
+
+### 핵심 선행연구
+
+- Hao G et al. *Unsupervised cluster analysis reveals distinct subgroups in healthy population with different exercise responses of cardiorespiratory fitness.* https://pmc.ncbi.nlm.nih.gov/articles/PMC9827383/
+- Skinner JS et al. *Changes in ventilatory threshold with exercise training in a sedentary population: the HERITAGE Family Study.* https://pubmed.ncbi.nlm.nih.gov/11719894/
+- Maunder E et al. *Exercise Fat Oxidation Is Positively Associated with Body Fatness in Men with Obesity: Defying the Metabolic Flexibility Paradigm.* https://pubmed.ncbi.nlm.nih.gov/34209545/
 
 ### 이 주제가 잘 맞는 경우
 
