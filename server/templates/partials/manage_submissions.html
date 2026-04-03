@@ -1,4 +1,22 @@
+{% set group = namespace(current='') %}
 {% for sub in submissions %}
+{% set linked_name = sub.linked_user_name or '미연결 검사' %}
+{% if linked_name != group.current %}
+<tr class="border-b border-gray-200 bg-slate-50/90">
+  <td colspan="6" class="px-4 py-3">
+    <div class="flex items-center justify-between gap-3">
+      <div class="flex items-center gap-2">
+        <span class="inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold {% if sub.user_id %}bg-blue-100 text-blue-800{% else %}bg-amber-100 text-amber-800{% endif %}">
+          {% if sub.user_id %}연결 유저{% else %}미연결{% endif %}
+        </span>
+        <span class="text-sm font-semibold text-gray-900">{{ linked_name }}</span>
+      </div>
+      <span class="text-xs text-gray-400">유저별로 묶어서 표시</span>
+    </div>
+  </td>
+</tr>
+{% set group.current = linked_name %}
+{% endif %}
 <tr class="border-b border-gray-100 hover:bg-gray-50">
   <!-- 피험자명 -->
   <td class="px-4 py-3 text-sm text-gray-800 whitespace-nowrap">

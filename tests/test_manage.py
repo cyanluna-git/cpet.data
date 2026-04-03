@@ -331,6 +331,7 @@ class TestManagePage:
         assert 'id="manage-submissions-filters"' in resp.text
         assert 'name="submissions_unlinked_only"' in resp.text
         assert 'name="submissions_sort_by"' in resp.text
+        assert "유저별로 묶어서 표시" in resp.text
         assert "변경" in resp.text
 
     def test_default_tab_is_users(self, client: TestClient) -> None:
@@ -592,6 +593,25 @@ class TestManageSubjectsAPI:
         alpha_idx = resp.text.index("Alpha Subject")
         charlie_idx = resp.text.index("Charlie Subject")
         assert alpha_idx < charlie_idx
+
+    def test_submissions_partial_groups_rows_by_linked_user(self, client: TestClient) -> None:
+        """Submissions partial inserts group headers per linked user and unlinked bucket."""
+        _login_as(client, role="admin", google_id="submission-group-gid", email="submission-group@test.com")
+        db_path = app.state.db_path
+        user_a = upsert_user(db_path, google_id="group-a", email="group-a@test.com", display_name="Alpha User")
+        user_b = upsert_user(db_path, google_id="group-b", email="group-b@test.com", display_name="Beta User")
+        _create_test_submission(db_path, subject_name="First Subject", test_date="2026-03-01", user_id=user_a["id"])
+        _create_test_submission(db_path, subject_name="Second Subject", test_date="2026-03-02", user_id=user_a["id"])
+        _create_test_submission(db_path, subject_name="Third Subject", test_date="2026-03-03", user_id=user_b["id"])
+        _create_test_submission(db_path, subject_name="Unlinked Subject", test_date="2026-03-04", user_id=None)
+
+        resp = client.get("/api/manage/submissions")
+
+        assert resp.status_code == 200
+        assert "Alpha User" in resp.text
+        assert "Beta User" in resp.text
+        assert "미연결 검사" in resp.text
+        assert "유저별로 묶어서 표시" in resp.text
 
     def test_researcher_can_toggle_user_researcher(self, client: TestClient) -> None:
         """Researcher can change between user and researcher roles."""
