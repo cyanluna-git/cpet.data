@@ -186,8 +186,8 @@ def _sort_jobs_for_subject_groups(entries: list[dict]) -> list[dict]:
     )
     items.sort(
         key=lambda item: (
-            1 if not str(item.get("subject_name") or "").strip() else 0,
-            str(item.get("subject_name") or "").strip().lower(),
+            1 if not str(item.get("group_name") or "").strip() else 0,
+            str(item.get("group_name") or "").strip().lower(),
         )
     )
     return items
@@ -627,6 +627,20 @@ def _list_dashboard_entries(
     # Mark ownership via submission.user_id, subject_id, and report_user_links
     from server.db import get_report_user_links
     report_links = get_report_user_links(db_path)
+    user_name_cache: dict[str, str] = {}
+
+    def resolve_user_display_name(user_id_value: str | None) -> str:
+        user_id_str = str(user_id_value or "").strip()
+        if not user_id_str:
+            return ""
+        if user_id_str not in user_name_cache:
+            user = get_user(db_path, user_id_str)
+            user_name_cache[user_id_str] = str(
+                (user or {}).get("display_name")
+                or (user or {}).get("email")
+                or ""
+            ).strip()
+        return user_name_cache[user_id_str]
 
     # Get current session user_id and their subject_id for is_mine calculation
     session_user_id = None
@@ -661,9 +675,14 @@ def _list_dashboard_entries(
     report_notes = get_report_notes(db_path)
     for row in enriched:
         slug = row.get("report_slug", "")
+        linked_user_name = resolve_user_display_name(row.get("submission_user_id"))
+        if not linked_user_name and slug:
+            linked_user_name = resolve_user_display_name(report_links.get(slug))
+        row["linked_user_name"] = linked_user_name
         if slug and slug in name_overrides:
             row["subject_name"] = name_overrides[slug]
         row["note"] = report_notes.get(slug, "") if slug else ""
+        row["group_name"] = linked_user_name or str(row.get("subject_name") or "").strip() or "미연결 리포트"
 
     enriched.sort(
         key=lambda row: str(row.get("test_date") or row.get("created_at") or ""),

@@ -1,11 +1,11 @@
 {% set group = namespace(current='') %}
 {% for job in jobs %}
-{% set subject_group = job.subject_name or '미분류 리포트' %}
+{% set subject_group = job.group_name or job.subject_name or '미연결 리포트' %}
 {% if grouped_by_subject and subject_group != group.current %}
 <div class="border-b border-gray-200 bg-slate-50/90 px-4 py-2">
   <div class="flex items-center justify-between gap-3">
     <span class="text-sm font-semibold text-gray-900">{{ subject_group }}</span>
-    <span class="hidden text-xs text-gray-400 md:inline">피험자 기준으로 묶어서 표시</span>
+    <span class="hidden text-xs text-gray-400 md:inline">연결 유저 기준으로 묶어서 표시</span>
   </div>
 </div>
 {% set group.current = subject_group %}

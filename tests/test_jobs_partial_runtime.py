@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from server.db import create_job, create_submission, init_db, upsert_report_catalog_entry
+from server.db import create_job, create_submission, init_db, upsert_report_catalog_entry, upsert_user
 from server.main import app
 
 
@@ -81,14 +81,17 @@ def test_jobs_partial_renders_catalog_rows_without_jobs(tmp_path: Path) -> None:
 
 def test_jobs_partial_groups_rows_by_subject_name() -> None:
     db_path = app.state.db_path
+    user_beta = upsert_user(db_path, "group-beta-gid", "beta@test.com", "Beta User")
+    user_alpha = upsert_user(db_path, "group-alpha-gid", "alpha@test.com", "Alpha User")
     create_submission(
         db_path,
         description="group beta",
         file_manifest=[],
         workspace_path="/tmp/group-beta",
-        subject_name="Beta",
+        subject_name="Third Subject",
         test_date="2026-04-01",
         submission_id="sub-group-beta",
+        user_id=user_beta["id"],
     )
     create_job(db_path, "sub-group-beta")
 
@@ -97,9 +100,10 @@ def test_jobs_partial_groups_rows_by_subject_name() -> None:
         description="group alpha 1",
         file_manifest=[],
         workspace_path="/tmp/group-alpha-1",
-        subject_name="Alpha",
+        subject_name="First Subject",
         test_date="2026-04-03",
         submission_id="sub-group-alpha-1",
+        user_id=user_alpha["id"],
     )
     create_job(db_path, "sub-group-alpha-1")
 
@@ -108,9 +112,10 @@ def test_jobs_partial_groups_rows_by_subject_name() -> None:
         description="group alpha 2",
         file_manifest=[],
         workspace_path="/tmp/group-alpha-2",
-        subject_name="Alpha",
+        subject_name="Second Subject",
         test_date="2026-04-02",
         submission_id="sub-group-alpha-2",
+        user_id=user_alpha["id"],
     )
     create_job(db_path, "sub-group-alpha-2")
 
@@ -118,9 +123,11 @@ def test_jobs_partial_groups_rows_by_subject_name() -> None:
     resp = client.get("/api/jobs/partial?group_by=subject")
 
     assert resp.status_code == 200
-    assert resp.text.count("피험자 그룹") >= 2
-    first_alpha = resp.text.index("Alpha")
-    second_alpha = resp.text.index("Alpha", first_alpha + 1)
-    beta = resp.text.index("Beta")
-    assert first_alpha < second_alpha
-    assert beta > second_alpha
+    assert "Alpha User" in resp.text
+    assert "Beta User" in resp.text
+    alpha_group = resp.text.index("Alpha User")
+    alpha_first = resp.text.index("First Subject", alpha_group)
+    alpha_second = resp.text.index("Second Subject", alpha_first + 1)
+    beta_group = resp.text.index("Beta User")
+    assert alpha_group < alpha_first < alpha_second
+    assert beta_group > alpha_second or beta_group < alpha_group
