@@ -477,6 +477,7 @@ class TestManageSubjectsAPI:
                 "submission_id": submission_id,
                 "report_slug": "before-subject-20260115",
                 "subject_name": "After Subject",
+                "test_date": "2026-01-20",
                 "note": "2블럭 램프, 존2 후반",
             },
         )
@@ -486,6 +487,7 @@ class TestManageSubjectsAPI:
         submission = get_submission(db_path, submission_id)
         assert submission is not None
         assert submission["subject_name"] == "After Subject"
+        assert submission["test_date"] == "2026-01-20"
         assert get_report_name_overrides(db_path)["before-subject-20260115"] == "After Subject"
         assert get_report_notes(db_path)["before-subject-20260115"] == "2블럭 램프, 존2 후반"
 
@@ -502,6 +504,7 @@ class TestManageSubjectsAPI:
                 "submission_id": submission_id,
                 "report_slug": "before-subject-20260115",
                 "subject_name": "After Subject",
+                "test_date": "2026-01-20",
                 "note": "이 메모는 저장되면 안됨",
             },
         )
@@ -529,6 +532,7 @@ class TestManageSubjectsAPI:
                 "submission_id": submission_id,
                 "report_slug": "before-subject-20260115",
                 "subject_name": "After Subject",
+                "test_date": "2026-01-20",
                 "note": "이 메모는 저장되면 안됨",
             },
         )
@@ -550,6 +554,23 @@ class TestManageSubjectsAPI:
         assert submission is not None
         assert submission["subject_name"] == "Before Subject"
         assert get_report_notes(db_path)["before-subject-20260115"] == "식별 메모"
+
+    def test_admin_report_metadata_rejects_invalid_test_date(self, client: TestClient) -> None:
+        """Admin test date edit requires YYYY-MM-DD."""
+        _login_as(client, role="admin", google_id="report-meta-date-admin-gid", email="report-meta-date-admin@test.com")
+        db_path = app.state.db_path
+        submission_id = _create_test_submission(db_path, subject_name="Before Subject")
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": "before-subject-20260115",
+                "test_date": "2026/01/20",
+            },
+        )
+
+        assert resp.status_code == 400
 
     def test_jobs_partial_renders_edit_button_and_note_badge(self, client: TestClient) -> None:
         """Reports list shows one edit button and note badge instead of inline note editor."""

@@ -204,6 +204,14 @@
         placeholder="피험자 이름"
       />
     </div>
+    <div id="report-meta-date-wrap" class="mt-4">
+      <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">검사일</label>
+      <input
+        id="report-meta-test-date"
+        type="date"
+        class="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+      />
+    </div>
     <div class="mt-4">
       <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">테스트 메모</label>
       <textarea
@@ -241,6 +249,7 @@ function openReportMetaModalFromButton(button) {
     submissionId: button.dataset.submissionId || '',
     reportSlug: button.dataset.reportSlug || '',
     subjectName: button.dataset.subjectName || '',
+    testDate: button.dataset.testDate || '',
     note: button.dataset.note || '',
     canRename: button.dataset.canRename === '1'
   });
@@ -251,13 +260,18 @@ function openReportMetaModal(payload) {
   document.getElementById('report-meta-submission-id').value = payload.submissionId || '';
   document.getElementById('report-meta-report-slug').value = payload.reportSlug || '';
   document.getElementById('report-meta-subject-name').value = payload.subjectName || '';
+  document.getElementById('report-meta-test-date').value = payload.testDate || '';
   document.getElementById('report-meta-note').value = payload.note || '';
   document.getElementById('report-meta-can-rename').value = canRename ? '1' : '0';
   setReportMetaStatus('', '');
   var nameWrap = document.getElementById('report-meta-name-wrap');
   var nameInput = document.getElementById('report-meta-subject-name');
+  var dateWrap = document.getElementById('report-meta-date-wrap');
+  var dateInput = document.getElementById('report-meta-test-date');
   nameWrap.style.display = canRename ? '' : 'none';
   nameInput.disabled = !canRename;
+  dateWrap.style.display = canRename ? '' : 'none';
+  dateInput.disabled = !canRename;
   const modal = document.getElementById('report-meta-modal');
   modal.classList.remove('hidden');
   modal.classList.add('flex');
@@ -295,6 +309,7 @@ async function submitReportMeta() {
   const slug = document.getElementById('report-meta-report-slug').value;
   const canRename = document.getElementById('report-meta-can-rename').value === '1';
   const name = document.getElementById('report-meta-subject-name').value.trim();
+  const testDate = document.getElementById('report-meta-test-date').value.trim();
   const note = document.getElementById('report-meta-note').value.trim();
   const saveBtn = document.getElementById('report-meta-save-btn');
   if (!slug && !subId) return;
@@ -304,6 +319,7 @@ async function submitReportMeta() {
   }
   const body = new URLSearchParams({
     subject_name: name,
+    test_date: testDate,
     note: note,
     submission_id: subId,
     report_slug: slug

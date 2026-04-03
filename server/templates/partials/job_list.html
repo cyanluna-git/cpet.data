@@ -90,6 +90,7 @@
           data-submission-id="{{ job.submission_id or '' }}"
           data-report-slug="{{ job.report_slug or '' }}"
           data-subject-name="{{ job.subject_name or '' }}"
+          data-test-date="{{ job.test_date or '' }}"
           data-note="{{ job.note or '' }}"
           data-can-rename="{{ '1' if current_user_role == 'admin' else '0' }}"
           onclick="openReportMetaModalFromButton(this)"

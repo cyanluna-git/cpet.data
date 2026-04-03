@@ -63,6 +63,8 @@ from server.db import (
     summarize_subject_feature_sets,
     update_subject,
     update_submission_subject_name,
+    update_submission_test_date,
+    update_report_catalog_test_date,
     list_submissions_with_users,
     list_users,
     unlink_report_from_user,
@@ -1854,6 +1856,7 @@ async def manage_update_report_metadata(request: Request) -> HTMLResponse:
 
     form = await request.form()
     new_name = str(form.get("subject_name", "")).strip()
+    test_date = str(form.get("test_date", "")).strip()
     note = str(form.get("note", "")).strip()
     submission_id = str(form.get("submission_id", "")).strip()
     report_slug = str(form.get("report_slug", "")).strip()
@@ -1865,6 +1868,9 @@ async def manage_update_report_metadata(request: Request) -> HTMLResponse:
     if not _can_edit_report_metadata(db_path, session_user, submission_id, report_slug):
         return JSONResponse(status_code=403, content={"error": "not allowed"})
 
+    if test_date and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", test_date):
+        return JSONResponse(status_code=400, content={"error": "test_date must be YYYY-MM-DD"})
+
     if new_name:
         if session_user.get("role") != "admin":
             return JSONResponse(status_code=403, content={"error": "admin only for subject rename"})
@@ -1873,6 +1879,14 @@ async def manage_update_report_metadata(request: Request) -> HTMLResponse:
         if report_slug:
             set_report_name_override(db_path, report_slug, new_name)
 
+    if test_date:
+        if session_user.get("role") != "admin":
+            return JSONResponse(status_code=403, content={"error": "admin only for test date edit"})
+        if submission_id:
+            update_submission_test_date(db_path, submission_id, test_date)
+        if report_slug:
+            update_report_catalog_test_date(db_path, report_slug, test_date)
+
     if report_slug:
         set_report_note(db_path, report_slug, note)
 
@@ -1880,6 +1894,7 @@ async def manage_update_report_metadata(request: Request) -> HTMLResponse:
         content={
             "ok": True,
             "subject_name": new_name,
+            "test_date": test_date,
             "note": note,
             "report_slug": report_slug,
             "submission_id": submission_id,

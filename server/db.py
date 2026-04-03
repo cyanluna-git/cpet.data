@@ -1071,6 +1071,40 @@ def update_submission_subject_name(
     return result
 
 
+def update_submission_test_date(
+    db_path: Path, submission_id: str, test_date: str,
+) -> dict | None:
+    """Update a submission's test_date. Returns updated submission, or None."""
+    conn = _connect(db_path)
+    conn.execute(
+        "UPDATE submissions SET test_date = ? WHERE id = ?",
+        (test_date.strip(), submission_id),
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT * FROM submissions WHERE id = ?", (submission_id,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    result = dict(row)
+    result["file_manifest"] = json.loads(result["file_manifest"])
+    return result
+
+
+def update_report_catalog_test_date(
+    db_path: Path, report_slug: str, test_date: str,
+) -> None:
+    """Update a published report catalog row's test_date if it exists."""
+    conn = _connect(db_path)
+    conn.execute(
+        "UPDATE report_catalog SET test_date = ?, updated_at = datetime('now') WHERE report_slug = ?",
+        (test_date.strip(), report_slug),
+    )
+    conn.commit()
+    conn.close()
+
+
 def link_submission_user(
     db_path: Path, submission_id: str, user_id: str,
 ) -> dict | None:
