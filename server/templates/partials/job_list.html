@@ -20,9 +20,11 @@
   <div class="flex items-center justify-between gap-3">
     <div class="flex items-center gap-3 min-w-0">
       <!-- 피험자명 -->
+      {% if not grouped_by_subject %}
       <div class="font-medium text-sm text-gray-900 truncate">
         {{ job.subject_name or "—" }}
       </div>
+      {% endif %}
 
       <!-- 날짜 -->
       <span class="text-xs text-gray-400 whitespace-nowrap">{{ job.test_date or "" }}</span>

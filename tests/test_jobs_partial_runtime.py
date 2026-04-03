@@ -3,7 +3,15 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from server.db import create_job, create_submission, init_db, upsert_report_catalog_entry, upsert_user
+from server.db import (
+    create_job,
+    create_subject,
+    create_submission,
+    init_db,
+    link_user_to_subject,
+    upsert_report_catalog_entry,
+    upsert_user,
+)
 from server.main import app
 
 
@@ -83,6 +91,10 @@ def test_jobs_partial_groups_rows_by_subject_name() -> None:
     db_path = app.state.db_path
     user_beta = upsert_user(db_path, "group-beta-gid", "beta@test.com", "Beta User")
     user_alpha = upsert_user(db_path, "group-alpha-gid", "alpha@test.com", "Alpha User")
+    beta_subject = create_subject(db_path, "김금현")
+    alpha_subject = create_subject(db_path, "이정인")
+    link_user_to_subject(db_path, user_beta["id"], beta_subject["id"])
+    link_user_to_subject(db_path, user_alpha["id"], alpha_subject["id"])
     create_submission(
         db_path,
         description="group beta",
@@ -123,11 +135,13 @@ def test_jobs_partial_groups_rows_by_subject_name() -> None:
     resp = client.get("/api/jobs/partial?group_by=subject")
 
     assert resp.status_code == 200
-    assert "Alpha User" in resp.text
-    assert "Beta User" in resp.text
-    alpha_group = resp.text.index("Alpha User")
-    alpha_first = resp.text.index("First Subject", alpha_group)
-    alpha_second = resp.text.index("Second Subject", alpha_first + 1)
-    beta_group = resp.text.index("Beta User")
+    assert "이정인" in resp.text
+    assert "김금현" in resp.text
+    assert "First Subject" not in resp.text
+    assert "Second Subject" not in resp.text
+    alpha_group = resp.text.index("이정인")
+    alpha_first = resp.text.index("2026-04-03", alpha_group)
+    alpha_second = resp.text.index("2026-04-02", alpha_first + 1)
+    beta_group = resp.text.index("김금현")
     assert alpha_group < alpha_first < alpha_second
     assert beta_group > alpha_second or beta_group < alpha_group

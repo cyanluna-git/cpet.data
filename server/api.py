@@ -635,8 +635,14 @@ def _list_dashboard_entries(
             return ""
         if user_id_str not in user_name_cache:
             user = get_user(db_path, user_id_str)
+            subject_name = ""
+            subject_id = str((user or {}).get("subject_id") or "").strip()
+            if subject_id:
+                subject = get_subject(db_path, subject_id)
+                subject_name = str((subject or {}).get("name") or "").strip()
             user_name_cache[user_id_str] = str(
-                (user or {}).get("display_name")
+                subject_name
+                or (user or {}).get("display_name")
                 or (user or {}).get("email")
                 or ""
             ).strip()
