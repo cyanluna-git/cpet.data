@@ -2,10 +2,10 @@
 {% for job in jobs %}
 {% set subject_group = job.group_name or job.subject_name or '미연결 리포트' %}
 {% if grouped_by_subject and subject_group != group.current %}
-<div class="border-b border-gray-200 bg-slate-50/90 px-4 py-2">
-  <div class="flex items-center justify-between gap-3">
-    <span class="text-sm font-semibold text-gray-900">{{ subject_group }}</span>
-    <span class="hidden text-xs text-gray-400 md:inline">연결 유저 기준으로 묶어서 표시</span>
+<div class="border-b border-slate-200 bg-gradient-to-r from-slate-100 via-slate-50 to-white px-4 py-3 shadow-[inset_0_-1px_0_rgba(226,232,240,0.9)]">
+  <div class="flex items-center gap-3">
+    <span class="inline-flex h-6 w-1.5 flex-shrink-0 rounded-full bg-slate-900/80"></span>
+    <span class="text-sm font-semibold tracking-[0.01em] text-slate-900">{{ subject_group }}</span>
   </div>
 </div>
 {% set group.current = subject_group %}
