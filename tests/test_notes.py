@@ -81,7 +81,9 @@ def test_note_viewer_and_raw_content_render_for_admin(tmp_path) -> None:
     page = client.get("/notes/three-path-energy-system-detail")
     assert page.status_code == 200
     assert "/notes/three-path-energy-system-detail/content" in page.text
+    assert 'sandbox="allow-scripts allow-popups"' in page.text
 
     content = client.get("/notes/three-path-energy-system-detail/content")
     assert content.status_code == 200
     assert "<title>3-Path Energy System Detailed Guide</title>" in content.text
+    assert "sandbox allow-scripts allow-popups" in content.headers["content-security-policy"]

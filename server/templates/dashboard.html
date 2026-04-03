@@ -111,6 +111,27 @@
         data-filter="mine"
       >My Reports</button>
     </div>
+    <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div class="w-full sm:max-w-sm">
+        <label for="report-search-input" class="sr-only">리포트 검색</label>
+        <input
+          id="report-search-input"
+          type="search"
+          placeholder="피험자명, 날짜, slug, 메모 검색"
+          class="w-full rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 shadow-sm outline-none transition focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
+          oninput="applyReportListFilters()"
+        />
+      </div>
+      <label class="inline-flex items-center gap-2 text-sm text-gray-600">
+        <input
+          id="report-note-only"
+          type="checkbox"
+          class="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400"
+          onchange="applyReportListFilters()"
+        />
+        메모 있는 리포트만
+      </label>
+    </div>
     <script>
       function activateTab(el) {
         document.querySelectorAll('#filter-tabs .filter-tab').forEach(function(btn) {
@@ -122,6 +143,25 @@
         tbody.setAttribute('hx-get', url);
         htmx.process(tbody);
       }
+
+      function applyReportListFilters() {
+        var query = (document.getElementById('report-search-input')?.value || '').trim().toLowerCase();
+        var noteOnly = !!document.getElementById('report-note-only')?.checked;
+        var rows = document.querySelectorAll('#job-list-body .job-row');
+        rows.forEach(function(row) {
+          if (row.classList.contains('empty')) return;
+          var search = (row.dataset.search || '').toLowerCase();
+          var hasNote = row.dataset.hasNote === '1';
+          var visible = (!query || search.indexOf(query) !== -1) && (!noteOnly || hasNote);
+          row.style.display = visible ? '' : 'none';
+        });
+      }
+
+      document.addEventListener('htmx:afterSwap', function(evt) {
+        if (evt.target && evt.target.id === 'job-list-body') {
+          applyReportListFilters();
+        }
+      });
     </script>
   {% endif %}
 
@@ -180,12 +220,14 @@
     />
     <input id="report-meta-submission-id" type="hidden" />
     <input id="report-meta-report-slug" type="hidden" />
+    <div id="report-meta-status" class="mt-4 hidden rounded-lg border px-3 py-2 text-sm"></div>
     <div class="flex justify-end gap-3 mt-4">
       <button
         onclick="closeReportMetaModal()"
         class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
       >취소</button>
       <button
+        id="report-meta-save-btn"
         onclick="submitReportMeta()"
         class="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800"
       >저장</button>
@@ -211,6 +253,7 @@ function openReportMetaModal(payload) {
   document.getElementById('report-meta-subject-name').value = payload.subjectName || '';
   document.getElementById('report-meta-note').value = payload.note || '';
   document.getElementById('report-meta-can-rename').value = canRename ? '1' : '0';
+  setReportMetaStatus('', '');
   var nameWrap = document.getElementById('report-meta-name-wrap');
   var nameInput = document.getElementById('report-meta-subject-name');
   nameWrap.style.display = canRename ? '' : 'none';
@@ -227,30 +270,77 @@ function closeReportMetaModal() {
   modal.classList.remove('flex');
 }
 
-function submitReportMeta() {
+function setReportMetaStatus(kind, message) {
+  var box = document.getElementById('report-meta-status');
+  if (!box) return;
+  if (!message) {
+    box.className = 'mt-4 hidden rounded-lg border px-3 py-2 text-sm';
+    box.textContent = '';
+    return;
+  }
+  var cls = 'mt-4 rounded-lg border px-3 py-2 text-sm ';
+  if (kind === 'error') {
+    cls += 'border-red-200 bg-red-50 text-red-700';
+  } else if (kind === 'success') {
+    cls += 'border-green-200 bg-green-50 text-green-700';
+  } else {
+    cls += 'border-gray-200 bg-gray-50 text-gray-600';
+  }
+  box.className = cls;
+  box.textContent = message;
+}
+
+async function submitReportMeta() {
   const subId = document.getElementById('report-meta-submission-id').value;
   const slug = document.getElementById('report-meta-report-slug').value;
   const canRename = document.getElementById('report-meta-can-rename').value === '1';
   const name = document.getElementById('report-meta-subject-name').value.trim();
   const note = document.getElementById('report-meta-note').value.trim();
+  const saveBtn = document.getElementById('report-meta-save-btn');
   if (!slug && !subId) return;
-  if (canRename && !name) return;
+  if (canRename && !name) {
+    setReportMetaStatus('error', '피험자 이름을 입력하세요.');
+    return;
+  }
   const body = new URLSearchParams({
     subject_name: name,
     note: note,
     submission_id: subId,
     report_slug: slug
   });
-  fetch('/api/manage/report-metadata', {
-    method: 'PATCH',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-    body: body.toString()
-  }).then(r => {
-    if (r.ok) {
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = '저장 중...';
+  }
+  setReportMetaStatus('info', '저장 중입니다...');
+  try {
+    const resp = await fetch('/api/manage/report-metadata', {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body.toString()
+    });
+    if (!resp.ok) {
+      let message = '저장하지 못했습니다.';
+      try {
+        const payload = await resp.json();
+        if (payload && payload.error) message = payload.error;
+      } catch (_err) {}
+      setReportMetaStatus('error', message);
+      return;
+    }
+    setReportMetaStatus('success', '저장되었습니다.');
+    setTimeout(function() {
       closeReportMetaModal();
       htmx.trigger(document.getElementById('job-list-body'), 'load');
+    }, 250);
+  } catch (_err) {
+    setReportMetaStatus('error', '네트워크 오류로 저장하지 못했습니다.');
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = '저장';
     }
-  });
+  }
 }
 
 document.addEventListener('keydown', function(e) {

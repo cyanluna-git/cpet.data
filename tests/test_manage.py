@@ -488,11 +488,39 @@ class TestManageSubjectsAPI:
         assert get_report_name_overrides(db_path)["before-subject-20260115"] == "After Subject"
         assert get_report_notes(db_path)["before-subject-20260115"] == "2블럭 램프, 존2 후반"
 
-    def test_non_admin_can_update_note_but_not_subject_name(self, client: TestClient) -> None:
-        """Non-admin users can save note text but cannot rename subject labels."""
+    def test_non_admin_cannot_update_other_users_report_metadata(self, client: TestClient) -> None:
+        """Non-admin users cannot edit report metadata for unrelated reports."""
         _login_as(client, role="user", google_id="report-meta-user-gid", email="report-meta-user@test.com")
         db_path = app.state.db_path
-        submission_id = _create_test_submission(db_path, subject_name="Before Subject")
+        owner = upsert_user(db_path, google_id="report-meta-owner-gid", email="report-meta-owner@test.com", display_name="Owner User")
+        submission_id = _create_test_submission(db_path, subject_name="Before Subject", user_id=owner["id"])
+
+        forbidden = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": "before-subject-20260115",
+                "subject_name": "After Subject",
+                "note": "이 메모는 저장되면 안됨",
+            },
+        )
+
+        assert forbidden.status_code == 403
+
+        note_resp = client.patch(
+            "/api/report-note",
+            data={
+                "report_slug": "before-subject-20260115",
+                "note": "남의 리포트 메모",
+            },
+        )
+        assert note_resp.status_code == 403
+
+    def test_non_admin_owner_can_update_note_but_not_subject_name(self, client: TestClient) -> None:
+        """Owner can save note text but cannot rename subject labels."""
+        owner = _login_as(client, role="user", google_id="report-meta-owner2-gid", email="report-meta-owner2@test.com")
+        db_path = app.state.db_path
+        submission_id = _create_test_submission(db_path, subject_name="Before Subject", user_id=owner["id"])
 
         forbidden = client.patch(
             "/api/manage/report-metadata",

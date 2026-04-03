@@ -174,6 +174,9 @@ _NOTE_SUMMARIES = {
         "category": "Research Planning",
     },
 }
+_notes_catalog_cache_key: tuple[tuple[str, float], ...] | None = None
+_notes_catalog_cache: list[dict] = []
+_notes_file_cache: dict[str, dict] = {}
 
 
 # ── Template context: inject current user into every response ────────
@@ -232,22 +235,46 @@ def _extract_note_title(html_text: str, fallback: str) -> str:
 
 def _build_notes_catalog() -> list[dict]:
     """List protected note documents from docs/guides."""
+    global _notes_catalog_cache_key, _notes_catalog_cache, _notes_file_cache
+
     notes: list[dict] = []
     if not _notes_dir.exists():
         return notes
 
-    for path in sorted(_notes_dir.glob("*.html"), key=lambda item: item.stat().st_mtime, reverse=True):
+    paths = sorted(_notes_dir.glob("*.html"), key=lambda item: item.stat().st_mtime, reverse=True)
+    cache_key = tuple((path.name, path.stat().st_mtime) for path in paths)
+    if cache_key == _notes_catalog_cache_key:
+        return [dict(note) for note in _notes_catalog_cache]
+
+    valid_names = {path.name for path in paths}
+    _notes_file_cache = {
+        filename: meta for filename, meta in _notes_file_cache.items() if filename in valid_names
+    }
+
+    for path in paths:
         slug = path.stem.lower().replace("_", "-")
         meta = _NOTE_SUMMARIES.get(slug, {})
-        html_text = path.read_text(encoding="utf-8")
+        cached = _notes_file_cache.get(path.name)
+        if cached and cached.get("mtime") == path.stat().st_mtime:
+            title = str(cached.get("title") or path.stem.replace("_", " "))
+        else:
+            html_text = path.read_text(encoding="utf-8")
+            title = _extract_note_title(html_text, path.stem.replace("_", " "))
+            _notes_file_cache[path.name] = {
+                "mtime": path.stat().st_mtime,
+                "title": title,
+            }
         notes.append({
             "slug": slug,
-            "title": _extract_note_title(html_text, path.stem.replace("_", " ")),
+            "title": title,
             "summary": meta.get("summary", "연구용 내부 문서입니다."),
             "category": meta.get("category", "Research Note"),
             "filename": path.name,
             "updated_at": datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d"),
         })
+
+    _notes_catalog_cache_key = cache_key
+    _notes_catalog_cache = [dict(note) for note in notes]
     return notes
 
 
@@ -257,6 +284,55 @@ def _get_note_entry(note_slug: str) -> dict | None:
         if note["slug"] == note_slug:
             return {**note, "path": _notes_dir / note["filename"]}
     return None
+
+
+def _build_note_content_security_policy() -> str:
+    """Return a restrictive CSP for researcher note documents."""
+    return "; ".join([
+        "sandbox allow-scripts allow-popups",
+        "default-src 'none'",
+        "base-uri 'none'",
+        "form-action 'none'",
+        "frame-ancestors 'self'",
+        "img-src 'self' data: https:",
+        "font-src https://fonts.gstatic.com data:",
+        "style-src 'unsafe-inline' https://fonts.googleapis.com",
+        "script-src 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://unpkg.com",
+        "connect-src https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://unpkg.com",
+    ])
+
+
+def _can_edit_report_metadata(
+    db_path: Path,
+    session_user: dict,
+    submission_id: str,
+    report_slug: str,
+) -> bool:
+    """Return whether the current user may edit the given report metadata."""
+    if session_user.get("role") == "admin":
+        return True
+
+    user_id = str(session_user.get("id") or "")
+    if not user_id:
+        return False
+
+    actor = get_user(db_path, user_id) or {}
+    actor_subject_id = str(actor.get("subject_id") or "")
+
+    if submission_id:
+        submission = get_submission(db_path, submission_id)
+        if submission is not None:
+            if str(submission.get("user_id") or "") == user_id:
+                return True
+            if actor_subject_id and str(submission.get("subject_id") or "") == actor_subject_id:
+                return True
+
+    if report_slug:
+        report_links = get_report_user_links(db_path)
+        if str(report_links.get(report_slug) or "") == user_id:
+            return True
+
+    return False
 
 
 # ── Page routes ──────────────────────────────────────────────────────
@@ -378,7 +454,14 @@ async def note_content_page(request: Request, note_slug: str) -> HTMLResponse:
     note = _get_note_entry(note_slug)
     if note is None:
         raise HTTPException(status_code=404, detail="note not found")
-    return HTMLResponse(note["path"].read_text(encoding="utf-8"))
+    return HTMLResponse(
+        note["path"].read_text(encoding="utf-8"),
+        headers={
+            "Content-Security-Policy": _build_note_content_security_policy(),
+            "Referrer-Policy": "no-referrer",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 def _render_dashboard_analytics(
@@ -1769,6 +1852,8 @@ async def manage_update_report_metadata(request: Request) -> HTMLResponse:
         return JSONResponse(status_code=400, content={"error": "submission_id or report_slug is required"})
 
     db_path = request.app.state.db_path
+    if not _can_edit_report_metadata(db_path, session_user, submission_id, report_slug):
+        return JSONResponse(status_code=403, content={"error": "not allowed"})
 
     if new_name:
         if session_user.get("role") != "admin":
@@ -1807,6 +1892,9 @@ async def update_report_note(request: Request) -> HTMLResponse:
         return HTMLResponse("", status_code=400)
 
     db_path = request.app.state.db_path
+    session_user = _get_session_user(request)
+    if session_user is None or not _can_edit_report_metadata(db_path, session_user, "", report_slug):
+        return HTMLResponse("", status_code=403)
     set_report_note(db_path, report_slug, note)
     return HTMLResponse(note or '<span class="text-gray-300 text-[11px] cursor-pointer">+ 메모</span>')
 

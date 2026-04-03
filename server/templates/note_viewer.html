@@ -31,8 +31,10 @@
     <iframe
       title="{{ note.title }}"
       src="/notes/{{ note.slug }}/content"
-      class="h-[calc(100vh-220px)] min-h-[920px] w-full border-0"
+      class="h-[calc(100vh-220px)] min-h-[720px] w-full border-0"
       loading="eager"
+      sandbox="allow-scripts allow-popups"
+      referrerpolicy="no-referrer"
     ></iframe>
   </div>
 </section>

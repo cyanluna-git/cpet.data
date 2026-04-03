@@ -1,5 +1,10 @@
 {% for job in jobs %}
-<div class="job-row border-b border-gray-100 hover:bg-gray-50 px-4 py-3 {% if job.status == 'processing' %}bg-slate-50/80{% endif %}" data-status="{{ job.status }}">
+<div
+  class="job-row border-b border-gray-100 hover:bg-gray-50 px-4 py-3 {% if job.status == 'processing' %}bg-slate-50/80{% endif %}"
+  data-status="{{ job.status }}"
+  data-has-note="{{ '1' if job.note else '0' }}"
+  data-search="{{ (job.subject_name or '')|lower }} {{ (job.test_date or '')|lower }} {{ (job.report_slug or '')|lower }} {{ (job.note or '')|lower }} {{ ((job.file_tags or [])|join(' '))|lower }}"
+>
   <!-- Row 1: Name + Date + Status + Actions -->
   <div class="flex items-center justify-between gap-3">
     <div class="flex items-center gap-3 min-w-0">
