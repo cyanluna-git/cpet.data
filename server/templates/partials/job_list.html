@@ -24,6 +24,14 @@
       <div class="font-medium text-sm text-gray-900 truncate">
         {{ job.subject_name or "—" }}
       </div>
+      {% elif job.report_slug %}
+      <div class="font-medium text-sm text-gray-700 truncate max-w-[220px]" title="{{ job.report_slug }}">
+        {{ job.report_slug }}
+      </div>
+      {% elif job.analysis_method %}
+      <div class="font-medium text-sm text-gray-700 truncate">
+        {{ job.analysis_method }}
+      </div>
       {% endif %}
 
       <!-- 날짜 -->
