@@ -325,6 +325,26 @@
   </form>
 </div>
 
+<div id="duplicate-preflight-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50" onclick="if(event.target===this)closeDuplicatePreflightModal()">
+  <div class="mx-4 w-full max-w-2xl rounded-xl bg-white p-6 shadow-2xl" onclick="event.stopPropagation()">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <h3 class="text-lg font-semibold text-gray-900">중복 가능성 있는 검사입니다</h3>
+        <p class="mt-1 text-sm text-gray-500">같은 사람과 같은 날짜 또는 동일 파일 조합으로 보이는 기존 제출이 있습니다.</p>
+      </div>
+      <span id="duplicate-preflight-pill" class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold bg-amber-100 text-amber-800">LIKELY</span>
+    </div>
+    <div class="mt-4 rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      기존 리포트를 먼저 확인한 뒤, 그래도 필요하면 새 제출을 계속 진행하세요.
+    </div>
+    <div id="duplicate-preflight-list" class="mt-4 max-h-[320px] space-y-3 overflow-y-auto"></div>
+    <div class="mt-5 flex justify-end gap-3">
+      <button type="button" onclick="closeDuplicatePreflightModal()" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">취소</button>
+      <button type="button" id="duplicate-preflight-continue" class="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">그래도 등록</button>
+    </div>
+  </div>
+</div>
+
 {% if is_researcher %}
 <!-- 새 피험자 등록 모달 -->
 <div id="new-subject-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50" onclick="if(event.target===this)closeNewSubjectModal()">
@@ -437,6 +457,9 @@ document.addEventListener('keydown', function(e) {
   const dropzone = document.getElementById("dropzone");
   const fileInput = document.getElementById("file-input");
   const fileList = document.getElementById("file-list");
+  const form = document.getElementById("upload-form");
+  const prefill = {{ 'true' if prefill else 'false' }};
+  let pendingDuplicateOverride = false;
 
   dropzone.addEventListener("click", function () { fileInput.click(); });
 
@@ -463,6 +486,93 @@ document.addEventListener('keydown', function(e) {
       fileList.appendChild(li);
     }
   }
+
+  function closeDuplicatePreflightModal() {
+    const modal = document.getElementById('duplicate-preflight-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+
+  function openDuplicatePreflightModal(payload) {
+    const list = document.getElementById('duplicate-preflight-list');
+    const pill = document.getElementById('duplicate-preflight-pill');
+    const duplicates = payload.duplicates || [];
+    const hasExact = duplicates.some(function(item) { return item.confidence === 'exact'; });
+    pill.textContent = hasExact ? 'EXACT' : 'LIKELY';
+    pill.className = hasExact
+      ? 'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold bg-red-100 text-red-800'
+      : 'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold bg-amber-100 text-amber-800';
+    list.innerHTML = duplicates.map(function(item) {
+      const confidenceClass = item.confidence === 'exact'
+        ? 'bg-red-100 text-red-700'
+        : 'bg-amber-100 text-amber-700';
+      const link = item.report_url
+        ? '<a target=\"_blank\" href=\"' + item.report_url + '\" class=\"text-sm font-medium text-blue-600 hover:underline\">기존 리포트 열기</a>'
+        : '<span class=\"text-sm text-gray-400\">리포트 링크 없음</span>';
+      return (
+        '<div class=\"rounded-xl border border-gray-200 bg-white px-4 py-3\">' +
+          '<div class=\"flex items-center justify-between gap-3\">' +
+            '<div class=\"min-w-0\">' +
+              '<div class=\"truncate text-sm font-semibold text-gray-900\">' + (item.subject_name || '이름 없음') + '</div>' +
+              '<div class=\"mt-1 text-xs text-gray-500\">' + (item.test_date || '날짜 없음') + (item.report_slug ? ' · ' + item.report_slug : '') + '</div>' +
+            '</div>' +
+            '<span class=\"inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ' + confidenceClass + '\">' + item.confidence + '</span>' +
+          '</div>' +
+          '<div class=\"mt-2 flex items-center justify-between gap-3\">' +
+            '<span class=\"text-xs text-gray-400\">' + (item.source_signature || '') + '</span>' +
+            link +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+    const modal = document.getElementById('duplicate-preflight-modal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  }
+
+  document.getElementById('duplicate-preflight-continue')?.addEventListener('click', function() {
+    pendingDuplicateOverride = true;
+    let hidden = document.querySelector('input[name=\"override_duplicates\"]');
+    if (!hidden) {
+      hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = 'override_duplicates';
+      form.appendChild(hidden);
+    }
+    hidden.value = '1';
+    closeDuplicatePreflightModal();
+    form.requestSubmit();
+  });
+
+  form?.addEventListener('submit', async function(e) {
+    if (prefill || pendingDuplicateOverride) {
+      pendingDuplicateOverride = false;
+      return;
+    }
+    e.preventDefault();
+    const body = new FormData(form);
+    try {
+      const resp = await fetch('/api/submit/preflight', {
+        method: 'POST',
+        body: body,
+      });
+      const payload = await resp.json();
+      if (!resp.ok) {
+        alert(payload.error || '중복 검사에 실패했습니다.');
+        return;
+      }
+      if (payload.has_duplicates) {
+        openDuplicatePreflightModal(payload);
+        return;
+      }
+      pendingDuplicateOverride = true;
+      form.requestSubmit();
+    } catch (_err) {
+      alert('중복 검사 중 네트워크 오류가 발생했습니다.');
+    }
+  });
+
+  window.closeDuplicatePreflightModal = closeDuplicatePreflightModal;
 })();
 </script>
 {% endblock %}

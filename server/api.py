@@ -32,12 +32,15 @@ from server.db import (
     get_subject,
     get_submission,
     get_user,
+    list_duplicate_submission_candidates,
     list_jobs,
     list_jobs_by_user,
     list_report_catalog,
     list_submissions_by_ids,
+    list_submissions_with_users,
     list_subjects,
     upsert_report_catalog_entry,
+    update_submission_duplicate_metadata,
     update_job_status,
 )
 from server.publish import publish_report
@@ -85,6 +88,165 @@ def get_published_dir(request: Request) -> Path:
     if published_dir is not None:
         return Path(published_dir)
     return Path(__file__).resolve().parent.parent / "published"
+
+
+def _source_tags_from_manifest(file_manifest: list[dict]) -> list[str]:
+    """Return normalized source tags from a file manifest."""
+    tags: set[str] = set()
+    for item in file_manifest:
+        name = str(item.get("name") or "").lower()
+        ext = f".{str(item.get('extension') or '').lower().lstrip('.')}"
+        if ext == ".xlsx":
+            tags.add("CPET")
+        elif ext == ".fit":
+            tags.add("FIT")
+        elif ext == ".zwo":
+            tags.add("ZWO")
+        elif ext == ".csv" or "lact" in name:
+            tags.add("Lactate")
+        elif ext == ".pdf":
+            tags.add("INSCYD")
+    return sorted(tags)
+
+
+def _source_signature_from_manifest(file_manifest: list[dict]) -> str:
+    """Build a compact source signature from normalized file tags."""
+    return "+".join(_source_tags_from_manifest(file_manifest))
+
+
+def _submission_fingerprint_from_manifest(file_manifest: list[dict]) -> str:
+    """Build a stable fingerprint from file hashes when available."""
+    parts: list[str] = []
+    for item in sorted(file_manifest, key=lambda row: str(row.get("name") or "").lower()):
+        file_hash = str(item.get("sha256") or "").strip()
+        if not file_hash:
+            continue
+        parts.append(f"{str(item.get('name') or '').lower()}:{file_hash}")
+    if not parts:
+        return ""
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def _duplicate_group_key(
+    *,
+    user_id: str = "",
+    subject_id: str = "",
+    test_date: str = "",
+    source_signature: str = "",
+) -> str:
+    """Return a stable duplicate cluster key for likely duplicates."""
+    if not test_date or not source_signature:
+        return ""
+    anchor = user_id.strip() or subject_id.strip()
+    if not anchor:
+        return ""
+    raw = f"{anchor}|{test_date.strip()}|{source_signature.strip()}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def _build_file_manifest_from_pairs(file_pairs: list[tuple[str, bytes]]) -> list[dict]:
+    """Build file manifest with content hashes from uploaded files."""
+    manifest: list[dict] = []
+    for filename, content in file_pairs:
+        safe_name = Path(filename).name
+        manifest.append({
+            "name": safe_name,
+            "extension": Path(safe_name).suffix.lstrip("."),
+            "size_bytes": len(content),
+            "sha256": hashlib.sha256(content).hexdigest(),
+        })
+    return sorted(manifest, key=lambda row: str(row.get("name") or "").lower())
+
+
+def _serialize_duplicate_candidates(candidates: list[dict]) -> list[dict]:
+    """Convert DB rows into duplicate preflight payloads."""
+    payload: list[dict] = []
+    for item in candidates:
+        payload.append({
+            "submission_id": str(item.get("id") or ""),
+            "report_slug": str(item.get("report_slug") or ""),
+            "report_url": str(item.get("report_url") or ""),
+            "subject_name": str(
+                item.get("linked_subject_name")
+                or item.get("linked_user_name")
+                or item.get("subject_name")
+                or ""
+            ),
+            "test_date": str(item.get("test_date") or ""),
+            "confidence": str(item.get("duplicate_confidence") or ""),
+            "source_signature": str(item.get("source_signature") or ""),
+        })
+    return payload
+
+
+def sync_submission_duplicate_metadata(db_path: Path) -> None:
+    """Backfill duplicate metadata for existing submissions from workspaces."""
+    rows = list_submissions_with_users(db_path)
+    for row in rows:
+        workspace_path = Path(str(row.get("workspace_path") or ""))
+        if not workspace_path:
+            continue
+        manifest = row.get("file_manifest") or []
+        if not isinstance(manifest, list):
+            manifest = []
+        missing_hash = any(not str(item.get("sha256") or "").strip() for item in manifest)
+        source_signature = str(row.get("source_signature") or "").strip()
+        submission_fingerprint = str(row.get("submission_fingerprint") or "").strip()
+        if not missing_hash and source_signature and submission_fingerprint:
+            continue
+        raw_dir = workspace_path / "raw"
+        if not raw_dir.is_dir():
+            continue
+        file_pairs: list[tuple[str, bytes]] = []
+        for file_path in sorted(raw_dir.iterdir()):
+            if file_path.is_file():
+                file_pairs.append((file_path.name, file_path.read_bytes()))
+        if not file_pairs:
+            continue
+        manifest_with_hash = _build_file_manifest_from_pairs(file_pairs)
+        update_submission_duplicate_metadata(
+            db_path,
+            str(row["id"]),
+            source_signature=_source_signature_from_manifest(manifest_with_hash),
+            submission_fingerprint=_submission_fingerprint_from_manifest(manifest_with_hash),
+            duplicate_confidence=str(row.get("duplicate_confidence") or ""),
+            duplicate_group_key=_duplicate_group_key(
+                user_id=str(row.get("user_id") or ""),
+                subject_id=str(row.get("subject_id") or ""),
+                test_date=str(row.get("test_date") or ""),
+                source_signature=_source_signature_from_manifest(manifest_with_hash),
+            ),
+        )
+
+
+def _find_duplicate_candidates_for_submission(
+    db_path: Path,
+    *,
+    file_manifest: list[dict],
+    user_id: str = "",
+    subject_id: str = "",
+    test_date: str = "",
+    exclude_submission_id: str = "",
+) -> tuple[list[dict], str, str, str]:
+    """Find exact and likely duplicate candidates for a submission payload."""
+    source_signature = _source_signature_from_manifest(file_manifest)
+    submission_fingerprint = _submission_fingerprint_from_manifest(file_manifest)
+    group_key = _duplicate_group_key(
+        user_id=user_id,
+        subject_id=subject_id,
+        test_date=test_date,
+        source_signature=source_signature,
+    )
+    candidates = list_duplicate_submission_candidates(
+        db_path,
+        user_id=user_id,
+        subject_id=subject_id,
+        test_date=test_date,
+        source_signature=source_signature,
+        submission_fingerprint=submission_fingerprint,
+        exclude_submission_id=exclude_submission_id,
+    )
+    return candidates, source_signature, submission_fingerprint, group_key
 
 
 def _describe_generation_method(report_payload: dict | None) -> str:
@@ -191,6 +353,50 @@ def _sort_jobs_for_subject_groups(entries: list[dict]) -> list[dict]:
         )
     )
     return items
+
+
+def _cluster_key_for_row(row: dict) -> str:
+    """Return a duplicate cluster key for enriched dashboard rows."""
+    exact_fingerprint = str(row.get("submission_fingerprint") or "").strip()
+    if exact_fingerprint:
+        return f"exact:{exact_fingerprint}"
+
+    group_key = str(row.get("duplicate_group_key") or "").strip()
+    if group_key:
+        return f"likely:{group_key}"
+
+    group_name = str(row.get("group_name") or row.get("linked_user_name") or row.get("subject_name") or "").strip()
+    test_date = str(row.get("test_date") or "").strip()
+    source_signature = str(row.get("source_signature") or "").strip()
+    if not source_signature:
+        tags = row.get("file_tags") or []
+        if isinstance(tags, list):
+            source_signature = "+".join(sorted(str(tag) for tag in tags if str(tag).strip()))
+    if group_name and test_date and source_signature:
+        return f"likely:{hashlib.sha256(f'{group_name}|{test_date}|{source_signature}'.encode('utf-8')).hexdigest()[:16]}"
+    return ""
+
+
+def _annotate_duplicate_rows(rows: list[dict]) -> None:
+    """Annotate rows in-place with duplicate cluster metadata."""
+    clusters: dict[str, list[dict]] = {}
+    for row in rows:
+        row["duplicate_cluster_key"] = ""
+        row["duplicate_cluster_count"] = 0
+        row["duplicate_badge"] = ""
+        key = _cluster_key_for_row(row)
+        if not key:
+            continue
+        clusters.setdefault(key, []).append(row)
+
+    for key, items in clusters.items():
+        if len(items) < 2:
+            continue
+        badge = "exact" if key.startswith("exact:") else "likely"
+        for row in items:
+            row["duplicate_cluster_key"] = key
+            row["duplicate_cluster_count"] = len(items)
+            row["duplicate_badge"] = badge
 
 
 _DATE_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
@@ -610,6 +816,10 @@ def _list_dashboard_entries(
             "processing_seconds": processing_seconds,
             "submission_user_id": sub.get("user_id") if sub else None,
             "submission_subject_id": sub.get("subject_id") if sub else None,
+            "source_signature": sub.get("source_signature") if sub else "",
+            "submission_fingerprint": sub.get("submission_fingerprint") if sub else "",
+            "duplicate_confidence": sub.get("duplicate_confidence") if sub else "",
+            "duplicate_group_key": sub.get("duplicate_group_key") if sub else "",
             "file_tags": _get_file_tags(sub, sub.get("workspace_path") if sub else None),
         }
         enriched.append(enriched_job)
@@ -622,6 +832,10 @@ def _list_dashboard_entries(
     for row in published_rows:
         if row["report_slug"] in job_slugs:
             continue
+        row["source_signature"] = ""
+        row["submission_fingerprint"] = ""
+        row["duplicate_confidence"] = ""
+        row["duplicate_group_key"] = ""
         enriched.append(row)
 
     # Mark ownership via submission.user_id, subject_id, and report_user_links
@@ -690,6 +904,8 @@ def _list_dashboard_entries(
         row["note"] = report_notes.get(slug, "") if slug else ""
         row["group_name"] = linked_user_name or str(row.get("subject_name") or "").strip() or "미연결 리포트"
 
+    _annotate_duplicate_rows(enriched)
+
     enriched.sort(
         key=lambda row: str(row.get("test_date") or row.get("created_at") or ""),
         reverse=True,
@@ -733,7 +949,85 @@ async def _channel_is_healthy(channel_url: str) -> bool:
     return resp.status_code == 200
 
 
+async def _read_upload_file_pairs(files: list[UploadFile]) -> tuple[list[tuple[str, bytes]], JSONResponse | None]:
+    """Read upload files once and validate extension/size."""
+    if not files:
+        return [], JSONResponse(status_code=400, content={"error": "no files provided"})
+
+    file_pairs: list[tuple[str, bytes]] = []
+    for f in files:
+        filename = f.filename or "unnamed"
+        ext = Path(filename).suffix.lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            return [], JSONResponse(status_code=400, content={"error": f"invalid file extension: {ext}"})
+        content = await f.read()
+        if len(content) > MAX_FILE_SIZE:
+            return [], JSONResponse(
+                status_code=413,
+                content={"error": f"file too large: {filename} ({len(content)} bytes, max {MAX_FILE_SIZE})"},
+            )
+        file_pairs.append((filename, content))
+    return file_pairs, None
+
+
 # ── POST /api/submit ─────────────────────────────────────────────────
+
+
+@router.post("/api/submit/preflight")
+async def submit_preflight(
+    request: Request,
+    files: list[UploadFile],
+    subject_name: str = Form(""),
+    test_date: str = Form(""),
+    target_user_id: str = Form(""),
+    subject_id: str = Form(""),
+) -> JSONResponse:
+    """Inspect a pending upload and return duplicate candidates before submit."""
+    db_path = get_db_path(request)
+    sync_submission_duplicate_metadata(db_path)
+
+    file_pairs, error = await _read_upload_file_pairs(files)
+    if error:
+        return error
+
+    user_id = request.session.get("user_id") if hasattr(request, "session") else None
+    if not user_id:
+        return JSONResponse(status_code=401, content={"error": "로그인이 필요합니다"})
+
+    session_role = request.session.get("role", "user") if hasattr(request, "session") else "user"
+    effective_user_id = user_id
+    if target_user_id and target_user_id != "__new__" and session_role in ("researcher", "admin"):
+        effective_user_id = target_user_id
+
+    effective_subject_id = subject_id or None
+    if not effective_subject_id and session_role not in ("researcher", "admin"):
+        current_user = get_user(db_path, user_id)
+        if current_user and current_user.get("subject_id"):
+            effective_subject_id = str(current_user["subject_id"])
+    if effective_subject_id and not subject_name:
+        subj = get_subject(db_path, effective_subject_id)
+        if subj:
+            subject_name = str(subj.get("name") or "")
+
+    manifest = _build_file_manifest_from_pairs(file_pairs)
+    candidates, source_signature, submission_fingerprint, group_key = _find_duplicate_candidates_for_submission(
+        db_path,
+        file_manifest=manifest,
+        user_id=str(effective_user_id or ""),
+        subject_id=str(effective_subject_id or ""),
+        test_date=test_date.strip(),
+    )
+
+    return JSONResponse({
+        "ok": True,
+        "subject_name": subject_name,
+        "test_date": test_date.strip(),
+        "source_signature": source_signature,
+        "submission_fingerprint": submission_fingerprint,
+        "duplicate_group_key": group_key,
+        "duplicates": _serialize_duplicate_candidates(candidates),
+        "has_duplicates": bool(candidates),
+    })
 
 
 @router.post("/api/submit", status_code=201)
@@ -752,6 +1046,7 @@ async def submit(
     prior_training_state: str = Form(""),
     protocol_outline: str = Form(""),
     operator_notes: str = Form(""),
+    override_duplicates: str = Form(""),
     reanalyze: str | None = Query(default=None),
 ) -> JSONResponse:
     """Upload files, create workspace/submission/job, dispatch to channel.
@@ -762,38 +1057,10 @@ async def submit(
     db_path = get_db_path(request)
     data_dir = get_data_dir(request)
     channel_url = get_channel_url(request)
-
-    if not files:
-        return JSONResponse(
-            status_code=400,
-            content={"error": "no files provided"},
-        )
-
-    # Read file contents and validate
-    file_pairs: list[tuple[str, bytes]] = []
-
-    for f in files:
-        filename = f.filename or "unnamed"
-        ext = Path(filename).suffix.lower()
-
-        if ext not in ALLOWED_EXTENSIONS:
-            return JSONResponse(
-                status_code=400,
-                content={"error": f"invalid file extension: {ext}"},
-            )
-
-        content = await f.read()
-
-        if len(content) > MAX_FILE_SIZE:
-            return JSONResponse(
-                status_code=413,
-                content={
-                    "error": f"file too large: {filename} "
-                    f"({len(content)} bytes, max {MAX_FILE_SIZE})"
-                },
-            )
-
-        file_pairs.append((filename, content))
+    sync_submission_duplicate_metadata(db_path)
+    file_pairs, error = await _read_upload_file_pairs(files)
+    if error:
+        return error
 
     # Login required for uploads
     user_id = request.session.get("user_id") if hasattr(request, "session") else None
@@ -880,6 +1147,26 @@ async def submit(
             content={"error": "at least one .xlsx (COSMED) file required"},
         )
 
+    manifest = _build_file_manifest_from_pairs(file_pairs)
+    duplicate_candidates, source_signature, submission_fingerprint, duplicate_group_key = _find_duplicate_candidates_for_submission(
+        db_path,
+        file_manifest=manifest,
+        user_id=str(effective_user_id or ""),
+        subject_id=str(effective_subject_id or ""),
+        test_date=test_date.strip(),
+    )
+    if duplicate_candidates and override_duplicates != "1":
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": "duplicate candidates found",
+                "duplicates": _serialize_duplicate_candidates(duplicate_candidates),
+                "source_signature": source_signature,
+                "submission_fingerprint": submission_fingerprint,
+                "duplicate_group_key": duplicate_group_key,
+            },
+        )
+
     # Create workspace first to determine submission_id
     submission_id = str(uuid.uuid4())
     workspace = create_workspace(data_dir, submission_id, file_pairs)
@@ -910,7 +1197,7 @@ async def submit(
     )
 
     # Build file manifest
-    manifest = list_files(workspace)
+    manifest = _build_file_manifest_from_pairs(file_pairs)
 
     # Create submission and job
     create_submission(
@@ -924,6 +1211,10 @@ async def submit(
         user_id=effective_user_id,
         subject_id=effective_subject_id,
         uploaded_by_user_id=user_id,
+        source_signature=source_signature,
+        submission_fingerprint=submission_fingerprint,
+        duplicate_confidence="exact" if any(item.get("duplicate_confidence") == "exact" for item in duplicate_candidates) else ("likely" if duplicate_candidates else ""),
+        duplicate_group_key=duplicate_group_key,
     )
     job_id = create_job(db_path, submission_id)
 

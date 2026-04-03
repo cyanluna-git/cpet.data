@@ -53,6 +53,10 @@ CREATE TABLE IF NOT EXISTS submissions (
     subject_id TEXT REFERENCES subjects(id),
     uploaded_by_user_id TEXT REFERENCES users(id),
     user_id TEXT REFERENCES users(id),
+    source_signature TEXT,
+    submission_fingerprint TEXT,
+    duplicate_confidence TEXT,
+    duplicate_group_key TEXT,
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -183,6 +187,22 @@ MIGRATION_ADD_ONBOARDING = """
 ALTER TABLE users ADD COLUMN onboarding_completed INTEGER DEFAULT 0;
 """
 
+MIGRATION_ADD_SOURCE_SIGNATURE = """
+ALTER TABLE submissions ADD COLUMN source_signature TEXT;
+"""
+
+MIGRATION_ADD_SUBMISSION_FINGERPRINT = """
+ALTER TABLE submissions ADD COLUMN submission_fingerprint TEXT;
+"""
+
+MIGRATION_ADD_DUPLICATE_CONFIDENCE = """
+ALTER TABLE submissions ADD COLUMN duplicate_confidence TEXT;
+"""
+
+MIGRATION_ADD_DUPLICATE_GROUP_KEY = """
+ALTER TABLE submissions ADD COLUMN duplicate_group_key TEXT;
+"""
+
 VALID_STATUSES = {"pending", "processing", "done", "failed"}
 
 
@@ -226,6 +246,18 @@ def init_db(db_path: Path) -> None:
     # Migration: add onboarding_completed to users if missing
     if not _column_exists(conn, "users", "onboarding_completed"):
         conn.execute(MIGRATION_ADD_ONBOARDING)
+
+    if not _column_exists(conn, "submissions", "source_signature"):
+        conn.execute(MIGRATION_ADD_SOURCE_SIGNATURE)
+
+    if not _column_exists(conn, "submissions", "submission_fingerprint"):
+        conn.execute(MIGRATION_ADD_SUBMISSION_FINGERPRINT)
+
+    if not _column_exists(conn, "submissions", "duplicate_confidence"):
+        conn.execute(MIGRATION_ADD_DUPLICATE_CONFIDENCE)
+
+    if not _column_exists(conn, "submissions", "duplicate_group_key"):
+        conn.execute(MIGRATION_ADD_DUPLICATE_GROUP_KEY)
         conn.commit()
     # Migration: add subject_id to users if missing
     if not _column_exists(conn, "users", "subject_id"):
@@ -455,6 +487,10 @@ def create_submission(
     user_id: str | None = None,
     subject_id: str | None = None,
     uploaded_by_user_id: str | None = None,
+    source_signature: str = "",
+    submission_fingerprint: str = "",
+    duplicate_confidence: str = "",
+    duplicate_group_key: str = "",
 ) -> str:
     """Insert a new submission and return its UUID.
 
@@ -469,10 +505,24 @@ def create_submission(
     conn.execute(
         """INSERT INTO submissions
            (id, description, file_manifest, workspace_path, subject_name,
-            test_date, user_id, subject_id, uploaded_by_user_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (submission_id, description, manifest_json, workspace_path,
-         subject_name, test_date, user_id, subject_id, uploaded_by_user_id),
+            test_date, user_id, subject_id, uploaded_by_user_id,
+            source_signature, submission_fingerprint, duplicate_confidence, duplicate_group_key)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            submission_id,
+            description,
+            manifest_json,
+            workspace_path,
+            subject_name,
+            test_date,
+            user_id,
+            subject_id,
+            uploaded_by_user_id,
+            source_signature.strip(),
+            submission_fingerprint.strip(),
+            duplicate_confidence.strip(),
+            duplicate_group_key.strip(),
+        ),
     )
     conn.commit()
     conn.close()
@@ -907,6 +957,135 @@ def list_submissions_with_users(db_path: Path) -> list[dict]:
             d["file_manifest"] = json.loads(d["file_manifest"])
         results.append(d)
     return results
+
+
+def update_submission_duplicate_metadata(
+    db_path: Path,
+    submission_id: str,
+    *,
+    source_signature: str = "",
+    submission_fingerprint: str = "",
+    duplicate_confidence: str = "",
+    duplicate_group_key: str = "",
+) -> None:
+    """Persist duplicate detection metadata for a submission."""
+    conn = _connect(db_path)
+    conn.execute(
+        """UPDATE submissions
+           SET source_signature = ?,
+               submission_fingerprint = ?,
+               duplicate_confidence = ?,
+               duplicate_group_key = ?
+           WHERE id = ?""",
+        (
+            source_signature.strip(),
+            submission_fingerprint.strip(),
+            duplicate_confidence.strip(),
+            duplicate_group_key.strip(),
+            submission_id,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def list_duplicate_submission_candidates(
+    db_path: Path,
+    *,
+    user_id: str = "",
+    subject_id: str = "",
+    test_date: str = "",
+    source_signature: str = "",
+    submission_fingerprint: str = "",
+    exclude_submission_id: str = "",
+) -> list[dict]:
+    """Return recent submission candidates for duplicate detection."""
+    conn = _connect(db_path)
+    where = []
+    params: list[str] = []
+
+    if submission_fingerprint:
+        where.append("s.submission_fingerprint = ?")
+        params.append(submission_fingerprint)
+        if exclude_submission_id:
+            where.append("s.id != ?")
+            params.append(exclude_submission_id)
+
+    exact_sql = ""
+    if where:
+        exact_sql = (
+            """SELECT s.*, j.report_slug, j.report_url,
+                      u.display_name AS linked_user_name,
+                      subj.name AS linked_subject_name
+               FROM submissions s
+               LEFT JOIN users u ON s.user_id = u.id
+               LEFT JOIN subjects subj ON s.subject_id = subj.id
+               LEFT JOIN (
+                   SELECT submission_id, report_slug, report_url,
+                          ROW_NUMBER() OVER (PARTITION BY submission_id ORDER BY rowid DESC) AS rn
+                   FROM jobs
+               ) j ON s.id = j.submission_id AND j.rn = 1
+               WHERE """
+            + " AND ".join(where)
+            + " ORDER BY s.created_at DESC"
+        )
+    rows = conn.execute(exact_sql, params).fetchall() if exact_sql else []
+
+    likely_where = []
+    likely_params: list[str] = []
+    if exclude_submission_id:
+        likely_where.append("s.id != ?")
+        likely_params.append(exclude_submission_id)
+    if test_date:
+        likely_where.append("COALESCE(s.test_date, '') = ?")
+        likely_params.append(test_date)
+    user_subject_terms = []
+    if user_id:
+        user_subject_terms.append("s.user_id = ?")
+        likely_params.append(user_id)
+    if subject_id:
+        user_subject_terms.append("s.subject_id = ?")
+        likely_params.append(subject_id)
+    if user_subject_terms:
+        likely_where.append("(" + " OR ".join(user_subject_terms) + ")")
+    if source_signature:
+        likely_where.append("COALESCE(s.source_signature, '') = ?")
+        likely_params.append(source_signature)
+
+    likely_sql = ""
+    if test_date and source_signature and user_subject_terms:
+        likely_sql = (
+            """SELECT s.*, j.report_slug, j.report_url,
+                      u.display_name AS linked_user_name,
+                      subj.name AS linked_subject_name
+               FROM submissions s
+               LEFT JOIN users u ON s.user_id = u.id
+               LEFT JOIN subjects subj ON s.subject_id = subj.id
+               LEFT JOIN (
+                   SELECT submission_id, report_slug, report_url,
+                          ROW_NUMBER() OVER (PARTITION BY submission_id ORDER BY rowid DESC) AS rn
+                   FROM jobs
+               ) j ON s.id = j.submission_id AND j.rn = 1
+               WHERE """
+            + " AND ".join(likely_where)
+            + " ORDER BY s.created_at DESC"
+        )
+    likely_rows = conn.execute(likely_sql, likely_params).fetchall() if likely_sql else []
+    conn.close()
+
+    seen: set[str] = set()
+    result: list[dict] = []
+    for row, confidence in [(row, "exact") for row in rows] + [(row, "likely") for row in likely_rows]:
+        item = dict(row)
+        sid = str(item["id"])
+        if sid in seen:
+            continue
+        seen.add(sid)
+        if item.get("file_manifest"):
+            item["file_manifest"] = json.loads(item["file_manifest"])
+        item["duplicate_confidence"] = confidence
+        result.append(item)
+    return result
 
 
 def set_report_name_override(db_path: Path, report_slug: str, subject_name: str) -> None:

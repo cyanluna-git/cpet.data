@@ -122,15 +122,26 @@
           oninput="applyReportListFilters()"
         />
       </div>
-      <label class="inline-flex items-center gap-2 text-sm text-gray-600">
-        <input
-          id="report-note-only"
-          type="checkbox"
-          class="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400"
-          onchange="applyReportListFilters()"
-        />
-        메모 있는 리포트만
-      </label>
+      <div class="flex flex-wrap items-center gap-4">
+        <label class="inline-flex items-center gap-2 text-sm text-gray-600">
+          <input
+            id="report-note-only"
+            type="checkbox"
+            class="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400"
+            onchange="applyReportListFilters()"
+          />
+          메모 있는 리포트만
+        </label>
+        <label class="inline-flex items-center gap-2 text-sm text-gray-600">
+          <input
+            id="report-duplicate-only"
+            type="checkbox"
+            class="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400"
+            onchange="applyReportListFilters()"
+          />
+          중복 후보만
+        </label>
+      </div>
     </div>
     <script>
       function activateTab(el) {
@@ -147,12 +158,14 @@
       function applyReportListFilters() {
         var query = (document.getElementById('report-search-input')?.value || '').trim().toLowerCase();
         var noteOnly = !!document.getElementById('report-note-only')?.checked;
+        var duplicateOnly = !!document.getElementById('report-duplicate-only')?.checked;
         var rows = document.querySelectorAll('#job-list-body .job-row');
         rows.forEach(function(row) {
           if (row.classList.contains('empty')) return;
           var search = (row.dataset.search || '').toLowerCase();
           var hasNote = row.dataset.hasNote === '1';
-          var visible = (!query || search.indexOf(query) !== -1) && (!noteOnly || hasNote);
+          var isDuplicate = row.dataset.duplicate === '1';
+          var visible = (!query || search.indexOf(query) !== -1) && (!noteOnly || hasNote) && (!duplicateOnly || isDuplicate);
           row.style.display = visible ? '' : 'none';
         });
       }

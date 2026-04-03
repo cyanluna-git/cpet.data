@@ -20,7 +20,20 @@
 <tr class="border-b border-gray-100 hover:bg-gray-50">
   <!-- 피험자명 -->
   <td class="px-4 py-3 text-sm text-gray-800">
-    <div class="truncate" title="{{ sub.subject_name or '—' }}">{{ sub.subject_name or "—" }}</div>
+    <div class="flex items-center gap-2">
+      <div class="truncate" title="{{ sub.subject_name or '—' }}">{{ sub.subject_name or "—" }}</div>
+      {% if sub.duplicate_cluster_count and sub.duplicate_cluster_count > 1 %}
+      <button
+        type="button"
+        class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold {% if sub.duplicate_badge == 'exact' %}bg-red-100 text-red-700{% else %}bg-amber-100 text-amber-700{% endif %}"
+        hx-get="/api/manage/submissions/duplicates?group_key={{ sub.duplicate_cluster_key }}"
+        hx-target="#manage-duplicate-cluster"
+        hx-swap="innerHTML"
+      >
+        {% if sub.duplicate_badge == 'exact' %}중복 일치{% else %}중복 후보{% endif %} {{ sub.duplicate_cluster_count }}건
+      </button>
+      {% endif %}
+    </div>
   </td>
 
   <!-- 검사일 -->

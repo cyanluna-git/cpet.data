@@ -12,6 +12,7 @@ import os
 import csv
 import io
 import re
+import hashlib
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -73,7 +74,7 @@ from server.db import (
     update_user_role,
     upsert_user_profile,
 )
-from server.api import _list_dashboard_entries, sync_published_report_catalog
+from server.api import _list_dashboard_entries, sync_published_report_catalog, sync_submission_duplicate_metadata
 
 load_dotenv()
 
@@ -83,6 +84,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Initialize platform database on startup."""
     init_db(app.state.db_path)
     sync_published_report_catalog(app.state.db_path, app.state.published_dir)
+    sync_submission_duplicate_metadata(app.state.db_path)
     yield
 
 
@@ -932,6 +934,7 @@ def _get_manage_submissions(
     *,
     unlinked_only: str = "",
     sort_by: str = "recent_desc",
+    duplicate_only: str = "",
 ) -> tuple[list[dict], dict[str, str]]:
     """Build the full submissions list for manage page (DB + published/ scan)."""
     db_path = request.app.state.db_path
@@ -960,6 +963,11 @@ def _get_manage_submissions(
             "user_id": sub_row.get("user_id"),
             "linked_user_name": sub_row.get("linked_user_name") or sub_row.get("linked_user_email"),
             "created_at": sub_row.get("created_at") or "",
+            "source_signature": sub_row.get("source_signature") or "",
+            "submission_fingerprint": sub_row.get("submission_fingerprint") or "",
+            "duplicate_confidence": sub_row.get("duplicate_confidence") or "",
+            "duplicate_group_key": sub_row.get("duplicate_group_key") or "",
+            "file_tags": entry.get("file_tags") or [],
         }
         submissions.append(merged)
 
@@ -989,8 +997,44 @@ def _get_manage_submissions(
         entry["linked_user_name"] = linked_user_name
         submissions.append(entry)
 
+    clusters: dict[str, list[dict]] = {}
+    for row in submissions:
+        source_signature = str(row.get("source_signature") or "").strip()
+        if not source_signature:
+            tags = row.get("file_tags") or []
+            if isinstance(tags, list):
+                source_signature = "+".join(sorted(str(tag) for tag in tags if str(tag).strip()))
+        key = ""
+        if str(row.get("submission_fingerprint") or "").strip():
+            key = f"exact:{str(row.get('submission_fingerprint') or '').strip()}"
+        elif str(row.get("duplicate_group_key") or "").strip():
+            key = f"likely:{str(row.get('duplicate_group_key') or '').strip()}"
+        else:
+            linked_name = str(row.get("linked_user_name") or row.get("subject_name") or "").strip()
+            test_date = str(row.get("test_date") or "").strip()
+            if linked_name and test_date and source_signature:
+                key = "likely:" + hashlib.sha256(
+                    f"{linked_name}|{test_date}|{source_signature}".encode("utf-8")
+                ).hexdigest()[:16]
+        row["duplicate_cluster_key"] = ""
+        row["duplicate_cluster_count"] = 0
+        row["duplicate_badge"] = ""
+        if key:
+            clusters.setdefault(key, []).append(row)
+
+    for key, items in clusters.items():
+        if len(items) < 2:
+            continue
+        badge = "exact" if key.startswith("exact:") else "likely"
+        for row in items:
+            row["duplicate_cluster_key"] = key
+            row["duplicate_cluster_count"] = len(items)
+            row["duplicate_badge"] = badge
+
     if unlinked_only == "1":
         submissions = [row for row in submissions if not row.get("user_id")]
+    if duplicate_only == "1":
+        submissions = [row for row in submissions if int(row.get("duplicate_cluster_count") or 0) > 1]
 
     def _group_sort_key(row: dict) -> tuple[int, str]:
         linked_name = str(row.get("linked_user_name") or "").strip().lower()
@@ -1051,6 +1095,7 @@ async def manage_page(
     request: Request,
     tab: str = "users",
     submissions_unlinked_only: str = "",
+    submissions_duplicate_only: str = "",
     submissions_sort_by: str = "recent_desc",
     subject_id: str = "",
     source_kind: str = "",
@@ -1077,6 +1122,7 @@ async def manage_page(
         users,
         unlinked_only=submissions_unlinked_only,
         sort_by=submissions_sort_by,
+        duplicate_only=submissions_duplicate_only,
     )
     snapshots: list[dict] = []
     snapshot_compare_defaults = {
@@ -1131,6 +1177,7 @@ async def manage_page(
         "session_user": session_user,
         "submission_filters": {
             "unlinked_only": submissions_unlinked_only,
+            "duplicate_only": submissions_duplicate_only,
             "sort_by": submissions_sort_by,
         },
         "snapshot_compare_defaults": snapshot_compare_defaults,
@@ -1203,6 +1250,7 @@ def _render_manage_submissions(
     *,
     unlinked_only: str = "",
     sort_by: str = "recent_desc",
+    duplicate_only: str = "",
 ) -> HTMLResponse:
     """Helper to render the submissions partial after a link/unlink operation."""
     db_path = request.app.state.db_path
@@ -1212,6 +1260,7 @@ def _render_manage_submissions(
         users,
         unlinked_only=unlinked_only,
         sort_by=sort_by,
+        duplicate_only=duplicate_only,
     )
     return templates.TemplateResponse(
         request,
@@ -1222,8 +1271,50 @@ def _render_manage_submissions(
             "suggestions": suggestions,
             "submission_filters": {
                 "unlinked_only": unlinked_only,
+                "duplicate_only": duplicate_only,
                 "sort_by": sort_by,
             },
+            "session_user": session_user,
+            "current_user": session_user,
+        },
+    )
+
+
+@app.get("/api/manage/submissions/duplicates", response_class=HTMLResponse)
+async def manage_duplicate_cluster(
+    request: Request,
+    group_key: str = "",
+) -> HTMLResponse:
+    """Render a duplicate cluster detail card for manage page."""
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+
+    users = list_users(request.app.state.db_path)
+    submissions, _suggestions = _get_manage_submissions(request, users)
+    rows = [row for row in submissions if str(row.get("duplicate_cluster_key") or "") == group_key]
+    if not group_key or not rows:
+        return HTMLResponse(
+            "<div class='text-sm text-gray-500'>같은 중복 cluster를 가진 항목을 선택하면 비교 정보가 표시됩니다.</div>"
+        )
+
+    rows.sort(
+        key=lambda row: (
+            str(row.get("report_url") or "") != "",
+            str(row.get("created_at") or ""),
+        ),
+        reverse=True,
+    )
+    primary_id = str(rows[0].get("submission_id") or rows[0].get("report_slug") or "")
+
+    return templates.TemplateResponse(
+        request,
+        "partials/manage_duplicate_cluster.html",
+        {
+            "rows": rows,
+            "primary_id": primary_id,
+            "group_key": group_key,
             "session_user": session_user,
             "current_user": session_user,
         },
@@ -1331,6 +1422,7 @@ async def manage_link_entry(
     link_user_id = str(form.get("user_id", "")).strip()
     report_slug = str(form.get("report_slug", "")).strip()
     submissions_unlinked_only = str(form.get("submissions_unlinked_only", "")).strip()
+    submissions_duplicate_only = str(form.get("submissions_duplicate_only", "")).strip()
     submissions_sort_by = str(form.get("submissions_sort_by", "recent_desc")).strip() or "recent_desc"
 
     if not link_user_id:
@@ -1355,6 +1447,7 @@ async def manage_link_entry(
         session_user,
         unlinked_only=submissions_unlinked_only,
         sort_by=submissions_sort_by,
+        duplicate_only=submissions_duplicate_only,
     )
 
 
@@ -1408,6 +1501,7 @@ async def manage_feature_sets_partial(
 async def manage_submissions_partial(
     request: Request,
     submissions_unlinked_only: str = "",
+    submissions_duplicate_only: str = "",
     submissions_sort_by: str = "recent_desc",
 ) -> HTMLResponse:
     """Render the filtered submissions partial for HTMX swaps."""
@@ -1420,6 +1514,7 @@ async def manage_submissions_partial(
         session_user,
         unlinked_only=submissions_unlinked_only,
         sort_by=submissions_sort_by,
+        duplicate_only=submissions_duplicate_only,
     )
 
 
@@ -1777,6 +1872,7 @@ async def manage_unlink_entry(
     form = await request.form()
     report_slug = str(form.get("report_slug", "")).strip()
     submissions_unlinked_only = str(form.get("submissions_unlinked_only", "")).strip()
+    submissions_duplicate_only = str(form.get("submissions_duplicate_only", "")).strip()
     submissions_sort_by = str(form.get("submissions_sort_by", "recent_desc")).strip() or "recent_desc"
 
     db_path = request.app.state.db_path
@@ -1795,6 +1891,7 @@ async def manage_unlink_entry(
         session_user,
         unlinked_only=submissions_unlinked_only,
         sort_by=submissions_sort_by,
+        duplicate_only=submissions_duplicate_only,
     )
 
 

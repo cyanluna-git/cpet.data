@@ -1,0 +1,54 @@
+<div class="space-y-3">
+  <div class="flex items-center justify-between gap-3">
+    <div>
+      <h3 class="text-sm font-semibold text-gray-900">중복 cluster 비교</h3>
+      <p class="text-xs text-gray-500">같은 사람, 같은 날짜, 같은 소스 조합으로 묶인 항목입니다.</p>
+    </div>
+    <span class="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-800">{{ rows|length }}건</span>
+  </div>
+
+  <div class="space-y-2">
+    {% for row in rows %}
+    {% set row_id = row.submission_id or row.report_slug or row.id %}
+    <div class="rounded-xl border {% if row_id == primary_id %}border-emerald-200 bg-emerald-50/60{% else %}border-gray-200 bg-white{% endif %} px-4 py-3">
+      <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="truncate text-sm font-semibold text-gray-900">{{ row.subject_name or row.linked_user_name or '이름 없음' }}</span>
+            <span class="text-xs text-gray-400">{{ row.test_date or '날짜 없음' }}</span>
+            {% if row_id == primary_id %}
+            <span class="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">대표 추천</span>
+            {% endif %}
+            {% if row.duplicate_badge == 'exact' %}
+            <span class="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">exact</span>
+            {% else %}
+            <span class="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">likely</span>
+            {% endif %}
+          </div>
+          <div class="mt-1 text-xs text-gray-500">{{ row.report_slug or row.id }}</div>
+          <div class="mt-2 flex flex-wrap items-center gap-2">
+            {% for tag in row.file_tags or [] %}
+            <span class="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">{{ tag }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          {% if row.report_url %}
+          <a href="{{ row.report_url }}" target="_blank" class="inline-flex items-center rounded-md bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100">원본 열기</a>
+          {% endif %}
+          {% if row.submission_id or row.report_slug %}
+          <button
+            class="inline-flex items-center rounded-md bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+            hx-delete="/api/manage/entries/{{ row.submission_id or row.report_slug }}"
+            hx-target="#manage-duplicate-cluster"
+            hx-swap="innerHTML"
+            hx-confirm="이 항목을 삭제합니다. 계속하시겠습니까?"
+            hx-on::after-request="htmx.trigger('#manage-submissions-filters', 'submit')"
+          >삭제</button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>

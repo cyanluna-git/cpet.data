@@ -116,6 +116,16 @@
             />
             미연결만 보기
           </label>
+          <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              name="submissions_duplicate_only"
+              value="1"
+              class="rounded border-gray-300 text-gray-900 focus:ring-gray-400"
+              {% if submission_filters.get('duplicate_only', '') == '1' %}checked{% endif %}
+            />
+            중복 후보만
+          </label>
           <select
             name="submissions_sort_by"
             class="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700"
@@ -156,6 +166,10 @@
           </tbody>
         </table>
       </div>
+    </div>
+
+    <div id="manage-duplicate-cluster" class="bg-white rounded-lg shadow p-4 text-sm text-gray-500">
+      중복 후보 배지를 누르면 같은 cluster의 비교 목록이 표시됩니다.
     </div>
   </div>
 
