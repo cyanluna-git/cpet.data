@@ -171,6 +171,28 @@ def _find_published_slug_for_report(report_index: Path, published_dir: Path) -> 
     return None
 
 
+def _sort_jobs_for_subject_groups(entries: list[dict]) -> list[dict]:
+    """Group dashboard rows by subject and keep the newest rows first within each group."""
+    items = list(entries)
+    items.sort(
+        key=lambda item: str(item.get("report_slug") or item.get("id") or ""),
+        reverse=True,
+    )
+    items.sort(
+        key=lambda item: str(
+            item.get("test_date") or item.get("created_at") or item.get("completed_at") or ""
+        ),
+        reverse=True,
+    )
+    items.sort(
+        key=lambda item: (
+            1 if not str(item.get("subject_name") or "").strip() else 0,
+            str(item.get("subject_name") or "").strip().lower(),
+        )
+    )
+    return items
+
+
 _DATE_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
 _SLUG_DATE_RE = re.compile(r"(\d{4})(\d{2})(\d{2})")
 
@@ -919,6 +941,7 @@ async def jobs_partial(
     request: Request,
     status: str | None = None,
     filter: str | None = None,
+    group_by: str | None = None,
 ) -> HTMLResponse:
     """Return an HTML partial of the job list for HTMX polling.
 
@@ -936,6 +959,9 @@ async def jobs_partial(
     enriched = _list_dashboard_entries(
         request, status=status, user_id=filter_user_id,
     )
+    grouped_by_subject = group_by == "subject"
+    if grouped_by_subject:
+        enriched = _sort_jobs_for_subject_groups(enriched)
 
     current_user_role = ""
     if hasattr(request, "session"):
@@ -946,7 +972,12 @@ async def jobs_partial(
     return templates.TemplateResponse(
         request,
         "partials/job_list.html",
-        {"jobs": enriched, "current_user_id": current_user_id, "current_user_role": current_user_role},
+        {
+            "jobs": enriched,
+            "current_user_id": current_user_id,
+            "current_user_role": current_user_role,
+            "grouped_by_subject": grouped_by_subject,
+        },
     )
 
 
@@ -1028,7 +1059,12 @@ async def trigger_job(
     return templates.TemplateResponse(
         request,
         "partials/job_list.html",
-        {"jobs": enriched, "current_user_id": current_user_id, "current_user_role": current_user_role},
+        {
+            "jobs": enriched,
+            "current_user_id": current_user_id,
+            "current_user_role": current_user_role,
+            "grouped_by_subject": False,
+        },
     )
 
 

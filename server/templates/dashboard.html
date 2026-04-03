@@ -95,7 +95,7 @@
       <button
         class="filter-tab px-4 py-2 rounded-full text-sm font-medium transition
           bg-gray-900 text-white"
-        hx-get="/api/jobs/partial"
+        hx-get="/api/jobs/partial?group_by=subject"
         hx-target="#job-list-body"
         hx-swap="innerHTML"
         onclick="activateTab(this)"
@@ -104,7 +104,7 @@
       <button
         class="filter-tab px-4 py-2 rounded-full text-sm font-medium transition
           text-gray-600 bg-gray-100 hover:bg-gray-200"
-        hx-get="/api/jobs/partial?filter=mine"
+        hx-get="/api/jobs/partial?filter=mine&group_by=subject"
         hx-target="#job-list-body"
         hx-swap="innerHTML"
         onclick="activateTab(this)"
@@ -169,9 +169,9 @@
     <div
       id="job-list-body"
       {% if current_user and current_user.role == 'user' %}
-      hx-get="/api/jobs/partial?filter=mine"
+      hx-get="/api/jobs/partial?filter=mine&group_by=subject"
       {% else %}
-      hx-get="/api/jobs/partial"
+      hx-get="/api/jobs/partial?group_by=subject"
       {% endif %}
       hx-trigger="load, every 10s"
       hx-swap="innerHTML"
