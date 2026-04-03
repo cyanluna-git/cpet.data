@@ -131,7 +131,7 @@
       {% endif %}
     {% endfor %}
 
-    {% if job.report_slug %}
+    {% if job.report_slug and not grouped_by_subject %}
       <span class="text-[11px] text-gray-300 truncate max-w-[160px]" title="{{ job.report_slug }}">{{ job.report_slug }}</span>
     {% endif %}
 
