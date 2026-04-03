@@ -30,12 +30,19 @@ from server.db import (
     get_report_notes,
     get_user,
     init_db,
+    link_report_to_user,
     link_submission_user,
+    link_user_to_subject,
     list_submissions_with_users,
     list_users,
+    set_report_name_override,
     set_report_note,
     unlink_submission_user,
+    update_job_status,
     update_user_role,
+    upsert_report_catalog_entry,
+    upsert_subject_feature_set,
+    upsert_subject_metric_snapshot,
     upsert_user,
     upsert_user_profile,
 )
@@ -753,6 +760,192 @@ class TestSubmissionLinkAPI:
         )
         assert resp.status_code == 302
         assert "/auth/google/login" in resp.headers["location"]
+
+
+class TestManageDeleteCascade:
+    def test_delete_submission_removes_report_metadata_and_derived_rows(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        admin = _login_as(
+            client,
+            role="admin",
+            google_id="cascade-admin-gid",
+            email="cascade-admin@test.com",
+            name="Cascade Admin",
+        )
+        db_path = app.state.db_path
+        subject = create_subject(db_path, "홍상선")
+        link_user_to_subject(db_path, admin["id"], subject["id"])
+
+        workspace = tmp_path / "workspace-delete-cascade"
+        workspace.mkdir()
+        submission_id = create_submission(
+            db_path,
+            description="delete me",
+            file_manifest=[{"name": "cosmed.xlsx"}],
+            workspace_path=str(workspace),
+            subject_name="홍상선",
+            test_date="2026-03-19",
+            user_id=admin["id"],
+            subject_id=subject["id"],
+        )
+        job_id = create_job(db_path, submission_id)
+        update_job_status(
+            db_path,
+            job_id,
+            "done",
+            report_slug="hongsangsun-20260319",
+            report_url="/report/hongsangsun-20260319/",
+        )
+
+        published_dir = app.state.published_dir
+        report_dir = published_dir / "hongsangsun-20260319"
+        report_dir.mkdir(parents=True)
+        (report_dir / "index.html").write_text("<html></html>", encoding="utf-8")
+
+        upsert_report_catalog_entry(
+            db_path,
+            report_slug="hongsangsun-20260319",
+            subject_name="홍상선",
+            test_date="2026-03-19",
+            analysis_method="기본 CPET",
+            report_version="v1",
+            report_url="/report/hongsangsun-20260319/",
+            completed_at="2026-03-19T00:00:00Z",
+            file_tags=["CPET"],
+        )
+        link_report_to_user(db_path, "hongsangsun-20260319", admin["id"])
+        set_report_name_override(db_path, "hongsangsun-20260319", "홍상선")
+        set_report_note(db_path, "hongsangsun-20260319", "삭제 대상")
+
+        upsert_subject_metric_snapshot(
+            db_path,
+            {
+                "snapshot_id": "snapshot-delete-submission",
+                "subject_id": subject["id"],
+                "source_kind": "cpet_submission",
+                "source_ref_id": submission_id,
+                "submission_id": submission_id,
+                "measured_at": "2026-03-19",
+                "protocol_type": "CPET",
+                "vo2max_rel": 54.2,
+                "extraction_version": "test-v1",
+                "quality_flags_json": "[]",
+                "payload_json": "{}",
+            },
+        )
+        upsert_subject_feature_set(
+            db_path,
+            {
+                "feature_row_id": "feature-delete-submission",
+                "subject_id": subject["id"],
+                "feature_spec_key": "endurance_core",
+                "feature_spec_version": "v1",
+                "anchor_snapshot_id": "snapshot-delete-submission",
+                "anchor_measured_at": "2026-03-19",
+                "window_label": "single",
+                "input_snapshot_ids_json": '["snapshot-delete-submission"]',
+                "input_source_kinds_json": '["cpet_submission"]',
+                "feature_payload_json": '{"features":{"vo2max_rel":54.2}}',
+                "quality_flags_json": "[]",
+            },
+        )
+
+        resp = client.delete(f"/api/manage/entries/{submission_id}")
+        assert resp.status_code == 200
+
+        conn = _connect(db_path)
+        assert conn.execute("SELECT 1 FROM submissions WHERE id = ?", (submission_id,)).fetchone() is None
+        assert conn.execute("SELECT 1 FROM jobs WHERE submission_id = ?", (submission_id,)).fetchone() is None
+        assert conn.execute("SELECT 1 FROM report_catalog WHERE report_slug = ?", ("hongsangsun-20260319",)).fetchone() is None
+        assert conn.execute("SELECT 1 FROM report_user_links WHERE report_slug = ?", ("hongsangsun-20260319",)).fetchone() is None
+        assert conn.execute("SELECT 1 FROM report_name_overrides WHERE report_slug = ?", ("hongsangsun-20260319",)).fetchone() is None
+        assert conn.execute("SELECT 1 FROM report_notes WHERE report_slug = ?", ("hongsangsun-20260319",)).fetchone() is None
+        assert conn.execute("SELECT 1 FROM subject_metric_snapshots WHERE snapshot_id = ?", ("snapshot-delete-submission",)).fetchone() is None
+        assert conn.execute("SELECT 1 FROM subject_feature_sets WHERE feature_row_id = ?", ("feature-delete-submission",)).fetchone() is None
+        conn.close()
+        assert not workspace.exists()
+        assert not report_dir.exists()
+
+    def test_delete_standalone_report_removes_derived_rows(self, client: TestClient) -> None:
+        admin = _login_as(
+            client,
+            role="admin",
+            google_id="standalone-admin-gid",
+            email="standalone-admin@test.com",
+            name="Standalone Admin",
+        )
+        db_path = app.state.db_path
+        subject = create_subject(db_path, "석우찬")
+        link_user_to_subject(db_path, admin["id"], subject["id"])
+
+        published_dir = app.state.published_dir
+        report_dir = published_dir / "woochan-standalone"
+        report_dir.mkdir(parents=True)
+        (report_dir / "index.html").write_text("<html></html>", encoding="utf-8")
+
+        upsert_report_catalog_entry(
+            db_path,
+            report_slug="woochan-standalone",
+            subject_name="석우찬",
+            test_date="2026-03-24",
+            analysis_method="기본 CPET",
+            report_version="v1",
+            report_url="/report/woochan-standalone/",
+            completed_at="2026-03-24T00:00:00Z",
+            file_tags=["CPET"],
+        )
+        link_report_to_user(db_path, "woochan-standalone", admin["id"])
+        set_report_name_override(db_path, "woochan-standalone", "석우찬")
+        set_report_note(db_path, "woochan-standalone", "standalone note")
+
+        upsert_subject_metric_snapshot(
+            db_path,
+            {
+                "snapshot_id": "snapshot-delete-standalone",
+                "subject_id": subject["id"],
+                "source_kind": "published_cpet_report",
+                "source_ref_id": "woochan-standalone",
+                "submission_id": None,
+                "measured_at": "2026-03-24",
+                "protocol_type": "CPET",
+                "vo2max_rel": 58.1,
+                "extraction_version": "published_cpet_snapshot_v1",
+                "quality_flags_json": "[]",
+                "payload_json": "{}",
+            },
+        )
+        upsert_subject_feature_set(
+            db_path,
+            {
+                "feature_row_id": "feature-delete-standalone",
+                "subject_id": subject["id"],
+                "feature_spec_key": "endurance_core",
+                "feature_spec_version": "v1",
+                "anchor_snapshot_id": "snapshot-delete-standalone",
+                "anchor_measured_at": "2026-03-24",
+                "window_label": "single",
+                "input_snapshot_ids_json": '["snapshot-delete-standalone"]',
+                "input_source_kinds_json": '["published_cpet_report"]',
+                "feature_payload_json": '{"features":{"vo2max_rel":58.1}}',
+                "quality_flags_json": "[]",
+            },
+        )
+
+        resp = client.delete("/api/manage/entries/woochan-standalone")
+        assert resp.status_code == 200
+
+        conn = _connect(db_path)
+        assert conn.execute("SELECT 1 FROM report_catalog WHERE report_slug = ?", ("woochan-standalone",)).fetchone() is None
+        assert conn.execute("SELECT 1 FROM report_user_links WHERE report_slug = ?", ("woochan-standalone",)).fetchone() is None
+        assert conn.execute("SELECT 1 FROM report_name_overrides WHERE report_slug = ?", ("woochan-standalone",)).fetchone() is None
+        assert conn.execute("SELECT 1 FROM report_notes WHERE report_slug = ?", ("woochan-standalone",)).fetchone() is None
+        assert conn.execute("SELECT 1 FROM subject_metric_snapshots WHERE snapshot_id = ?", ("snapshot-delete-standalone",)).fetchone() is None
+        assert conn.execute("SELECT 1 FROM subject_feature_sets WHERE feature_row_id = ?", ("feature-delete-standalone",)).fetchone() is None
+        conn.close()
+        assert not report_dir.exists()
 
 
 # ── Navigation Visibility Tests ──────────────────────────────────────

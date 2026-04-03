@@ -1177,6 +1177,105 @@ def delete_report_catalog_entry(db_path: Path, report_slug: str) -> None:
     conn.close()
 
 
+def delete_report_metadata(db_path: Path, report_slug: str) -> dict[str, int]:
+    """Delete all report-scoped metadata rows for a published report slug."""
+    conn = _connect(db_path)
+    deleted = {
+        "report_catalog": conn.execute(
+            "DELETE FROM report_catalog WHERE report_slug = ?",
+            (report_slug,),
+        ).rowcount,
+        "report_user_links": conn.execute(
+            "DELETE FROM report_user_links WHERE report_slug = ?",
+            (report_slug,),
+        ).rowcount,
+        "report_name_overrides": conn.execute(
+            "DELETE FROM report_name_overrides WHERE report_slug = ?",
+            (report_slug,),
+        ).rowcount,
+        "report_notes": conn.execute(
+            "DELETE FROM report_notes WHERE report_slug = ?",
+            (report_slug,),
+        ).rowcount,
+    }
+    conn.commit()
+    conn.close()
+    return deleted
+
+
+def _delete_snapshot_dependencies(
+    conn: sqlite3.Connection,
+    snapshot_ids: list[str],
+) -> dict[str, int]:
+    """Delete feature rows that reference snapshot_ids, then delete snapshots."""
+    if not snapshot_ids:
+        return {"feature_sets": 0, "snapshots": 0}
+
+    rows = conn.execute(
+        "SELECT feature_row_id, anchor_snapshot_id, input_snapshot_ids_json FROM subject_feature_sets"
+    ).fetchall()
+    snapshot_id_set = set(snapshot_ids)
+    feature_row_ids: list[str] = []
+    for row in rows:
+        if row["anchor_snapshot_id"] in snapshot_id_set:
+            feature_row_ids.append(str(row["feature_row_id"]))
+            continue
+        try:
+            input_snapshot_ids = json.loads(row["input_snapshot_ids_json"] or "[]")
+        except (json.JSONDecodeError, TypeError):
+            input_snapshot_ids = []
+        if any(str(item) in snapshot_id_set for item in input_snapshot_ids):
+            feature_row_ids.append(str(row["feature_row_id"]))
+
+    feature_deleted = 0
+    if feature_row_ids:
+        placeholders = ", ".join("?" for _ in feature_row_ids)
+        feature_deleted = conn.execute(
+            f"DELETE FROM subject_feature_sets WHERE feature_row_id IN ({placeholders})",
+            feature_row_ids,
+        ).rowcount
+
+    placeholders = ", ".join("?" for _ in snapshot_ids)
+    snapshot_deleted = conn.execute(
+        f"DELETE FROM subject_metric_snapshots WHERE snapshot_id IN ({placeholders})",
+        snapshot_ids,
+    ).rowcount
+
+    return {"feature_sets": feature_deleted, "snapshots": snapshot_deleted}
+
+
+def delete_submission_derived_metrics(db_path: Path, submission_id: str) -> dict[str, int]:
+    """Delete snapshot/feature rows derived from a submission."""
+    conn = _connect(db_path)
+    rows = conn.execute(
+        """SELECT snapshot_id
+           FROM subject_metric_snapshots
+           WHERE submission_id = ? OR source_ref_id = ?""",
+        (submission_id, submission_id),
+    ).fetchall()
+    snapshot_ids = [str(row["snapshot_id"]) for row in rows]
+    deleted = _delete_snapshot_dependencies(conn, snapshot_ids)
+    conn.commit()
+    conn.close()
+    return deleted
+
+
+def delete_report_derived_metrics(db_path: Path, report_slug: str) -> dict[str, int]:
+    """Delete snapshot/feature rows derived from a standalone published report."""
+    conn = _connect(db_path)
+    rows = conn.execute(
+        """SELECT snapshot_id
+           FROM subject_metric_snapshots
+           WHERE source_ref_id = ?""",
+        (report_slug,),
+    ).fetchall()
+    snapshot_ids = [str(row["snapshot_id"]) for row in rows]
+    deleted = _delete_snapshot_dependencies(conn, snapshot_ids)
+    conn.commit()
+    conn.close()
+    return deleted
+
+
 def list_report_catalog(db_path: Path) -> list[dict]:
     """List cached published report metadata rows, newest first."""
     conn = _connect(db_path)

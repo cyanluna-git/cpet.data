@@ -46,7 +46,9 @@ from server.db import (
     get_user,
     get_user_profile,
     delete_submission,
-    delete_report_catalog_entry,
+    delete_submission_derived_metrics,
+    delete_report_derived_metrics,
+    delete_report_metadata,
     init_db,
     link_report_to_user,
     link_submission_user,
@@ -2023,7 +2025,7 @@ async def update_report_note(request: Request) -> HTMLResponse:
 
 @app.delete("/api/manage/entries/{entry_id}", response_class=HTMLResponse)
 async def manage_delete_entry(request: Request, entry_id: str) -> HTMLResponse:
-    """Delete a submission/job entry. Admin or owner of the submission."""
+    """Delete a report entry plus its derived metrics. Admin or owner of the submission."""
     from fastapi.responses import JSONResponse
     import shutil
 
@@ -2064,14 +2066,18 @@ async def manage_delete_entry(request: Request, entry_id: str) -> HTMLResponse:
                 pub_dir = Path(request.app.state.published_dir) / job["report_slug"]
                 if pub_dir.exists():
                     shutil.rmtree(pub_dir, ignore_errors=True)
-                delete_report_catalog_entry(db_path, str(job["report_slug"]))
+                delete_report_metadata(db_path, str(job["report_slug"]))
+        delete_submission_derived_metrics(db_path, entry_id)
         delete_submission(db_path, entry_id)
     else:
         # Standalone published report — delete by slug (entry_id = report_slug)
         pub_dir = Path(request.app.state.published_dir) / entry_id
         if pub_dir.exists():
             shutil.rmtree(pub_dir, ignore_errors=True)
-        delete_report_catalog_entry(db_path, entry_id)
+        delete_report_derived_metrics(db_path, entry_id)
+        delete_report_metadata(db_path, entry_id)
+
+    sync_submission_duplicate_metadata(db_path)
 
     # Return empty to trigger HTMX refresh
     return HTMLResponse("")
