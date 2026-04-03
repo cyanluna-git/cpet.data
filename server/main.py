@@ -996,41 +996,40 @@ def _get_manage_submissions(
             return (0, linked_name)
         return (1, "zzzz-unlinked")
 
-    def _desc_text(value: str) -> str:
-        return "".join(chr(255 - ord(ch)) for ch in value)
-
     if sort_by == "recent_asc":
         submissions.sort(
             key=lambda row: (
-                _group_sort_key(row),
                 str(row.get("test_date") or row.get("created_at") or ""),
                 str(row.get("subject_name") or "").lower(),
             ),
         )
+        submissions.sort(key=_group_sort_key)
     elif sort_by == "name_asc":
         submissions.sort(
             key=lambda row: (
-                _group_sort_key(row),
                 str(row.get("subject_name") or "").lower(),
                 str(row.get("test_date") or row.get("created_at") or ""),
             ),
         )
+        submissions.sort(key=_group_sort_key)
     elif sort_by == "name_desc":
         submissions.sort(
             key=lambda row: (
-                _group_sort_key(row),
-                "".join(chr(255 - ord(ch)) for ch in str(row.get("subject_name") or "").lower()),
-                "".join(chr(255 - ord(ch)) for ch in str(row.get("test_date") or row.get("created_at") or "")),
+                str(row.get("subject_name") or "").lower(),
+                str(row.get("test_date") or row.get("created_at") or ""),
             ),
+            reverse=True,
         )
+        submissions.sort(key=_group_sort_key)
     else:
         submissions.sort(
             key=lambda row: (
-                _group_sort_key(row),
-                _desc_text(str(row.get("test_date") or row.get("created_at") or "")),
-                _desc_text(str(row.get("subject_name") or "").lower()),
+                str(row.get("test_date") or row.get("created_at") or ""),
+                str(row.get("subject_name") or "").lower(),
             ),
+            reverse=True,
         )
+        submissions.sort(key=_group_sort_key)
 
     # Build suggestion map
     suggestions: dict[str, str] = {}
