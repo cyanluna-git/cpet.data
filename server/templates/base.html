@@ -129,7 +129,7 @@
   </nav>
 
   <!-- Main content -->
-  <main class="{% if request.url.path == '/dashboard' or request.url.path == '/notes' or request.url.path.startswith('/notes/') %}max-w-[1600px]{% else %}max-w-4xl{% endif %} mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <main class="{% if request.url.path == '/dashboard' or request.url.path == '/manage' or request.url.path == '/notes' or request.url.path.startswith('/notes/') %}max-w-[1700px]{% else %}max-w-4xl{% endif %} mx-auto px-4 sm:px-6 lg:px-8 py-8">
     {% block content %}{% endblock %}
   </main>
 

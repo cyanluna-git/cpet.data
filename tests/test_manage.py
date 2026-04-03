@@ -326,7 +326,7 @@ class TestManagePage:
         assert resp.status_code == 200
         assert "검사 데이터 연결" in resp.text
         assert "Test Subject" in resp.text
-        assert '<table class="min-w-full divide-y divide-gray-200">' in resp.text
+        assert '<table class="w-full table-fixed divide-y divide-gray-200">' in resp.text
         assert 'id="manage-submissions-body"' in resp.text
         assert 'id="manage-submissions-filters"' in resp.text
         assert 'name="submissions_unlinked_only"' in resp.text

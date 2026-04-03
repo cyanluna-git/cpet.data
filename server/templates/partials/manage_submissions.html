@@ -11,7 +11,7 @@
         </span>
         <span class="text-sm font-semibold text-gray-900">{{ linked_name }}</span>
       </div>
-      <span class="text-xs text-gray-400">유저별로 묶어서 표시</span>
+      <span class="hidden text-xs text-gray-400 lg:inline">유저별로 묶어서 표시</span>
     </div>
   </td>
 </tr>
@@ -19,8 +19,8 @@
 {% endif %}
 <tr class="border-b border-gray-100 hover:bg-gray-50">
   <!-- 피험자명 -->
-  <td class="px-4 py-3 text-sm text-gray-800 whitespace-nowrap">
-    {{ sub.subject_name or "—" }}
+  <td class="px-4 py-3 text-sm text-gray-800">
+    <div class="truncate" title="{{ sub.subject_name or '—' }}">{{ sub.subject_name or "—" }}</div>
   </td>
 
   <!-- 검사일 -->
@@ -55,10 +55,12 @@
   </td>
 
   <!-- 연결된 유저 -->
-  <td class="px-4 py-3 text-sm whitespace-nowrap">
+  <td class="px-4 py-3 text-sm">
     {% if sub.user_id %}
-      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+      <span class="inline-flex max-w-full items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+        <span class="truncate" title="{{ sub.linked_user_name or sub.user_id[:8] }}">
         {{ sub.linked_user_name or sub.user_id[:8] }}
+        </span>
       </span>
     {% else %}
       <span class="text-gray-400 text-xs">미연결</span>
@@ -66,12 +68,12 @@
   </td>
 
   <!-- 작업: 연결/해제 -->
-  <td class="px-4 py-3 text-sm whitespace-nowrap">
-    <div class="flex items-center gap-2">
+  <td class="px-4 py-3 text-sm">
+    <div class="flex flex-wrap items-center gap-2">
       <select
         name="user_id"
         id="link-select-{{ sub.id }}"
-        class="rounded border border-gray-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 max-w-[160px]"
+        class="min-w-0 flex-1 rounded border border-gray-300 bg-white px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400 lg:max-w-[220px]"
       >
         <option value="">유저 선택</option>
         {% for u in users %}
