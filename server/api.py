@@ -39,6 +39,7 @@ from server.db import (
     list_submissions_by_ids,
     list_submissions_with_users,
     list_subjects,
+    refresh_targeted_materializations,
     upsert_report_catalog_entry,
     update_submission_duplicate_metadata,
     update_job_status,
@@ -522,6 +523,17 @@ def _reconcile_job_artifacts(
         report_slug=slug,
         report_url=f"/report/{slug}/",
     )
+    try:
+        refresh_targeted_materializations(
+            get_db_path(request),
+            submission_ids=[str(submission["id"])],
+            data_dir=get_data_dir(request),
+        )
+    except Exception:
+        logger.exception(
+            "Failed targeted materialization refresh after job reconcile for submission %s",
+            str(submission["id"]),
+        )
     refreshed = get_job(get_db_path(request), str(job["id"]))
     return refreshed or job
 
@@ -540,10 +552,12 @@ def _build_channel_payload(job: dict, submission: dict) -> dict:
 def _run_pipeline_job(
     db_path: Path,
     job_id: str,
+    submission_id: str,
     workspace_path: str,
     subject_name: str,
     test_date: str,
     publish_dir: Path,
+    data_dir: Path | None = None,
     report_url_prefix: str = "/report",
 ) -> None:
     """Run the standalone pipeline and mark the job done/failed."""
@@ -582,6 +596,17 @@ def _run_pipeline_job(
             report_slug=slug,
             report_url=f"{report_url_prefix.rstrip('/')}/{slug}/",
         )
+        try:
+            refresh_targeted_materializations(
+                db_path,
+                submission_ids=[submission_id],
+                data_dir=data_dir,
+            )
+        except Exception:
+            logger.exception(
+                "Failed targeted materialization refresh after fallback pipeline for submission %s",
+                submission_id,
+            )
     except Exception as exc:
         logger.exception("Manual analysis fallback failed for job %s", job_id)
         update_job_status(
@@ -599,6 +624,7 @@ def _start_fallback_analysis(
     job: dict,
     submission: dict,
     publish_dir: Path,
+    data_dir: Path | None = None,
 ) -> threading.Thread:
     """Run fallback analysis in a daemon thread so the dashboard can keep polling."""
     thread = threading.Thread(
@@ -606,10 +632,12 @@ def _start_fallback_analysis(
         kwargs={
             "db_path": db_path,
             "job_id": str(job["id"]),
+            "submission_id": str(submission["id"]),
             "workspace_path": str(submission["workspace_path"]),
             "subject_name": str(submission.get("subject_name") or ""),
             "test_date": str(submission.get("test_date") or ""),
             "publish_dir": publish_dir,
+            "data_dir": data_dir,
         },
         daemon=True,
         name=f"cpet-job-{str(job['id'])[:8]}",
@@ -1358,6 +1386,7 @@ async def trigger_job(
             job=canonical_job,
             submission=submission,
             publish_dir=published_dir,
+            data_dir=get_data_dir(request),
         )
         logger.info("Manual trigger started local fallback for job %s", job_id)
 

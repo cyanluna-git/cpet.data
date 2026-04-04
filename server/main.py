@@ -13,6 +13,7 @@ import csv
 import io
 import re
 import hashlib
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -58,10 +59,13 @@ from server.db import (
     set_report_note,
     list_subjects,
     list_subject_metric_snapshots,
+    list_submission_ids_for_user,
+    list_report_slugs_for_user,
     list_dashboard_subject_analytics,
     list_submissions_by_user,
     list_subject_feature_sets,
     set_report_name_override,
+    refresh_targeted_materializations,
     summarize_dashboard_feature_analytics,
     summarize_subject_feature_sets,
     update_subject,
@@ -79,6 +83,8 @@ from server.db import (
 from server.api import _list_dashboard_entries, sync_published_report_catalog, sync_submission_duplicate_metadata
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -1437,12 +1443,32 @@ async def manage_link_entry(
     if sub is None and not report_slug:
         return JSONResponse(status_code=404, content={"error": "entry not found"})
 
+    refresh_submission_ids: list[str] = []
+    refresh_report_slugs: list[str] = []
+    refresh_subject_ids: list[str] = []
+
     if sub:
-        link_submission_user(db_path, entry_id, link_user_id)
+        updated_submission = link_submission_user(db_path, entry_id, link_user_id)
+        refresh_submission_ids.append(entry_id)
+        if updated_submission and updated_submission.get("subject_id"):
+            refresh_subject_ids.append(str(updated_submission["subject_id"]))
 
     # Always also link by report_slug (covers standalone reports)
     if report_slug:
         link_report_to_user(db_path, report_slug, link_user_id)
+        refresh_report_slugs.append(report_slug)
+
+    try:
+        refresh_targeted_materializations(
+            db_path,
+            subject_ids=refresh_subject_ids or None,
+            submission_ids=refresh_submission_ids or None,
+            report_slugs=refresh_report_slugs or None,
+            data_dir=request.app.state.data_dir,
+            published_dir=request.app.state.published_dir,
+        )
+    except Exception:
+        logger.exception("Failed targeted materialization refresh after manage link for %s", entry_id)
 
     return _render_manage_submissions(
         request,
@@ -1881,12 +1907,31 @@ async def manage_unlink_entry(
 
     # Try submission unlink
     sub = get_submission(db_path, entry_id)
+    refresh_submission_ids: list[str] = []
+    refresh_report_slugs: list[str] = []
+    refresh_subject_ids: list[str] = []
     if sub:
+        if sub.get("subject_id"):
+            refresh_subject_ids.append(str(sub["subject_id"]))
         unlink_submission_user(db_path, entry_id)
+        refresh_submission_ids.append(entry_id)
 
     # Also unlink by report_slug
     if report_slug:
+        refresh_report_slugs.append(report_slug)
         unlink_report_from_user(db_path, report_slug)
+
+    try:
+        refresh_targeted_materializations(
+            db_path,
+            subject_ids=refresh_subject_ids or None,
+            submission_ids=refresh_submission_ids or None,
+            report_slugs=refresh_report_slugs or None,
+            data_dir=request.app.state.data_dir,
+            published_dir=request.app.state.published_dir,
+        )
+    except Exception:
+        logger.exception("Failed targeted materialization refresh after manage unlink for %s", entry_id)
 
     return _render_manage_submissions(
         request,
@@ -2224,6 +2269,21 @@ async def manage_link_user_to_subject(request: Request, subject_id: str) -> HTML
 
     db_path = request.app.state.db_path
     link_user_to_subject(db_path, target_user_id, subject_id)
+    try:
+        refresh_targeted_materializations(
+            db_path,
+            subject_ids=[subject_id],
+            submission_ids=list_submission_ids_for_user(db_path, target_user_id) or None,
+            report_slugs=list_report_slugs_for_user(db_path, target_user_id) or None,
+            data_dir=request.app.state.data_dir,
+            published_dir=request.app.state.published_dir,
+        )
+    except Exception:
+        logger.exception(
+            "Failed targeted materialization refresh after linking user %s to subject %s",
+            target_user_id,
+            subject_id,
+        )
 
     subjects = list_subjects(db_path)
     users = list_users(db_path)
@@ -2250,7 +2310,22 @@ async def manage_unlink_user_from_subject(request: Request, subject_id: str) -> 
         return JSONResponse(status_code=400, content={"error": "user_id is required"})
 
     db_path = request.app.state.db_path
+    report_slugs = list_report_slugs_for_user(db_path, target_user_id)
     unlink_user_from_subject(db_path, target_user_id)
+    try:
+        refresh_targeted_materializations(
+            db_path,
+            subject_ids=[subject_id],
+            report_slugs=report_slugs or None,
+            data_dir=request.app.state.data_dir,
+            published_dir=request.app.state.published_dir,
+        )
+    except Exception:
+        logger.exception(
+            "Failed targeted materialization refresh after unlinking user %s from subject %s",
+            target_user_id,
+            subject_id,
+        )
 
     subjects = list_subjects(db_path)
     users = list_users(db_path)

@@ -442,10 +442,34 @@ def link_user_to_subject(
 ) -> dict | None:
     """Set user.subject_id. Returns the updated user dict, or None."""
     conn = _connect(db_path)
+    subject_row = conn.execute(
+        "SELECT name FROM subjects WHERE id = ?",
+        (subject_id,),
+    ).fetchone()
     conn.execute(
         "UPDATE users SET subject_id = ? WHERE id = ?",
         (subject_id, user_id),
     )
+    if subject_row is not None:
+        conn.execute(
+            """UPDATE submissions
+               SET subject_id = ?,
+                   subject_name = CASE
+                       WHEN COALESCE(subject_name, '') = '' THEN ?
+                       ELSE subject_name
+                   END
+               WHERE user_id = ?
+                 AND subject_id IS NULL""",
+            (subject_id, subject_row["name"], user_id),
+        )
+    else:
+        conn.execute(
+            """UPDATE submissions
+               SET subject_id = ?
+               WHERE user_id = ?
+                 AND subject_id IS NULL""",
+            (subject_id, user_id),
+        )
     conn.commit()
     row = conn.execute(
         "SELECT * FROM users WHERE id = ?", (user_id,)
@@ -1276,6 +1300,207 @@ def delete_report_derived_metrics(db_path: Path, report_slug: str) -> dict[str, 
     return deleted
 
 
+def _list_subject_ids_for_submission_refs(
+    db_path: Path,
+    submission_ids: list[str],
+) -> list[str]:
+    """Return subject ids associated with submissions or their existing snapshots."""
+    if not submission_ids:
+        return []
+
+    placeholders = ", ".join("?" for _ in submission_ids)
+    conn = _connect(db_path)
+    rows = conn.execute(
+        f"""
+        SELECT DISTINCT subject_id
+          FROM (
+            SELECT subject_id
+              FROM submissions
+             WHERE id IN ({placeholders})
+            UNION
+            SELECT subject_id
+              FROM subject_metric_snapshots
+             WHERE submission_id IN ({placeholders})
+                OR source_ref_id IN ({placeholders})
+          )
+         WHERE subject_id IS NOT NULL
+        """,
+        [*submission_ids, *submission_ids, *submission_ids],
+    ).fetchall()
+    conn.close()
+    return [str(row["subject_id"]) for row in rows if row["subject_id"]]
+
+
+def _list_subject_ids_for_report_refs(
+    db_path: Path,
+    report_slugs: list[str],
+) -> list[str]:
+    """Return subject ids associated with report links or their existing snapshots."""
+    if not report_slugs:
+        return []
+
+    placeholders = ", ".join("?" for _ in report_slugs)
+    conn = _connect(db_path)
+    rows = conn.execute(
+        f"""
+        SELECT DISTINCT subject_id
+          FROM (
+            SELECT u.subject_id
+              FROM report_user_links rul
+              JOIN users u ON u.id = rul.user_id
+             WHERE rul.report_slug IN ({placeholders})
+            UNION
+            SELECT subject_id
+              FROM subject_metric_snapshots
+             WHERE source_ref_id IN ({placeholders})
+          )
+         WHERE subject_id IS NOT NULL
+        """,
+        [*report_slugs, *report_slugs],
+    ).fetchall()
+    conn.close()
+    return [str(row["subject_id"]) for row in rows if row["subject_id"]]
+
+
+def list_submission_ids_for_user(
+    db_path: Path,
+    user_id: str,
+) -> list[str]:
+    """Return submission ids linked to a user."""
+    conn = _connect(db_path)
+    rows = conn.execute(
+        "SELECT id FROM submissions WHERE user_id = ? ORDER BY created_at ASC, id ASC",
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    return [str(row["id"]) for row in rows]
+
+
+def list_report_slugs_for_user(
+    db_path: Path,
+    user_id: str,
+) -> list[str]:
+    """Return standalone report slugs linked to a user."""
+    conn = _connect(db_path)
+    rows = conn.execute(
+        "SELECT report_slug FROM report_user_links WHERE user_id = ? ORDER BY linked_at ASC, report_slug ASC",
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    return [str(row["report_slug"]) for row in rows]
+
+
+def list_snapshot_ids_for_subjects(
+    db_path: Path,
+    subject_ids: list[str],
+) -> list[str]:
+    """Return snapshot ids for subjects in stable chronological order."""
+    if not subject_ids:
+        return []
+
+    placeholders = ", ".join("?" for _ in subject_ids)
+    conn = _connect(db_path)
+    rows = conn.execute(
+        f"""SELECT snapshot_id
+              FROM subject_metric_snapshots
+             WHERE subject_id IN ({placeholders})
+             ORDER BY measured_at ASC, created_at ASC, snapshot_id ASC""",
+        subject_ids,
+    ).fetchall()
+    conn.close()
+    return [str(row["snapshot_id"]) for row in rows]
+
+
+def refresh_targeted_materializations(
+    db_path: Path,
+    *,
+    subject_ids: list[str] | None = None,
+    submission_ids: list[str] | None = None,
+    report_slugs: list[str] | None = None,
+    data_dir: Path | None = None,
+    published_dir: Path | None = None,
+) -> dict:
+    """Refresh snapshots and feature rows for a narrow set of changed sources."""
+    submission_ids = sorted({str(item) for item in (submission_ids or []) if item})
+    report_slugs = sorted({str(item) for item in (report_slugs or []) if item})
+    affected_subject_ids = {str(item) for item in (subject_ids or []) if item}
+
+    affected_subject_ids.update(_list_subject_ids_for_submission_refs(db_path, submission_ids))
+    affected_subject_ids.update(_list_subject_ids_for_report_refs(db_path, report_slugs))
+
+    deleted = {
+        "submission_snapshots": 0,
+        "submission_feature_sets": 0,
+        "report_snapshots": 0,
+        "report_feature_sets": 0,
+    }
+    for submission_id in submission_ids:
+        result = delete_submission_derived_metrics(db_path, submission_id)
+        deleted["submission_snapshots"] += int(result.get("snapshots", 0))
+        deleted["submission_feature_sets"] += int(result.get("feature_sets", 0))
+
+    for report_slug in report_slugs:
+        result = delete_report_derived_metrics(db_path, report_slug)
+        deleted["report_snapshots"] += int(result.get("snapshots", 0))
+        deleted["report_feature_sets"] += int(result.get("feature_sets", 0))
+
+    if submission_ids or report_slugs:
+        snapshot_summary = backfill_subject_metric_snapshots(
+            db_path,
+            submission_ids=submission_ids or None,
+            report_slugs=report_slugs or None,
+            data_dir=data_dir,
+            published_dir=published_dir if report_slugs else None,
+        )
+    else:
+        snapshot_summary = {
+            "dry_run": False,
+            "submissions_scanned": 0,
+            "snapshots_found": 0,
+            "inserted": 0,
+            "updated": 0,
+            "skipped": 0,
+            "would_insert": 0,
+            "would_update": 0,
+            "errors": [],
+        }
+
+    affected_subject_ids.update(_list_subject_ids_for_submission_refs(db_path, submission_ids))
+    affected_subject_ids.update(_list_subject_ids_for_report_refs(db_path, report_slugs))
+    ordered_subject_ids = sorted(affected_subject_ids)
+    snapshot_ids = list_snapshot_ids_for_subjects(db_path, ordered_subject_ids)
+
+    if snapshot_ids:
+        endurance_summary = backfill_endurance_core_feature_sets(db_path, snapshot_ids=snapshot_ids)
+        longitudinal_summary = backfill_longitudinal_delta_feature_sets(
+            db_path,
+            snapshot_ids=snapshot_ids,
+        )
+    else:
+        empty_summary = {
+            "dry_run": False,
+            "snapshots_scanned": 0,
+            "feature_rows_built": 0,
+            "inserted": 0,
+            "updated": 0,
+            "skipped": 0,
+            "would_insert": 0,
+            "would_update": 0,
+            "errors": [],
+        }
+        endurance_summary = dict(empty_summary)
+        longitudinal_summary = dict(empty_summary)
+
+    return {
+        "subject_ids": ordered_subject_ids,
+        "snapshot_ids": snapshot_ids,
+        "deleted": deleted,
+        "snapshots": snapshot_summary,
+        "endurance_core": endurance_summary,
+        "longitudinal_delta": longitudinal_summary,
+    }
+
+
 def list_report_catalog(db_path: Path) -> list[dict]:
     """List cached published report metadata rows, newest first."""
     conn = _connect(db_path)
@@ -1388,10 +1613,30 @@ def link_submission_user(
 ) -> dict | None:
     """Link a submission to a user. Returns the updated submission, or None."""
     conn = _connect(db_path)
-    conn.execute(
-        "UPDATE submissions SET user_id = ? WHERE id = ?",
-        (user_id, submission_id),
-    )
+    user_row = conn.execute(
+        """SELECT u.subject_id, s.name AS subject_name
+           FROM users u
+           LEFT JOIN subjects s ON s.id = u.subject_id
+           WHERE u.id = ?""",
+        (user_id,),
+    ).fetchone()
+    if user_row and user_row["subject_id"]:
+        conn.execute(
+            """UPDATE submissions
+               SET user_id = ?,
+                   subject_id = ?,
+                   subject_name = CASE
+                       WHEN COALESCE(subject_name, '') = '' THEN ?
+                       ELSE subject_name
+                   END
+               WHERE id = ?""",
+            (user_id, user_row["subject_id"], user_row["subject_name"], submission_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE submissions SET user_id = ? WHERE id = ?",
+            (user_id, submission_id),
+        )
     conn.commit()
     row = conn.execute(
         "SELECT * FROM submissions WHERE id = ?", (submission_id,)
@@ -2260,6 +2505,7 @@ def upsert_subject_metric_snapshot(
 def backfill_subject_metric_snapshots(
     db_path: Path,
     submission_ids: list[str] | None = None,
+    report_slugs: list[str] | None = None,
     data_dir: Path | None = None,
     published_dir: Path | None = None,
     dry_run: bool = False,
@@ -2316,6 +2562,11 @@ def backfill_subject_metric_snapshots(
 
     if published_dir is not None:
         published_candidates = _list_linked_published_report_candidates(db_path, published_dir)
+        if report_slugs:
+            allowed_slugs = {str(item) for item in report_slugs if item}
+            published_candidates = [
+                item for item in published_candidates if str(item["report_slug"]) in allowed_slugs
+            ]
         summary["published_reports_scanned"] = len(published_candidates)
         for candidate in published_candidates:
             try:
