@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-ALLOWED_EXTENSIONS = {".fit", ".zwo", ".xlsx", ".md", ".csv"}
+ALLOWED_EXTENSIONS = {".fit", ".zwo", ".xlsx", ".md", ".csv", ".pdf"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 REPORT_DATA_RE = re.compile(
@@ -126,6 +126,12 @@ def _submission_fingerprint_from_manifest(file_manifest: list[dict]) -> str:
     if not parts:
         return ""
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def _has_file_extension(file_pairs: list[tuple[str, bytes]], extension: str) -> bool:
+    """Return whether any uploaded file uses the given lowercase suffix."""
+    normalized = extension.lower()
+    return any(Path(filename).suffix.lower() == normalized for filename, _ in file_pairs)
 
 
 def _duplicate_group_key(
@@ -540,12 +546,21 @@ def _reconcile_job_artifacts(
 
 def _build_channel_payload(job: dict, submission: dict) -> dict:
     """Reconstruct the webhook payload used for automatic analysis."""
+    file_tags = _get_file_tags(submission, submission.get("workspace_path"))
+    analysis_mode = (
+        "standalone_inscyd"
+        if "INSCYD" in file_tags and "CPET" not in file_tags
+        else "cpet"
+    )
     return {
         "submission_id": submission["id"],
         "job_id": job["id"],
         "workspace_path": submission["workspace_path"],
         "description": submission.get("description") or "",
         "files": submission.get("file_manifest") or [],
+        "file_tags": file_tags,
+        "analysis_mode": analysis_mode,
+        "report_type_hint": "inscyd" if analysis_mode == "standalone_inscyd" else "cpet",
     }
 
 
@@ -562,16 +577,24 @@ def _run_pipeline_job(
 ) -> None:
     """Run the standalone pipeline and mark the job done/failed."""
     try:
-        from pipeline.analysis import run_analysis
-        from pipeline.parsers import parse_workspace
-        from pipeline.report import generate_report
-        from pipeline.schema import create_database
-
         workspace = Path(workspace_path).resolve()
-        parsed = parse_workspace(workspace)
-        analysis_db = create_database(workspace, parsed)
-        run_analysis(analysis_db)
-        generate_report(analysis_db, workspace / "report")
+        file_tags = _get_file_tags(None, str(workspace))
+        is_standalone_inscyd = "INSCYD" in file_tags and "CPET" not in file_tags
+
+        if is_standalone_inscyd:
+            from pipeline.inscyd_report import generate_inscyd_report
+
+            generate_inscyd_report(workspace, workspace / "report")
+        else:
+            from pipeline.analysis import run_analysis
+            from pipeline.parsers import parse_workspace
+            from pipeline.report import generate_report
+            from pipeline.schema import create_database
+
+            parsed = parse_workspace(workspace)
+            analysis_db = create_database(workspace, parsed)
+            run_analysis(analysis_db)
+            generate_report(analysis_db, workspace / "report")
 
         safe_subject = subject_name or "subject"
         safe_test_date = test_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -586,7 +609,7 @@ def _run_pipeline_job(
             report_version=_describe_report_version(slug),
             report_url=f"{report_url_prefix.rstrip('/')}/{slug}/",
             completed_at=datetime.now(timezone.utc).isoformat(),
-            file_tags=_get_file_tags(None, str(workspace)),
+            file_tags=file_tags,
         )
         update_job_status(
             db_path,
@@ -812,6 +835,13 @@ def _list_dashboard_entries(
         report_slug = str(job.get("report_slug") or "")
         analysis_method = "대기 중"
         if report_slug:
+            if report_slug not in published_by_slug:
+                refreshed_catalog = {
+                    str(item["report_slug"]): item
+                    for item in list_report_catalog(db_path)
+                    if item.get("report_slug")
+                }
+                published_by_slug.update(refreshed_catalog)
             analysis_method = (
                 published_by_slug.get(report_slug, {}).get("analysis_method")
                 or analysis_method
@@ -1119,7 +1149,6 @@ async def submit(
 
     # Re-analysis mode: add files to existing workspace
     if reanalyze:
-        from server.db import get_submission
         existing_sub = get_submission(db_path, reanalyze)
         if existing_sub and existing_sub.get("workspace_path"):
             workspace = Path(existing_sub["workspace_path"])
@@ -1150,16 +1179,15 @@ async def submit(
 
             # Create new job for re-analysis
             job_id = create_job(db_path, reanalyze)
+            refreshed_sub = get_submission(db_path, reanalyze) or existing_sub
+            payload = _build_channel_payload(
+                {"id": job_id},
+                refreshed_sub,
+            )
 
             await notify_channel(
                 channel_url,
-                {
-                    "submission_id": reanalyze,
-                    "job_id": job_id,
-                    "workspace_path": str(workspace),
-                    "description": description,
-                    "files": manifest,
-                },
+                payload,
             )
 
             return JSONResponse(
@@ -1167,12 +1195,13 @@ async def submit(
                 content={"job_id": job_id, "status": "pending"},
             )
 
-    # Normal submission: require xlsx
-    has_xlsx = any(Path(fn).suffix.lower() == ".xlsx" for fn, _ in file_pairs)
-    if not has_xlsx:
+    # Normal submission: require either COSMED xlsx or standalone INSCYD pdf
+    has_xlsx = _has_file_extension(file_pairs, ".xlsx")
+    has_pdf = _has_file_extension(file_pairs, ".pdf")
+    if not has_xlsx and not has_pdf:
         return JSONResponse(
             status_code=400,
-            content={"error": "at least one .xlsx (COSMED) file required"},
+            content={"error": "at least one .xlsx (COSMED) or .pdf (INSCYD) file required"},
         )
 
     manifest = _build_file_manifest_from_pairs(file_pairs)
@@ -1245,18 +1274,19 @@ async def submit(
         duplicate_group_key=duplicate_group_key,
     )
     job_id = create_job(db_path, submission_id)
-
-    # Dispatch to channel (fire-and-forget, graceful on failure)
-    await notify_channel(
-        channel_url,
-        {
-            "submission_id": submission_id,
-            "job_id": job_id,
+    created_submission = get_submission(db_path, submission_id)
+    payload = _build_channel_payload(
+        {"id": job_id},
+        created_submission or {
+            "id": submission_id,
             "workspace_path": str(workspace),
             "description": description,
-            "files": manifest,
+            "file_manifest": manifest,
         },
     )
+
+    # Dispatch to channel (fire-and-forget, graceful on failure)
+    await notify_channel(channel_url, payload)
 
     return JSONResponse(
         status_code=201,

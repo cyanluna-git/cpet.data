@@ -8,12 +8,14 @@ const mcp = new Server(
     capabilities: { experimental: { 'claude/channel': {} } },
     instructions: `You are a CPET analysis assistant running on a server.
       Events arrive as <channel source="cpet-webhook" type="new_submission">.
-      Content is JSON: {submission_id, job_id, workspace_path, description, files: [{name, extension, size_bytes}]}.
+      Content is JSON: {submission_id, job_id, workspace_path, description, files: [{name, extension, size_bytes}], file_tags, analysis_mode, report_type_hint}.
       When you receive this event:
       1. Read the description to understand the test type
-      2. Run: python -m pipeline --workspace {workspace_path}
-      3. If successful, copy report to published/{slug}/ and update job status
-      4. If failed, update job status with error message
+      2. Check analysis_mode and file_tags to understand whether this is standalone INSCYD or standard CPET.
+      3. Run: python -m pipeline --workspace {workspace_path}
+         The CLI now auto-routes standalone INSCYD workspaces and standard CPET workspaces.
+      4. If successful, copy report to published/{slug}/ and update job status plus dashboard metadata
+      5. If failed, update job status with error message
       Use the cpet-pipeline skill for detailed instructions.`,
   },
 )

@@ -28,8 +28,10 @@ os.environ.setdefault("GOOGLE_CLIENT_SECRET", "fake-client-secret")
 # Create temp data directory
 TEST_DATA_DIR = Path(tempfile.mkdtemp(prefix="cpet_e2e_"))
 DB_PATH = TEST_DATA_DIR / "cpet_platform.db"
+PUBLISHED_DIR = TEST_DATA_DIR / "published"
 
 os.environ["CPET_DATA_DIR"] = str(TEST_DATA_DIR)
+os.environ["CPET_PUBLISHED_DIR"] = str(PUBLISHED_DIR)
 
 from itsdangerous import TimestampSigner  # noqa: E402
 
@@ -208,7 +210,7 @@ if __name__ == "__main__":
     app.state.db_path = DB_PATH
     app.state.data_dir = TEST_DATA_DIR
     app.state.channel_url = "http://127.0.0.1:9999"
-    app.state.published_dir = TEST_DATA_DIR / "published"
+    app.state.published_dir = PUBLISHED_DIR
 
     import uvicorn  # noqa: E402
 
