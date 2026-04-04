@@ -6,6 +6,9 @@
 
 - `start_claude_channel.sh`: tmux 안에서 Claude Code + development channel 세션 시작
 - `check_claude_channel.sh`: channel health, tmux 세션, 최근 jobs 확인
+- `seed_demo_platform_validation.py`: 약 300명 synthetic cohort 기반 demo DB / published report / snapshot / feature set을 한 번에 재생성하는 플랫폼 검증용 시더
+- `intake_real_cpet_golden_corpus.py`: PhysioNet 공개 CPET 데이터에서 작은 real golden corpus를 다운로드하고 curated subset / manifest를 생성
+- `check_platform_readiness_demo.py`: seeded demo DB에 대해 dashboard/manage/explorer/report readiness를 자동 점검하고 gap 후보를 JSON으로 출력
 - `test_upload.py`, `test_parsing.py`, `test_failed_file.py`, `test_db_save.py`: 서버/파이프라인 수동 점검용
 
 ## Archive
@@ -26,4 +29,28 @@
 
 ```bash
 ./scripts/check_claude_channel.sh
+```
+
+플랫폼 밀도 검증용 demo DB 재생성:
+
+```bash
+python scripts/seed_demo_platform_validation.py --reset
+```
+
+공개 CPET golden corpus intake:
+
+```bash
+python scripts/intake_real_cpet_golden_corpus.py --reset
+```
+
+빠른 smoke:
+
+```bash
+python scripts/intake_real_cpet_golden_corpus.py --reset --datasets actes
+```
+
+seeded demo readiness 점검:
+
+```bash
+python scripts/check_platform_readiness_demo.py --seed-if-missing
 ```
