@@ -60,7 +60,7 @@
       ].join("");
       points.innerHTML = `
         <article class="rounded-[18px] border px-4 py-3 sm:col-span-2 xl:col-span-3" style="border-color: rgba(22,32,40,0.08); background: rgba(255,255,255,0.72);">
-          <p class="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">Single Anchor</p>
+          <p class="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">Current Anchor</p>
           <p class="mt-1 text-sm font-semibold text-[var(--ink)]">${only.date}</p>
           <p class="text-sm text-[var(--muted)]">${roundValue(only.value)} ${metric.unit}</p>
         </article>
@@ -151,14 +151,21 @@
     const plotHeight = height - padding * 2;
     const xFor = (value) => padding + (plotWidth * Number(value || 0)) / 100;
     const yFor = (value) => height - padding - (plotHeight * Number(value || 0)) / 100;
+    const pointStyle = map.style || {};
+    const otherFill = pointStyle.other_fill || "rgba(24,78,89,0.28)";
+    const otherRadius = Number(pointStyle.other_radius || 4);
+    const otherStroke = pointStyle.other_stroke || "transparent";
+    const selectedFill = pointStyle.selected_fill || "#8f3b2f";
+    const selectedRadius = Number(pointStyle.selected_radius || 7);
+    const selectedStroke = pointStyle.selected_stroke || "#f4efe6";
 
     const dots = map.points
       .map((point) => {
         const x = xFor(point.x);
         const y = yFor(point.y);
-        const fill = point.is_selected ? "#8f3b2f" : "rgba(24,78,89,0.28)";
-        const radius = point.is_selected ? 7 : 4;
-        const stroke = point.is_selected ? "#f4efe6" : "transparent";
+        const fill = point.is_selected ? selectedFill : otherFill;
+        const radius = point.is_selected ? selectedRadius : otherRadius;
+        const stroke = point.is_selected ? selectedStroke : otherStroke;
         return `<circle cx="${x}" cy="${y}" r="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="2"></circle>`;
       })
       .join("");

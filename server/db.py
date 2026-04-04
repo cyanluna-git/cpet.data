@@ -2892,6 +2892,8 @@ def _build_metric_position(
     for row in latest_rows:
         features = _feature_payload_features(row)
         value = features.get(metric_key)
+        if value is None:
+            value = row.get(metric_key)
         if isinstance(value, (int, float)):
             values.append({
                 "subject_id": row["subject_id"],
@@ -3006,13 +3008,13 @@ def _build_positioning_widget(position: dict | None) -> dict | None:
     percentile = float(position.get("percentile") or 0.0)
     if percentile >= 75.0:
         band_key = "front_pack"
-        band_label = "Front Pack"
+        band_label = "상위권"
     elif percentile >= 40.0:
         band_key = "mid_pack"
-        band_label = "Mid Pack"
+        band_label = "중간권"
     else:
         band_key = "building"
-        band_label = "Building"
+        band_label = "형성 구간"
 
     return {
         "value": position.get("value"),
@@ -3111,6 +3113,17 @@ def _classify_momentum_band(score: float | None, *, history_ready: bool) -> str:
     if score >= 45.0:
         return "안정 신호"
     return "관찰 구간"
+
+
+def _classify_base_band(score: float | None) -> str:
+    """Convert a current-state base score to a narrative label."""
+    if score is None:
+        return "기준점 부족"
+    if score >= 70.0:
+        return "강한 지구력 기반"
+    if score >= 45.0:
+        return "중간 지구력 기반"
+    return "기반 형성 구간"
 
 
 def _build_cohort_map_point(
@@ -3226,8 +3239,8 @@ def _build_cohort_map(
 
     return {
         "axes": {
-            "x_label": "Aerobic Capacity",
-            "y_label": "Change Momentum",
+            "x_label": "현재 유산소 능력",
+            "y_label": "최근 변화량",
         },
         "points": points,
         "highlighted": highlighted,
@@ -3236,6 +3249,405 @@ def _build_cohort_map(
             "history_ready_count": len([point for point in points if point["history_ready"]]),
             "history_needed_count": len([point for point in points if not point["history_ready"]]),
             "area_cards": area_cards,
+        },
+    }
+
+
+def _build_current_state_map_point(
+    latest_rows: list[dict],
+    latest_row: dict,
+) -> dict:
+    """Build a current-state-only cohort map point for single-anchor subjects."""
+    subject_id = latest_row["subject_id"]
+    aerobic_positions = [
+        _build_metric_position(latest_rows, subject_id, "vo2max_rel"),
+        _build_metric_position(latest_rows, subject_id, "lt1_power_w"),
+    ]
+    base_positions = [
+        _build_metric_position(latest_rows, subject_id, "fatmax_power_w"),
+        _build_metric_position(latest_rows, subject_id, "lt1_power_w"),
+    ]
+    aerobic_score = _average_score(
+        [
+            float(position["percentile"])
+            for position in aerobic_positions
+            if position is not None
+        ]
+    )
+    base_score = _average_score(
+        [
+            float(position["percentile"])
+            for position in base_positions
+            if position is not None
+        ]
+    )
+
+    x = aerobic_score if aerobic_score is not None else 50.0
+    y = base_score if base_score is not None else 50.0
+
+    if x >= 66.0 and y >= 66.0:
+        area_key = "balanced_high"
+        area_label = "균형 상위 구간"
+    elif x >= 66.0:
+        area_key = "aerobic_leading"
+        area_label = "유산소 우위 구간"
+    elif y >= 66.0:
+        area_key = "base_leading"
+        area_label = "지구력 기반 우위 구간"
+    else:
+        area_key = "foundation_building"
+        area_label = "기반 형성 구간"
+
+    return {
+        "subject_id": subject_id,
+        "x": round(x, 1),
+        "y": round(y, 1),
+        "aerobic_score": aerobic_score,
+        "base_score": base_score,
+        "aerobic_label": _classify_capacity_band(aerobic_score),
+        "base_label": _classify_base_band(base_score),
+        "area_key": area_key,
+        "area_label": area_label,
+    }
+
+
+def _build_current_state_map(
+    latest_rows: list[dict],
+    selected_subject_id: str | None = None,
+) -> dict:
+    """Build a current-state positioning map without change semantics."""
+    points: list[dict] = []
+    highlighted = None
+
+    for latest_row in latest_rows:
+        point = _build_current_state_map_point(latest_rows, latest_row)
+        point["is_selected"] = point["subject_id"] == selected_subject_id
+        points.append(point)
+        if point["is_selected"]:
+            highlighted = point
+
+    return {
+        "axes": {
+            "x_label": "유산소 능력",
+            "y_label": "지구력 기반",
+        },
+        "points": points,
+        "highlighted": highlighted,
+    }
+
+
+def _build_latest_snapshot_metric_profiles(
+    snapshot_rows: list[dict],
+    metric_keys: tuple[str, ...],
+) -> list[dict]:
+    """Collapse mixed-source snapshot history into one latest-available metric profile per subject."""
+    profiles: dict[str, dict] = {}
+    for row in snapshot_rows:
+        subject_id = str(row.get("subject_id") or "").strip()
+        if not subject_id:
+            continue
+        profile = profiles.setdefault(
+            subject_id,
+            {
+                "subject_id": subject_id,
+                "latest_measured_at": row.get("measured_at", ""),
+                "source_kinds": set(),
+            },
+        )
+        latest_measured_at = str(row.get("measured_at") or "").strip()
+        if latest_measured_at and latest_measured_at > str(profile.get("latest_measured_at") or ""):
+            profile["latest_measured_at"] = latest_measured_at
+        if row.get("source_kind"):
+            profile["source_kinds"].add(str(row["source_kind"]))
+        for key in metric_keys:
+            if profile.get(key) is None and row.get(key) is not None:
+                profile[key] = row.get(key)
+
+    normalized: list[dict] = []
+    for profile in profiles.values():
+        profile["source_kinds"] = sorted(profile["source_kinds"])
+        normalized.append(profile)
+    return normalized
+
+
+def _classify_fat_strategy_band(score: float | None) -> str:
+    """Translate fat-side percentile into a fuel-strategy label."""
+    if score is None:
+        return "지방 활용 정보 부족"
+    if score >= 66.0:
+        return "지방 활용 상위권"
+    if score >= 33.0:
+        return "지방 활용 중간권"
+    return "지방 활용 보강 구간"
+
+
+def _classify_carb_strategy_band(score: float | None, inscyd_enriched: bool) -> str:
+    """Translate carb-side percentile into a fuel-strategy label."""
+    prefix = "INSCYD 보강" if inscyd_enriched else "CPET fallback"
+    if score is None:
+        return f"{prefix} 탄수 활용 정보 부족"
+    if score >= 66.0:
+        return f"{prefix} 탄수 동원 상위권"
+    if score >= 33.0:
+        return f"{prefix} 탄수 동원 중간권"
+    return f"{prefix} 탄수 동원 보강 구간"
+
+
+def _build_fuel_strategy_profile_point(
+    cohort_rows: list[dict],
+    profile_row: dict,
+) -> dict:
+    """Build a fat-vs-carb cohort point using CPET-safe defaults and INSCYD enrichment."""
+    subject_id = profile_row["subject_id"]
+    fat_positions = [
+        _build_metric_position(cohort_rows, subject_id, "fatmax_power_w"),
+        _build_metric_position(cohort_rows, subject_id, "fatmax_gmin"),
+    ]
+    carb_positions = [
+        _build_metric_position(cohort_rows, subject_id, "carbmax_w"),
+        _build_metric_position(cohort_rows, subject_id, "vlamax"),
+        _build_metric_position(cohort_rows, subject_id, "lt2_power_w"),
+        _build_metric_position(cohort_rows, subject_id, "lt1_power_w"),
+    ]
+
+    fat_score = _average_score(
+        [float(position["percentile"]) for position in fat_positions if position is not None]
+    )
+    carb_score = _average_score(
+        [float(position["percentile"]) for position in carb_positions if position is not None]
+    )
+    if fat_score is None or carb_score is None:
+        return {}
+
+    x = fat_score
+    y = carb_score
+    inscyd_enriched = any(
+        profile_row.get(key) is not None for key in ("carbmax_w", "vlamax")
+    )
+
+    if x >= 66.0 and y >= 66.0:
+        area_key = "hybrid_high"
+        area_label = "혼합 활용 상위"
+    elif x >= 66.0:
+        area_key = "fat_adapted"
+        area_label = "지방 활용 우위"
+    elif y >= 66.0:
+        area_key = "carb_driven"
+        area_label = "탄수 동원 우위"
+    else:
+        area_key = "mixed_building"
+        area_label = "혼합 전략 형성"
+
+    return {
+        "subject_id": subject_id,
+        "x": round(x, 1),
+        "y": round(y, 1),
+        "fat_score": fat_score,
+        "carb_score": carb_score,
+        "fat_label": _classify_fat_strategy_band(fat_score),
+        "carb_label": _classify_carb_strategy_band(carb_score, inscyd_enriched=inscyd_enriched),
+        "area_key": area_key,
+        "area_label": area_label,
+        "inscyd_enriched": inscyd_enriched,
+        "latest_measured_at": profile_row.get("latest_measured_at", ""),
+        "fatmax_power_w": profile_row.get("fatmax_power_w"),
+        "fatmax_gmin": profile_row.get("fatmax_gmin"),
+        "lt1_power_w": profile_row.get("lt1_power_w"),
+        "lt2_power_w": profile_row.get("lt2_power_w"),
+        "carbmax_w": profile_row.get("carbmax_w"),
+        "vlamax": profile_row.get("vlamax"),
+        "source_kinds": profile_row.get("source_kinds", []),
+    }
+
+
+def _build_fuel_strategy_map(
+    snapshot_rows: list[dict],
+    selected_subject_id: str | None = None,
+) -> dict | None:
+    """Build a cohort map for fat-vs-carb strategy using CPET and INSCYD metrics."""
+    profiles = _build_latest_snapshot_metric_profiles(
+        snapshot_rows,
+        (
+            "fatmax_power_w",
+            "fatmax_gmin",
+            "lt1_power_w",
+            "lt2_power_w",
+            "carbmax_w",
+            "vlamax",
+        ),
+    )
+    points: list[dict] = []
+    highlighted = None
+    for profile in profiles:
+        point = _build_fuel_strategy_profile_point(profiles, profile)
+        if not point:
+            continue
+        point["is_selected"] = point["subject_id"] == selected_subject_id
+        points.append(point)
+        if point["is_selected"]:
+            highlighted = point
+
+    if not points or highlighted is None:
+        return None
+
+    return {
+        "axes": {
+            "x_label": "지방 활용 기반",
+            "y_label": "탄수 동원 성향",
+        },
+        "style": {
+            "other_fill": "rgba(120, 128, 140, 0.32)",
+            "other_radius": 4,
+            "other_stroke": "transparent",
+            "selected_fill": "#2b6f77",
+            "selected_radius": 8,
+            "selected_stroke": "#f4efe6",
+        },
+        "points": points,
+        "highlighted": highlighted,
+        "summary": {
+            "total_subjects": len(points),
+            "inscyd_enriched_count": len([point for point in points if point.get("inscyd_enriched")]),
+        },
+    }
+
+
+def _classify_anaerobic_band(score: float | None) -> str:
+    """Translate a VLamax percentile into a readable anaerobic-mobilization band."""
+    if score is None:
+        return "무산소 동원 정보 부족"
+    if score >= 66.0:
+        return "무산소 동원 상위권"
+    if score >= 33.0:
+        return "무산소 동원 중간권"
+    return "무산소 동원 보강 구간"
+
+
+def _classify_high_intensity_band(score: float | None) -> str:
+    """Translate AT/CarbMax percentile into a readable high-intensity output band."""
+    if score is None:
+        return "고강도 출력 정보 부족"
+    if score >= 66.0:
+        return "고강도 출력 상위권"
+    if score >= 33.0:
+        return "고강도 출력 중간권"
+    return "고강도 출력 형성 구간"
+
+
+def _latest_rows_with_metric(
+    rows: list[dict],
+    metric_key: str,
+) -> list[dict]:
+    """Return one latest row per subject where a given metric is available."""
+    latest: dict[str, dict] = {}
+    for row in rows:
+        subject_id = str(row.get("subject_id") or "").strip()
+        if not subject_id or row.get(metric_key) is None:
+            continue
+        latest.setdefault(subject_id, row)
+    return list(latest.values())
+
+
+def _build_anaerobic_profile_point(
+    cohort_rows: list[dict],
+    latest_row: dict,
+) -> dict:
+    """Build an INSCYD-only anaerobic profile point."""
+    subject_id = latest_row["subject_id"]
+    vlamax_position = _build_metric_position(cohort_rows, subject_id, "vlamax")
+    at_position = _build_metric_position(cohort_rows, subject_id, "at_power_w")
+    carbmax_position = _build_metric_position(cohort_rows, subject_id, "carbmax_w")
+
+    x_score = (
+        float(vlamax_position["percentile"])
+        if vlamax_position is not None
+        else None
+    )
+    output_score = _average_score(
+        [
+            float(position["percentile"])
+            for position in (at_position, carbmax_position)
+            if position is not None
+        ]
+    )
+    x = x_score if x_score is not None else 50.0
+    y = output_score if output_score is not None else 50.0
+
+    if x >= 66.0 and y >= 66.0:
+        area_key = "anaerobic_high_output"
+        area_label = "무산소·고출력 상위"
+    elif x >= 66.0:
+        area_key = "anaerobic_punch"
+        area_label = "공격형 에너지 우위"
+    elif y >= 66.0:
+        area_key = "high_intensity_diesel"
+        area_label = "고강도 유지 우위"
+    else:
+        area_key = "anaerobic_building"
+        area_label = "무산소 기반 형성"
+
+    return {
+        "subject_id": subject_id,
+        "x": round(x, 1),
+        "y": round(y, 1),
+        "vlamax": latest_row.get("vlamax"),
+        "at_power_w": latest_row.get("at_power_w"),
+        "carbmax_w": latest_row.get("carbmax_w"),
+        "glycogen_g": latest_row.get("glycogen_g"),
+        "anchor_measured_at": latest_row.get("measured_at", ""),
+        "anaerobic_score": x_score,
+        "output_score": output_score,
+        "anaerobic_label": _classify_anaerobic_band(x_score),
+        "output_label": _classify_high_intensity_band(output_score),
+        "area_key": area_key,
+        "area_label": area_label,
+    }
+
+
+def _build_anaerobic_profile_map(
+    snapshot_rows: list[dict],
+    selected_subject_id: str | None = None,
+) -> dict | None:
+    """Build an INSCYD-only anaerobic profile map from latest VLamax-capable rows."""
+    cohort_rows = _latest_rows_with_metric(snapshot_rows, "vlamax")
+    if not cohort_rows:
+        return None
+
+    points: list[dict] = []
+    highlighted = None
+    for row in cohort_rows:
+        point = _build_anaerobic_profile_point(cohort_rows, row)
+        point["is_selected"] = point["subject_id"] == selected_subject_id
+        points.append(point)
+        if point["is_selected"]:
+            highlighted = point
+
+    if highlighted is None:
+        return None
+
+    return {
+        "axes": {
+            "x_label": "VLamax",
+            "y_label": "AT / CarbMax",
+        },
+        "style": {
+            "other_fill": "rgba(120, 128, 140, 0.38)",
+            "other_radius": 4,
+            "other_stroke": "transparent",
+            "selected_fill": "#8f3b2f",
+            "selected_radius": 8,
+            "selected_stroke": "#f4efe6",
+        },
+        "points": points,
+        "highlighted": highlighted,
+        "summary": {
+            "total_subjects": len(points),
+            "high_anaerobic_count": len(
+                [point for point in points if (point.get("anaerobic_score") or 0.0) >= 66.0]
+            ),
+            "high_output_count": len(
+                [point for point in points if (point.get("output_score") or 0.0) >= 66.0]
+            ),
         },
     }
 
@@ -3496,6 +3908,14 @@ def get_dashboard_subject_analytics(
         ),
         subject_ids=subject_ids,
     )
+    all_snapshot_rows = _filter_dashboard_rows_by_subject_ids(
+        list_subject_metric_snapshots(
+            db_path,
+            limit=5000,
+            include_payload=False,
+        ),
+        subject_ids=subject_ids,
+    )
     latest_endurance_rows: list[dict] = []
     seen_subject_ids: set[str] = set()
     for row in all_endurance_rows:
@@ -3554,6 +3974,18 @@ def get_dashboard_subject_analytics(
         latest_delta_by_subject,
         selected_subject_id=subject_id,
     )
+    current_state_map = _build_current_state_map(
+        latest_endurance_rows,
+        selected_subject_id=subject_id,
+    )
+    fuel_strategy_map = _build_fuel_strategy_map(
+        all_snapshot_rows,
+        selected_subject_id=subject_id,
+    )
+    anaerobic_profile = _build_anaerobic_profile_map(
+        all_snapshot_rows,
+        selected_subject_id=subject_id,
+    )
 
     return {
         "subject": {
@@ -3569,6 +4001,9 @@ def get_dashboard_subject_analytics(
         "positioning_widgets": positioning_widgets,
         "cohort_map_point": target.get("cohort_map_point"),
         "cohort_map": cohort_map,
+        "current_state_map": current_state_map,
+        "fuel_strategy_map": fuel_strategy_map,
+        "anaerobic_profile": anaerobic_profile,
         "latest_trend": latest_trend,
         "timeline_window": {
             "first_anchor_measured_at": timeline[0]["anchor_measured_at"] if timeline else "",

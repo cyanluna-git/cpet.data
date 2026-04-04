@@ -86,33 +86,39 @@ def seed_test_data() -> None:
 
     alpha = create_subject(DB_PATH, name="Alpha Rider")
     beta = create_subject(DB_PATH, name="Sparse Rider")
+    gamma = create_subject(DB_PATH, name="INSCYD Rider")
 
     def _snapshot(
         *,
         subject_id: str,
+        source_kind: str = "cpet_submission",
         source_ref_id: str,
         measured_at: str,
         vo2max_rel: float | None = None,
         fatmax_power_w: float | None = None,
         lt1_power_w: float | None = None,
+        vlamax: float | None = None,
+        at_power_w: float | None = None,
+        carbmax_w: float | None = None,
+        glycogen_g: float | None = None,
     ) -> dict:
         return {
             "subject_id": subject_id,
-            "source_kind": "cpet_submission",
+            "source_kind": source_kind,
             "source_ref_id": source_ref_id,
             "submission_id": None,
             "measured_at": measured_at,
-            "protocol_type": "Belgium Lactate Test Elite",
+            "protocol_type": "Belgium Lactate Test Elite" if source_kind == "cpet_submission" else "INSCYD",
             "vo2max_ml": None,
             "vo2max_rel": vo2max_rel,
             "lt1_power_w": lt1_power_w,
             "lt2_power_w": None,
             "fatmax_power_w": fatmax_power_w,
             "fatmax_gmin": None,
-            "vlamax": None,
-            "at_power_w": None,
-            "carbmax_w": None,
-            "glycogen_g": None,
+            "vlamax": vlamax,
+            "at_power_w": at_power_w,
+            "carbmax_w": carbmax_w,
+            "glycogen_g": glycogen_g,
             "extraction_version": "e2e-seed-v1",
             "quality_flags_json": "[]",
             "payload_json": "{}",
@@ -139,6 +145,19 @@ def seed_test_data() -> None:
             subject_id=beta["id"],
             source_ref_id="sparse-cpet-1",
             measured_at="2026-02-20",
+        ),
+        _snapshot(
+            subject_id=gamma["id"],
+            source_kind="inscyd_report",
+            source_ref_id="gamma-inscyd-1",
+            measured_at="2026-02-12",
+            vo2max_rel=57.0,
+            fatmax_power_w=184.0,
+            lt1_power_w=214.0,
+            vlamax=0.39,
+            at_power_w=276.0,
+            carbmax_w=342.0,
+            glycogen_g=390.0,
         ),
     ):
         upsert_subject_metric_snapshot(DB_PATH, row)

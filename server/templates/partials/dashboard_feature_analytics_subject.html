@@ -1,5 +1,6 @@
 {% if detail %}
 <section class="grid gap-5 xl:gap-6">
+  {% set is_timeline_ready = detail.history_state == 'timeline' %}
   <div
     class="analytics-panel-card"
     style="background: linear-gradient(135deg, rgba(22, 32, 40, 0.96), rgba(24, 78, 89, 0.94)); color: #f7f1e7; border-color: rgba(255,255,255,0.12);"
@@ -9,16 +10,20 @@
         <div class="analytics-eyebrow" style="background: rgba(255,255,255,0.12); color: #f2d7a6;">Subject Drill-in</div>
         <h3 class="mt-4 text-3xl font-semibold" style="color: #f7f1e7;">{{ detail.subject.name }}</h3>
         <p class="mt-3 max-w-2xl text-sm" style="color: rgba(247, 241, 231, 0.78);">
+          {% if is_timeline_ready %}
           가장 최근 측정일 {{ detail.latest_anchor_measured_at }} 기준으로 현재 상태와 변화 흐름을 함께 읽습니다.
+          {% else %}
+          가장 최근 측정일 {{ detail.latest_anchor_measured_at }} 기준으로 현재 상태를 먼저 요약합니다. 반복 측정이 더 쌓이면 변화 추세가 열립니다.
+          {% endif %}
         </p>
       </div>
       <div class="grid gap-3 text-sm lg:min-w-[280px]">
         <div class="rounded-[18px] border px-4 py-3" style="border-color: rgba(255,255,255,0.14); background: rgba(255,255,255,0.08);">
-          <div class="analytics-panel-label" style="color: rgba(247, 241, 231, 0.68);">History State</div>
-          <div class="mt-2 text-lg font-semibold" style="color: #f7f1e7;">{{ detail.history_state }}</div>
+          <div class="analytics-panel-label" style="color: rgba(247, 241, 231, 0.68);">측정 상태</div>
+          <div class="mt-2 text-lg font-semibold" style="color: #f7f1e7;">{{ "반복 측정 추세" if is_timeline_ready else "현재 상태 요약" }}</div>
         </div>
         <div class="rounded-[18px] border px-4 py-3" style="border-color: rgba(255,255,255,0.14); background: rgba(255,255,255,0.08);">
-          <div class="analytics-panel-label" style="color: rgba(247, 241, 231, 0.68);">Coverage</div>
+          <div class="analytics-panel-label" style="color: rgba(247, 241, 231, 0.68);">커버리지</div>
           <div class="mt-2 text-sm" style="color: rgba(247, 241, 231, 0.86);">
             usable history {{ detail.usable_history_count }} · usable delta {{ detail.usable_delta_count }}
           </div>
@@ -97,8 +102,8 @@
     </div>
 
     <div class="analytics-panel-card">
-      <div class="analytics-section-tag">Trend Signal</div>
-      <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">반복 측정 변화</h4>
+      <div class="analytics-section-tag">{{ "Trend Signal" if is_timeline_ready else "Readiness" }}</div>
+      <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">{{ "반복 측정 변화" if is_timeline_ready else "변화 해석 준비도" }}</h4>
       {% if detail.latest_trend.state == 'delta_ready' %}
       <p class="analytics-note mt-2">
         vs {{ detail.latest_trend.comparison_anchor_measured_at }}
@@ -125,7 +130,11 @@
       </div>
       {% else %}
       <p class="analytics-note mt-3">
+        {% if is_timeline_ready %}
         변화 신호를 보려면 비교 가능한 측정이 한 번 더 필요합니다.
+        {% else %}
+        이 피험자는 아직 usable anchor가 1회라 변화 추세 대신 현재 상태만 읽을 수 있습니다.
+        {% endif %}
       </p>
       {% if detail.latest_trend.comparison_anchor_measured_at %}
       <div class="analytics-subcard mt-4">
@@ -133,14 +142,143 @@
         <div class="mt-2 text-lg font-semibold text-[var(--ink)]">{{ detail.latest_trend.comparison_anchor_measured_at }}</div>
       </div>
       {% endif %}
+      {% if not is_timeline_ready %}
+      <div class="analytics-subcard mt-4">
+        <div class="analytics-panel-label">다음 측정 권장</div>
+        <div class="mt-2 text-lg font-semibold text-[var(--ink)]">유사 프로토콜로 1회 추가 측정</div>
+        <div class="mt-1 text-sm text-[var(--muted)]">같은 source와 비슷한 조건으로 한 번 더 측정하면 변화 해석과 delta 비교가 열립니다.</div>
+      </div>
+      {% endif %}
       {% endif %}
     </div>
   </div>
 
+  {% if detail.fuel_strategy_map %}
+  <div class="analytics-panel-card">
+    <div class="analytics-section-tag">Fuel Strategy Profile</div>
+    <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">연료 전략 프로필</h4>
+    <p class="analytics-note mt-2">
+      FatMax 기반의 지방 활용 축과 상단 강도 지표 기반의 탄수 동원 축을 함께 읽습니다.
+      {% if detail.fuel_strategy_map.highlighted.inscyd_enriched %}
+      이 subject는 INSCYD CarbMax / VLamax가 같이 반영된 보강 해석입니다.
+      {% else %}
+      이 subject는 CPET 상단 강도 지표를 fallback으로 사용한 보수적 해석입니다.
+      {% endif %}
+    </p>
+    <div class="mt-5 grid gap-4 xl:grid-cols-[1.5fr,1fr]">
+      <div class="rounded-[22px] border p-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);" data-dashboard-map-root>
+        <svg
+          viewBox="0 0 360 280"
+          class="h-72 w-full"
+          preserveAspectRatio="xMidYMid meet"
+          aria-label="연료 전략 지도"
+          data-dashboard-map-svg
+        ></svg>
+        <div class="mt-4 rounded-[18px] border px-4 py-4 text-sm text-[var(--muted)]" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          오른쪽일수록 FatMax 기반 지방 활용이 좋고, 위쪽일수록 탄수 동원 성향이 강합니다.
+        </div>
+        <script type="application/json" data-dashboard-map-data>{{ detail.fuel_strategy_map|tojson }}</script>
+      </div>
+      <div class="grid gap-3">
+        <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          <div class="analytics-panel-label">현재 연료 전략</div>
+          <div class="mt-2 text-lg font-semibold text-[var(--ink)]">{{ detail.fuel_strategy_map.highlighted.area_label }}</div>
+          <div class="mt-1 text-sm text-[var(--muted)]">{{ detail.fuel_strategy_map.highlighted.fat_label }}</div>
+        </div>
+        <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          <div class="analytics-panel-label">탄수 활용 해석</div>
+          <div class="mt-2 text-lg font-semibold text-[var(--ink)]">{{ detail.fuel_strategy_map.highlighted.carb_label }}</div>
+          <div class="mt-1 text-sm text-[var(--muted)]">
+            {% if detail.fuel_strategy_map.highlighted.inscyd_enriched %}
+            CarbMax / VLamax가 같이 들어간 INSCYD 보강 해석입니다.
+            {% else %}
+            LT1 / LT2 같은 CPET 상단 강도 지표를 fallback으로 사용했습니다.
+            {% endif %}
+          </div>
+        </div>
+        <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          <div class="analytics-panel-label">현재 요약</div>
+          <div class="mt-2 text-sm text-[var(--muted)]">
+            FatMax {{ detail.fuel_strategy_map.highlighted.fatmax_power_w if detail.fuel_strategy_map.highlighted.fatmax_power_w is not none else "-" }}W
+            {% if detail.fuel_strategy_map.highlighted.lt2_power_w is not none %}
+            · LT2 {{ detail.fuel_strategy_map.highlighted.lt2_power_w }}W
+            {% elif detail.fuel_strategy_map.highlighted.lt1_power_w is not none %}
+            · LT1 {{ detail.fuel_strategy_map.highlighted.lt1_power_w }}W
+            {% endif %}
+            {% if detail.fuel_strategy_map.highlighted.carbmax_w is not none %}
+            · CarbMax {{ detail.fuel_strategy_map.highlighted.carbmax_w }}W
+            {% endif %}
+            {% if detail.fuel_strategy_map.highlighted.vlamax is not none %}
+            · VLamax {{ detail.fuel_strategy_map.highlighted.vlamax }}
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if detail.anaerobic_profile %}
+  <div class="analytics-panel-card">
+    <div class="analytics-section-tag">INSCYD Anaerobic Profile</div>
+    <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">무산소 프로필</h4>
+    <p class="analytics-note mt-2">
+      가장 최근 INSCYD anchor {{ detail.anaerobic_profile.highlighted.anchor_measured_at }} 기준으로
+      VLamax와 상단 강도 활용(AT / CarbMax) 위치를 함께 읽습니다.
+    </p>
+    <div class="mt-5 grid gap-4 xl:grid-cols-[1.5fr,1fr]">
+      <div class="rounded-[22px] border p-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);" data-dashboard-map-root>
+        <svg
+          viewBox="0 0 360 280"
+          class="h-72 w-full"
+          preserveAspectRatio="xMidYMid meet"
+          aria-label="무산소 프로필 지도"
+          data-dashboard-map-svg
+        ></svg>
+        <div class="mt-4 rounded-[18px] border px-4 py-4 text-sm text-[var(--muted)]" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          오른쪽일수록 VLamax가 높고, 위쪽일수록 AT와 CarbMax 기준의 고강도 활용 폭이 넓습니다.
+        </div>
+        <script type="application/json" data-dashboard-map-data>{{ detail.anaerobic_profile|tojson }}</script>
+      </div>
+      <div class="grid gap-3">
+        <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          <div class="analytics-panel-label">현재 무산소 성향</div>
+          <div class="mt-2 text-lg font-semibold text-[var(--ink)]">{{ detail.anaerobic_profile.highlighted.area_label }}</div>
+          <div class="mt-1 text-sm text-[var(--muted)]">{{ detail.anaerobic_profile.highlighted.anaerobic_label }}</div>
+        </div>
+        <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          <div class="analytics-panel-label">고강도 활용</div>
+          <div class="mt-2 text-lg font-semibold text-[var(--ink)]">{{ detail.anaerobic_profile.highlighted.output_label }}</div>
+          <div class="mt-1 text-sm text-[var(--muted)]">AT와 CarbMax percentile을 묶어 상단 강도 활용 폭을 읽습니다.</div>
+        </div>
+        <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          <div class="analytics-panel-label">현재 요약</div>
+          <div class="mt-2 text-sm text-[var(--muted)]">
+            VLamax {{ detail.anaerobic_profile.highlighted.vlamax if detail.anaerobic_profile.highlighted.vlamax is not none else "-" }} ·
+            AT {{ detail.anaerobic_profile.highlighted.at_power_w if detail.anaerobic_profile.highlighted.at_power_w is not none else "-" }}W ·
+            CarbMax {{ detail.anaerobic_profile.highlighted.carbmax_w if detail.anaerobic_profile.highlighted.carbmax_w is not none else "-" }}W
+            {% if detail.anaerobic_profile.highlighted.glycogen_g is not none %}
+            · Glycogen {{ detail.anaerobic_profile.highlighted.glycogen_g }}g
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if is_timeline_ready %}
   <div class="grid gap-4 xl:grid-cols-[1.65fr,1fr] 2xl:grid-cols-[1.8fr,1fr]">
     <div class="analytics-panel-card">
-      <div class="analytics-section-tag">Change Story</div>
-      <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">시계열 변화 차트</h4>
+      <div class="analytics-section-tag">{{ "Change Story" if is_timeline_ready else "Current Snapshot" }}</div>
+      <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">{{ "시계열 변화 차트" if is_timeline_ready else "현재 상태 카드" }}</h4>
+      <p class="analytics-note mt-2">
+        {% if is_timeline_ready %}
+        usable anchor가 2개 이상일 때 지표가 어떻게 움직였는지 먼저 확인합니다.
+        {% else %}
+        아직 변화 곡선 대신 최신 anchor 기준의 현재 상태만 카드 형태로 보여줍니다.
+        {% endif %}
+      </p>
       <div class="mt-5 grid gap-4 xl:grid-cols-2">
         {% for metric in [
           {'key': 'vo2max_rel', 'label': 'VO2max', 'unit': 'mL/kg/min'},
@@ -176,7 +314,7 @@
       data-dashboard-map-root
     >
       <div class="analytics-section-tag">Cohort Map</div>
-      <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">코호트 좌표계</h4>
+      <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">코호트 내 현재 위치</h4>
       <div class="mt-5 rounded-[22px] border p-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
         <svg
           viewBox="0 0 360 280"
@@ -186,15 +324,18 @@
           data-dashboard-map-svg
         ></svg>
       </div>
+      <div class="mt-4 rounded-[18px] border px-4 py-4 text-sm text-[var(--muted)]" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+        오른쪽일수록 현재 유산소 능력이 높고, 위쪽일수록 최근 변화 폭이 큽니다.
+      </div>
       {% if detail.cohort_map.highlighted %}
       <div class="mt-4 grid gap-3 sm:grid-cols-2">
         <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
-          <div class="analytics-panel-label">현재 영역</div>
+          <div class="analytics-panel-label">현재 위치</div>
           <div class="mt-2 text-lg font-semibold text-[var(--ink)]">{{ detail.cohort_map.highlighted.area_label }}</div>
           <div class="mt-1 text-sm text-[var(--muted)]">{{ detail.cohort_map.highlighted.capacity_label }}</div>
         </div>
         <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
-          <div class="analytics-panel-label">변화 신호</div>
+          <div class="analytics-panel-label">최근 변화 해석</div>
           <div class="mt-2 text-lg font-semibold text-[var(--ink)]">{{ detail.cohort_map.highlighted.momentum_label }}</div>
           <div class="mt-1 text-sm text-[var(--muted)]">
             {% if detail.cohort_map.highlighted.history_ready %}
@@ -209,17 +350,61 @@
       <script type="application/json" data-dashboard-map-data>{{ detail.cohort_map|tojson }}</script>
     </div>
   </div>
+  {% else %}
+  <div class="analytics-panel-card">
+    <div class="analytics-section-tag">Current Position</div>
+    <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">코호트 내 현재 위치 맵</h4>
+    <p class="analytics-note mt-2">
+      아직 변화 추세는 없지만, 현재 측정값을 기준으로 코호트 안에서 어디쯤인지 좌표로 읽을 수 있습니다.
+    </p>
+    <div class="mt-5 grid gap-4 xl:grid-cols-[1.55fr,0.95fr]">
+      <div class="rounded-[22px] border p-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);" data-dashboard-map-root>
+        <svg
+          viewBox="0 0 360 280"
+          class="h-72 w-full"
+          preserveAspectRatio="xMidYMid meet"
+          aria-label="현재 위치 지도"
+          data-dashboard-map-svg
+        ></svg>
+        <div class="mt-4 rounded-[18px] border px-4 py-4 text-sm text-[var(--muted)]" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          오른쪽일수록 유산소 능력이 높고, 위쪽일수록 현재 지구력 기반이 더 단단합니다.
+        </div>
+        <script type="application/json" data-dashboard-map-data>{{ detail.current_state_map|tojson }}</script>
+      </div>
+      <div class="grid gap-3">
+        <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          <div class="analytics-panel-label">현재 위치</div>
+          <div class="mt-2 text-lg font-semibold text-[var(--ink)]">{{ detail.current_state_map.highlighted.area_label }}</div>
+          <div class="mt-1 text-sm text-[var(--muted)]">{{ detail.current_state_map.highlighted.aerobic_label }}</div>
+        </div>
+        <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          <div class="analytics-panel-label">현재 해석</div>
+          <div class="mt-2 text-lg font-semibold text-[var(--ink)]">{{ detail.current_state_map.highlighted.base_label }}</div>
+          <div class="mt-1 text-sm text-[var(--muted)]">한 번 더 같은 조건으로 측정하면 현재 위치 위에 변화 방향까지 겹쳐 읽을 수 있습니다.</div>
+        </div>
+        <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          <div class="analytics-panel-label">현재 요약</div>
+          <div class="mt-2 text-sm text-[var(--muted)]">
+            VO2max {{ detail.current_state.vo2max_rel if detail.current_state.vo2max_rel is not none else "-" }} ·
+            LT1 {{ detail.current_state.lt1_power_w if detail.current_state.lt1_power_w is not none else "-" }}W ·
+            FatMax {{ detail.current_state.fatmax_power_w if detail.current_state.fatmax_power_w is not none else "-" }}W
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   <div class="analytics-panel-card">
-    <div class="analytics-section-tag">Timeline Story</div>
-    <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">시계열 변화 로그</h4>
+    <div class="analytics-section-tag">{{ "Timeline Story" if is_timeline_ready else "Measurement Log" }}</div>
+    <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">{{ "시계열 변화 로그" if is_timeline_ready else "측정 로그" }}</h4>
     <div class="mt-5 grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
       {% for point in detail.timeline %}
       <div class="rounded-[22px] border px-5 py-5" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72); box-shadow: 0 10px 26px rgba(17, 25, 32, 0.04);">
         <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
             <div class="analytics-panel-label">
-              {% if loop.last %}Latest Anchor{% else %}History Point{% endif %}
+              {% if loop.last %}{{ "Latest Anchor" if is_timeline_ready else "Current Anchor" }}{% else %}{{ "History Point" if is_timeline_ready else "Previous Point" }}{% endif %}
             </div>
             <div class="mt-2 text-xl font-semibold text-[var(--ink)]">{{ point.anchor_measured_at }}</div>
           </div>

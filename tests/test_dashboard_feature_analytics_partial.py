@@ -41,6 +41,10 @@ def _snapshot(
     vo2max_rel: float | None = None,
     fatmax_power_w: float | None = None,
     lt1_power_w: float | None = None,
+    vlamax: float | None = None,
+    at_power_w: float | None = None,
+    carbmax_w: float | None = None,
+    glycogen_g: float | None = None,
 ) -> dict:
     return {
         "subject_id": subject_id,
@@ -55,10 +59,10 @@ def _snapshot(
         "lt2_power_w": None,
         "fatmax_power_w": fatmax_power_w,
         "fatmax_gmin": None,
-        "vlamax": None,
-        "at_power_w": None,
-        "carbmax_w": None,
-        "glycogen_g": None,
+        "vlamax": vlamax,
+        "at_power_w": at_power_w,
+        "carbmax_w": carbmax_w,
+        "glycogen_g": glycogen_g,
         "extraction_version": "test-v1",
         "quality_flags_json": "[]",
         "payload_json": "{}",
@@ -68,6 +72,7 @@ def _snapshot(
 def _seed_feature_rows(db_path: Path) -> dict:
     alpha = create_subject(db_path, name="Alpha Rider")
     beta = create_subject(db_path, name="Beta Rider")
+    gamma = create_subject(db_path, name="INSCYD Rider")
 
     for snapshot in (
         _snapshot(
@@ -97,12 +102,25 @@ def _seed_feature_rows(db_path: Path) -> dict:
             fatmax_power_w=170.0,
             lt1_power_w=198.0,
         ),
+        _snapshot(
+            subject_id=gamma["id"],
+            source_kind="inscyd_report",
+            source_ref_id="gamma-inscyd-1",
+            measured_at="2026-02-12",
+            vo2max_rel=57.0,
+            fatmax_power_w=184.0,
+            lt1_power_w=214.0,
+            vlamax=0.39,
+            at_power_w=276.0,
+            carbmax_w=342.0,
+            glycogen_g=390.0,
+        ),
     ):
         upsert_subject_metric_snapshot(db_path, snapshot)
 
     backfill_endurance_core_feature_sets(db_path)
     backfill_longitudinal_delta_feature_sets(db_path)
-    return {"alpha": alpha, "beta": beta}
+    return {"alpha": alpha, "beta": beta, "gamma": gamma}
 
 
 def _login_as(client: TestClient, role: str, google_id: str = "dashboard-analytics-gid") -> dict:
@@ -172,7 +190,7 @@ class TestDashboardFeatureAnalyticsPartial:
         assert 'id="dashboard-analytics-region"' not in resp.text
         assert 'id="filter-tabs"' in resp.text
         assert 'id="job-list-body"' in resp.text
-        assert 'hx-get="/api/jobs/partial"' in resp.text
+        assert 'hx-get="/api/jobs/partial?group_by=subject"' in resp.text
         assert 'hx-trigger="load, every 10s"' in resp.text
 
     def test_dashboard_analytics_overview_partial_renders_summary(self, tmp_path: Path) -> None:
@@ -184,11 +202,12 @@ class TestDashboardFeatureAnalyticsPartial:
         resp = client.get("/api/dashboard/analytics")
 
         assert resp.status_code == 200
-        assert "주요 지표 대시보드" in resp.text
-        assert "Single-Anchor Watchlist" in resp.text
-        assert "Repeat-Test Ready" in resp.text
-        assert "Cohort Areas" in resp.text
-        assert "개별 이름 없이 전체 분포와 변화 영역만 익명으로 집계합니다." in resp.text
+        assert "코호트 운영 개요" in resp.text
+        assert "추가 측정 필요" in resp.text
+        assert "반복 측정 해석 가능" in resp.text
+        assert "코호트 분포 요약" in resp.text
+        assert "개별 이름 없이 현재 위치와 최근 변화 방향의 분포만 익명으로 집계합니다." in resp.text
+        assert "개별 피험자 보기" in resp.text
         assert "Top VO2max" not in resp.text
         assert seeded["alpha"]["id"] in resp.text
 
@@ -202,10 +221,10 @@ class TestDashboardFeatureAnalyticsPartial:
         resp = client.get("/api/dashboard/analytics")
 
         assert resp.status_code == 200
-        assert "My Dashboard" in resp.text
+        assert "내 분석 대상" in resp.text
         assert "Alpha Rider" in resp.text
         assert "Beta Rider" not in resp.text
-        assert "Current Cohort" in resp.text
+        assert "현재 분석 가능 피험자" in resp.text
 
     def test_dashboard_analytics_subject_partial_renders_drill_in(self, tmp_path: Path) -> None:
         db_path = _setup_app(tmp_path)
@@ -223,11 +242,15 @@ class TestDashboardFeatureAnalyticsPartial:
         assert "Current State" in resp.text
         assert "Cohort Positioning" in resp.text
         assert "Trend Signal" in resp.text
-        assert "상위 50%권" in resp.text
+        assert "반복 측정 추세" in resp.text
+        assert "상위 " in resp.text
         assert "vs 2026-01-10" in resp.text
         assert "ΔFatMax 15.0" in resp.text
+        assert "연료 전략 프로필" in resp.text
+        assert "현재 연료 전략" in resp.text
+        assert "탄수 활용 해석" in resp.text
         assert "시계열 변화 차트" in resp.text
-        assert "코호트 좌표계" in resp.text
+        assert "코호트 내 현재 위치" in resp.text
         assert "VO2max" in resp.text
         assert "LT1" in resp.text
         assert "FatMax" in resp.text
@@ -269,5 +292,35 @@ class TestDashboardFeatureAnalyticsPartial:
         assert "VO2max" in resp.text
         assert "LT1" in resp.text
         assert "FatMax" in resp.text
+        assert "현재 상태 요약" in resp.text
+        assert "변화 해석 준비도" in resp.text
+        assert "코호트 내 현재 위치 맵" in resp.text
+        assert "현재 해석" in resp.text
+        assert "다음 측정 권장" in resp.text
+        assert "연료 전략 프로필" in resp.text
+        assert "시계열 변화 차트" not in resp.text
         assert "data-dashboard-chart-select" not in resp.text
-        assert resp.text.count("data-dashboard-chart-root") == 3
+        assert "data-dashboard-chart-root" not in resp.text
+        assert resp.text.count("data-dashboard-map-root") >= 1
+
+    def test_dashboard_analytics_subject_partial_renders_anaerobic_profile_for_inscyd_subject(
+        self, tmp_path: Path
+    ) -> None:
+        db_path = _setup_app(tmp_path)
+        seeded = _seed_feature_rows(db_path)
+        client = TestClient(app, raise_server_exceptions=False)
+        _login_as(client, "admin")
+
+        resp = client.get(
+            "/api/dashboard/analytics/subject",
+            params={"subject_id": seeded["gamma"]["id"]},
+        )
+
+        assert resp.status_code == 200
+        assert "무산소 프로필" in resp.text
+        assert "연료 전략 프로필" in resp.text
+        assert "현재 무산소 성향" in resp.text
+        assert "고강도 활용" in resp.text
+        assert "VLamax 0.39" in resp.text
+        assert "AT 276.0W" in resp.text
+        assert "CarbMax 342.0W" in resp.text

@@ -32,6 +32,10 @@ def _snapshot(
     vo2max_rel: float | None = None,
     fatmax_power_w: float | None = None,
     lt1_power_w: float | None = None,
+    vlamax: float | None = None,
+    at_power_w: float | None = None,
+    carbmax_w: float | None = None,
+    glycogen_g: float | None = None,
     extraction_version: str = "test-v1",
 ) -> dict:
     return {
@@ -47,10 +51,10 @@ def _snapshot(
         "lt2_power_w": None,
         "fatmax_power_w": fatmax_power_w,
         "fatmax_gmin": None,
-        "vlamax": None,
-        "at_power_w": None,
-        "carbmax_w": None,
-        "glycogen_g": None,
+        "vlamax": vlamax,
+        "at_power_w": at_power_w,
+        "carbmax_w": carbmax_w,
+        "glycogen_g": glycogen_g,
         "extraction_version": extraction_version,
         "quality_flags_json": "[]",
         "payload_json": "{}",
@@ -95,6 +99,10 @@ def _seed_dashboard_feature_rows(db_path: Path) -> dict:
             source_kind="inscyd_report",
             source_ref_id="gamma-inscyd-1",
             measured_at="2026-01-20",
+            vlamax=0.42,
+            at_power_w=288.0,
+            carbmax_w=356.0,
+            glycogen_g=402.0,
         ),
         _snapshot(
             subject_id=gamma["id"],
@@ -256,13 +264,23 @@ class TestDashboardFeatureAnalyticsQuery:
         }
         assert alpha["positioning_widgets"]["vo2max_rel"]["band_key"] == "mid_pack"
         assert alpha["positioning_widgets"]["vo2max_rel"]["relative_label"] == "상위 67%권"
-        assert alpha["positioning_widgets"]["fatmax_power_w"]["band_label"] == "Mid Pack"
+        assert alpha["positioning_widgets"]["fatmax_power_w"]["band_label"] == "중간권"
         assert alpha["timeline_window"] == {
             "first_anchor_measured_at": "2026-01-10",
             "latest_anchor_measured_at": "2026-02-10",
         }
         assert alpha["cohort_map"]["highlighted"]["area_key"] == "building_momentum"
         assert alpha["cohort_map"]["highlighted"]["history_ready"] is True
+        assert alpha["current_state_map"]["highlighted"]["area_key"] in {
+            "balanced_high",
+            "aerobic_leading",
+            "base_leading",
+            "foundation_building",
+        }
+        assert alpha["fuel_strategy_map"] is not None
+        assert alpha["fuel_strategy_map"]["highlighted"]["inscyd_enriched"] is False
+        assert alpha["fuel_strategy_map"]["highlighted"]["fatmax_power_w"] == 195.0
+        assert alpha["fuel_strategy_map"]["highlighted"]["lt1_power_w"] == 220.0
 
         assert gamma is not None
         assert gamma["history_state"] == "timeline"
@@ -280,6 +298,21 @@ class TestDashboardFeatureAnalyticsQuery:
         }
         assert gamma["positioning_widgets"]["vo2max_rel"]["band_key"] == "front_pack"
         assert gamma["cohort_map"]["highlighted"]["area_key"] == "history_needed"
+        assert gamma["current_state_map"]["highlighted"]["area_key"] in {
+            "balanced_high",
+            "aerobic_leading",
+            "base_leading",
+            "foundation_building",
+        }
+        assert gamma["fuel_strategy_map"] is not None
+        assert gamma["fuel_strategy_map"]["highlighted"]["inscyd_enriched"] is True
+        assert gamma["fuel_strategy_map"]["highlighted"]["carbmax_w"] == 356.0
+        assert gamma["fuel_strategy_map"]["highlighted"]["vlamax"] == 0.42
+        assert gamma["anaerobic_profile"] is not None
+        assert gamma["anaerobic_profile"]["highlighted"]["anchor_measured_at"] == "2026-01-20"
+        assert gamma["anaerobic_profile"]["highlighted"]["vlamax"] == 0.42
+        assert gamma["anaerobic_profile"]["highlighted"]["at_power_w"] == 288.0
+        assert gamma["anaerobic_profile"]["highlighted"]["carbmax_w"] == 356.0
 
     def test_detail_returns_none_for_missing_subject(self, tmp_path: Path) -> None:
         db_path = _init_platform_db(tmp_path)
@@ -395,3 +428,5 @@ class TestDashboardFeatureAnalyticsQuery:
             "first_anchor_measured_at": "2026-02-20",
             "latest_anchor_measured_at": "2026-02-20",
         }
+        assert detail["fuel_strategy_map"] is None
+        assert detail["anaerobic_profile"] is None

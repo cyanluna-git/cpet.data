@@ -24,10 +24,11 @@ test.describe("Dashboard analytics", () => {
 
     await expect(page.locator("#filter-tabs")).toHaveCount(0);
     await expect(page.locator('a[href="/dashboard?tab=reports"]')).toBeVisible();
-    await expect(page.locator("text=주요 지표 대시보드")).toBeVisible();
-    await expect(page.locator("text=Current Cohort")).toBeVisible();
-    await expect(page.locator("text=Repeat-Test Ready")).toBeVisible();
-    await expect(page.locator("text=Cohort Areas")).toBeVisible();
+    await expect(page.locator("text=코호트 운영 개요")).toBeVisible();
+    await expect(page.locator("text=현재 분석 가능 피험자")).toBeVisible();
+    await expect(page.locator("text=반복 측정 해석 가능")).toBeVisible();
+    await expect(page.locator("text=코호트 분포 요약")).toBeVisible();
+    await expect(page.locator(".analytics-subject-shell .analytics-panel-label").filter({ hasText: "개별 피험자 보기" })).toBeVisible();
     await expect(page.locator("text=Top VO2max")).toHaveCount(0);
   });
 
@@ -49,20 +50,28 @@ test.describe("Dashboard analytics", () => {
 
     const detail = page.locator("#dashboard-analytics-subject-detail");
     await expect(detail.locator("text=Trend Signal")).toBeVisible();
+    await expect(detail.locator("text=반복 측정 추세")).toBeVisible();
     await expect(detail.locator("text=vs 2026-01-10")).toBeVisible();
     await expect(detail.locator("text=Cohort Positioning")).toBeVisible();
+    await expect(detail.locator("text=연료 전략 프로필")).toBeVisible();
+    await expect(detail.locator("text=현재 연료 전략")).toBeVisible();
     await expect(detail.locator("text=시계열 변화 차트")).toBeVisible();
-    await expect(detail.locator("text=코호트 좌표계")).toBeVisible();
+    await expect(detail.locator("text=코호트 내 현재 위치")).toBeVisible();
+    await expect(
+      detail.locator("text=오른쪽일수록 현재 유산소 능력이 높고, 위쪽일수록 최근 변화 폭이 큽니다."),
+    ).toBeVisible();
     await expect(detail.locator("[data-dashboard-chart-select]")).toHaveCount(0);
     await expect(detail.locator("[data-dashboard-chart-root]")).toHaveCount(3);
-    await expect(detail.locator("text=핵심 지표가 anchor마다 어떻게 움직였는지 먼저 곡선으로 확인합니다.")).toHaveCount(0);
-    await expect(detail.locator("text=익명 점 군집 안에서 현재 기반 체력과 최근 변화 방향을 함께 읽습니다.")).toHaveCount(0);
-    await expect(detail.locator("text=상위")).toHaveCount(2);
+    await expect(detail.locator("[data-dashboard-map-root]")).toHaveCount(2);
+    await expect(detail.locator("text=현재 상태 카드")).toHaveCount(0);
+    await expect(detail.getByText(/코호트 내 백분위/)).toHaveCount(2);
     await expect(detail.getByText("ΔFatMax 15.0")).toHaveCount(2);
     await expect(detail.getByText(/\d+\/\d+/)).toHaveCount(0);
   });
 
-  test("sparse subject shows stable empty-state messaging", async ({ page }) => {
+  test("single-anchor subject shows current-state framing instead of time-series framing", async ({
+    page,
+  }) => {
     await navigateAndWait(page, "/dashboard");
 
     const subjectSelect = page.locator(
@@ -76,14 +85,47 @@ test.describe("Dashboard analytics", () => {
         resp.status() === 200,
     );
 
-    await expect(page.locator("text=Trend Signal")).toBeVisible();
+    const detail = page.locator("#dashboard-analytics-subject-detail");
+    await expect(detail.locator("text=현재 상태 요약")).toBeVisible();
+    await expect(detail.locator("text=변화 해석 준비도")).toBeVisible();
+    await expect(detail.locator("text=코호트 내 현재 위치 맵")).toBeVisible();
+    await expect(detail.locator("text=현재 해석")).toBeVisible();
+    await expect(detail.locator("text=다음 측정 권장")).toBeVisible();
     await expect(
-      page.locator(
+      detail.locator(
         "text=변화 신호를 보려면 비교 가능한 측정이 한 번 더 필요합니다.",
       ),
-    ).toBeVisible();
-    await expect(page.locator("text=Unavailable")).toHaveCount(2);
-    await expect(page.locator("[data-dashboard-chart-select]")).toHaveCount(0);
-    await expect(page.locator("[data-dashboard-chart-root]")).toHaveCount(3);
+    ).toHaveCount(0);
+    await expect(detail.locator("text=시계열 변화 차트")).toHaveCount(0);
+    await expect(detail.locator("text=Trend Signal")).toHaveCount(0);
+    await expect(detail.locator("text=Unavailable")).toHaveCount(2);
+    await expect(detail.locator("[data-dashboard-chart-select]")).toHaveCount(0);
+    await expect(detail.locator("[data-dashboard-chart-root]")).toHaveCount(0);
+    await expect(detail.locator("text=연료 전략 프로필")).toHaveCount(0);
+    await expect(detail.locator("[data-dashboard-map-root]")).toHaveCount(1);
+  });
+
+  test("inscyd subject shows anaerobic profile map only when vlamax is available", async ({
+    page,
+  }) => {
+    await navigateAndWait(page, "/dashboard");
+
+    const subjectSelect = page.locator(
+      '#dashboard-analytics-region select[name="subject_id"]',
+    );
+    await subjectSelect.selectOption({ label: "INSCYD Rider" });
+
+    await page.waitForResponse(
+      (resp) =>
+        resp.url().includes("/api/dashboard/analytics/subject") &&
+        resp.status() === 200,
+    );
+
+    const detail = page.locator("#dashboard-analytics-subject-detail");
+    await expect(detail.locator("text=무산소 프로필")).toBeVisible();
+    await expect(detail.locator("text=연료 전략 프로필")).toBeVisible();
+    await expect(detail.locator("text=현재 무산소 성향")).toBeVisible();
+    await expect(detail.getByText("고강도 활용", { exact: true })).toBeVisible();
+    await expect(detail.locator("[data-dashboard-map-root]")).toHaveCount(3);
   });
 });
