@@ -40,7 +40,9 @@ def _snapshot(
     measured_at: str,
     vo2max_rel: float | None = None,
     fatmax_power_w: float | None = None,
+    fatmax_gmin: float | None = None,
     lt1_power_w: float | None = None,
+    lt2_power_w: float | None = None,
     vlamax: float | None = None,
     at_power_w: float | None = None,
     carbmax_w: float | None = None,
@@ -56,9 +58,9 @@ def _snapshot(
         "vo2max_ml": None,
         "vo2max_rel": vo2max_rel,
         "lt1_power_w": lt1_power_w,
-        "lt2_power_w": None,
+        "lt2_power_w": lt2_power_w,
         "fatmax_power_w": fatmax_power_w,
-        "fatmax_gmin": None,
+        "fatmax_gmin": fatmax_gmin,
         "vlamax": vlamax,
         "at_power_w": at_power_w,
         "carbmax_w": carbmax_w,
@@ -82,7 +84,9 @@ def _seed_feature_rows(db_path: Path) -> dict:
             measured_at="2026-01-10",
             vo2max_rel=50.0,
             fatmax_power_w=180.0,
+            fatmax_gmin=0.41,
             lt1_power_w=205.0,
+            lt2_power_w=262.0,
         ),
         _snapshot(
             subject_id=alpha["id"],
@@ -91,7 +95,9 @@ def _seed_feature_rows(db_path: Path) -> dict:
             measured_at="2026-02-10",
             vo2max_rel=55.0,
             fatmax_power_w=195.0,
+            fatmax_gmin=0.48,
             lt1_power_w=220.0,
+            lt2_power_w=278.0,
         ),
         _snapshot(
             subject_id=beta["id"],
@@ -100,7 +106,9 @@ def _seed_feature_rows(db_path: Path) -> dict:
             measured_at="2026-02-15",
             vo2max_rel=48.0,
             fatmax_power_w=170.0,
+            fatmax_gmin=0.37,
             lt1_power_w=198.0,
+            lt2_power_w=250.0,
         ),
         _snapshot(
             subject_id=gamma["id"],
@@ -109,7 +117,9 @@ def _seed_feature_rows(db_path: Path) -> dict:
             measured_at="2026-02-12",
             vo2max_rel=57.0,
             fatmax_power_w=184.0,
+            fatmax_gmin=0.44,
             lt1_power_w=214.0,
+            lt2_power_w=271.0,
             vlamax=0.39,
             at_power_w=276.0,
             carbmax_w=342.0,
@@ -246,7 +256,12 @@ class TestDashboardFeatureAnalyticsPartial:
         assert "상위 " in resp.text
         assert "vs 2026-01-10" in resp.text
         assert "ΔFatMax 15.0" in resp.text
+        assert "데이터 준비도" in resp.text
+        assert "대사 threshold ladder" in resp.text
         assert "연료 전략 프로필" in resp.text
+        assert "지방산화 효율" in resp.text
+        assert "유산소 엔진·threshold posture" in resp.text
+        assert "최근 변화 매트릭스" in resp.text
         assert "현재 연료 전략" in resp.text
         assert "탄수 활용 해석" in resp.text
         assert "시계열 변화 차트" in resp.text
@@ -297,11 +312,13 @@ class TestDashboardFeatureAnalyticsPartial:
         assert "코호트 내 현재 위치 맵" in resp.text
         assert "현재 해석" in resp.text
         assert "다음 측정 권장" in resp.text
+        assert "데이터 준비도" in resp.text
         assert "연료 전략 프로필" in resp.text
+        assert "대사 threshold ladder" in resp.text
         assert "시계열 변화 차트" not in resp.text
         assert "data-dashboard-chart-select" not in resp.text
         assert "data-dashboard-chart-root" not in resp.text
-        assert resp.text.count("data-dashboard-map-root") >= 1
+        assert resp.text.count("data-dashboard-map-root") >= 3
 
     def test_dashboard_analytics_subject_partial_renders_anaerobic_profile_for_inscyd_subject(
         self, tmp_path: Path
@@ -319,6 +336,8 @@ class TestDashboardFeatureAnalyticsPartial:
         assert resp.status_code == 200
         assert "무산소 프로필" in resp.text
         assert "연료 전략 프로필" in resp.text
+        assert "대사 threshold ladder" in resp.text
+        assert "glycogen economy" in resp.text
         assert "현재 무산소 성향" in resp.text
         assert "고강도 활용" in resp.text
         assert "VLamax 0.39" in resp.text

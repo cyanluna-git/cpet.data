@@ -31,7 +31,9 @@ def _snapshot(
     measured_at: str,
     vo2max_rel: float | None = None,
     fatmax_power_w: float | None = None,
+    fatmax_gmin: float | None = None,
     lt1_power_w: float | None = None,
+    lt2_power_w: float | None = None,
     vlamax: float | None = None,
     at_power_w: float | None = None,
     carbmax_w: float | None = None,
@@ -48,9 +50,9 @@ def _snapshot(
         "vo2max_ml": None,
         "vo2max_rel": vo2max_rel,
         "lt1_power_w": lt1_power_w,
-        "lt2_power_w": None,
+        "lt2_power_w": lt2_power_w,
         "fatmax_power_w": fatmax_power_w,
-        "fatmax_gmin": None,
+        "fatmax_gmin": fatmax_gmin,
         "vlamax": vlamax,
         "at_power_w": at_power_w,
         "carbmax_w": carbmax_w,
@@ -74,7 +76,9 @@ def _seed_dashboard_feature_rows(db_path: Path) -> dict:
             measured_at="2026-01-10",
             vo2max_rel=50.0,
             fatmax_power_w=180.0,
+            fatmax_gmin=0.41,
             lt1_power_w=205.0,
+            lt2_power_w=262.0,
         ),
         _snapshot(
             subject_id=alpha["id"],
@@ -83,7 +87,9 @@ def _seed_dashboard_feature_rows(db_path: Path) -> dict:
             measured_at="2026-02-10",
             vo2max_rel=55.0,
             fatmax_power_w=195.0,
+            fatmax_gmin=0.48,
             lt1_power_w=220.0,
+            lt2_power_w=278.0,
         ),
         _snapshot(
             subject_id=beta["id"],
@@ -92,7 +98,9 @@ def _seed_dashboard_feature_rows(db_path: Path) -> dict:
             measured_at="2026-02-15",
             vo2max_rel=48.0,
             fatmax_power_w=170.0,
+            fatmax_gmin=0.37,
             lt1_power_w=198.0,
+            lt2_power_w=250.0,
         ),
         _snapshot(
             subject_id=gamma["id"],
@@ -111,7 +119,9 @@ def _seed_dashboard_feature_rows(db_path: Path) -> dict:
             measured_at="2026-03-01",
             vo2max_rel=60.0,
             fatmax_power_w=210.0,
+            fatmax_gmin=0.51,
             lt1_power_w=230.0,
+            lt2_power_w=292.0,
         ),
     ):
         upsert_subject_metric_snapshot(db_path, snapshot)
@@ -281,6 +291,19 @@ class TestDashboardFeatureAnalyticsQuery:
         assert alpha["fuel_strategy_map"]["highlighted"]["inscyd_enriched"] is False
         assert alpha["fuel_strategy_map"]["highlighted"]["fatmax_power_w"] == 195.0
         assert alpha["fuel_strategy_map"]["highlighted"]["lt1_power_w"] == 220.0
+        assert alpha["threshold_ladder"] is not None
+        assert [marker["label"] for marker in alpha["threshold_ladder"]["markers"]] == [
+            "FatMax",
+            "LT1",
+            "LT2",
+        ]
+        assert alpha["fat_oxidation_efficiency_map"] is not None
+        assert alpha["fat_oxidation_efficiency_map"]["highlighted"]["fatmax_gmin"] == 0.48
+        assert alpha["aerobic_decoupling_map"] is not None
+        assert alpha["aerobic_decoupling_map"]["highlighted"]["lt2_power_w"] == 278.0
+        assert alpha["delta_matrix"] is not None
+        assert [row["label"] for row in alpha["delta_matrix"]["rows"]] == ["VO2max", "LT1", "FatMax"]
+        assert alpha["coverage_panel"]["cards"][0] == {"label": "CPET anchor", "value": 2}
 
         assert gamma is not None
         assert gamma["history_state"] == "timeline"
@@ -313,6 +336,19 @@ class TestDashboardFeatureAnalyticsQuery:
         assert gamma["anaerobic_profile"]["highlighted"]["vlamax"] == 0.42
         assert gamma["anaerobic_profile"]["highlighted"]["at_power_w"] == 288.0
         assert gamma["anaerobic_profile"]["highlighted"]["carbmax_w"] == 356.0
+        assert gamma["threshold_ladder"] is not None
+        assert [marker["label"] for marker in gamma["threshold_ladder"]["markers"]] == [
+            "FatMax",
+            "LT1",
+            "AT",
+            "LT2",
+            "CarbMax",
+        ]
+        assert gamma["fat_oxidation_efficiency_map"] is not None
+        assert gamma["aerobic_decoupling_map"] is not None
+        assert gamma["glycogen_economy_map"] is not None
+        assert gamma["glycogen_economy_map"]["highlighted"]["glycogen_g"] == 402.0
+        assert gamma["coverage_panel"]["cards"][1] == {"label": "INSCYD anchor", "value": 1}
 
     def test_detail_returns_none_for_missing_subject(self, tmp_path: Path) -> None:
         db_path = _init_platform_db(tmp_path)
@@ -430,3 +466,8 @@ class TestDashboardFeatureAnalyticsQuery:
         }
         assert detail["fuel_strategy_map"] is None
         assert detail["anaerobic_profile"] is None
+        assert detail["threshold_ladder"] is None
+        assert detail["fat_oxidation_efficiency_map"] is None
+        assert detail["aerobic_decoupling_map"] is None
+        assert detail["glycogen_economy_map"] is None
+        assert detail["coverage_panel"]["cards"][0] == {"label": "CPET anchor", "value": 1}

@@ -3512,6 +3512,358 @@ def _build_fuel_strategy_map(
     }
 
 
+def _build_threshold_ladder(
+    snapshot_rows: list[dict],
+    selected_subject_id: str,
+) -> dict | None:
+    """Build a subject-level threshold ladder on a single power axis."""
+    profiles = _build_latest_snapshot_metric_profiles(
+        snapshot_rows,
+        (
+            "fatmax_power_w",
+            "lt1_power_w",
+            "lt2_power_w",
+            "at_power_w",
+            "carbmax_w",
+        ),
+    )
+    profile = next((row for row in profiles if row["subject_id"] == selected_subject_id), None)
+    if profile is None:
+        return None
+
+    marker_defs = [
+        ("fatmax_power_w", "FatMax", "cpet"),
+        ("lt1_power_w", "LT1", "cpet"),
+        ("lt2_power_w", "LT2", "cpet"),
+        ("at_power_w", "AT", "inscyd"),
+        ("carbmax_w", "CarbMax", "inscyd"),
+    ]
+    markers = []
+    for key, label, source in marker_defs:
+        value = profile.get(key)
+        if not isinstance(value, (int, float)):
+            continue
+        markers.append({
+            "key": key,
+            "label": label,
+            "value": float(value),
+            "unit": "W",
+            "source": source,
+        })
+
+    if len(markers) < 2:
+        return None
+
+    markers.sort(key=lambda item: item["value"])
+    min_value = markers[0]["value"]
+    max_value = markers[-1]["value"]
+    spread = max(max_value - min_value, 1.0)
+    for marker in markers:
+        marker["position_pct"] = round(((marker["value"] - min_value) / spread) * 100.0, 1)
+
+    return {
+        "markers": markers,
+        "min_power_w": round(min_value, 1),
+        "max_power_w": round(max_value, 1),
+        "inscyd_enriched": any(marker["source"] == "inscyd" for marker in markers),
+        "latest_measured_at": profile.get("latest_measured_at", ""),
+    }
+
+
+def _build_fat_oxidation_efficiency_point(
+    cohort_rows: list[dict],
+    profile_row: dict,
+) -> dict:
+    """Build one fat oxidation efficiency point from fatmax power and g/min."""
+    subject_id = profile_row["subject_id"]
+    power_position = _build_metric_position(cohort_rows, subject_id, "fatmax_power_w")
+    rate_position = _build_metric_position(cohort_rows, subject_id, "fatmax_gmin")
+    if power_position is None or rate_position is None:
+        return {}
+
+    x = float(power_position["percentile"])
+    y = float(rate_position["percentile"])
+    if x >= 66.0 and y >= 66.0:
+        area_key = "power_and_rate_high"
+        area_label = "고파워·고효율 지방산화"
+    elif x >= 66.0:
+        area_key = "power_high"
+        area_label = "고파워 지방 활용"
+    elif y >= 66.0:
+        area_key = "rate_high"
+        area_label = "고효율 지방산화"
+    else:
+        area_key = "building"
+        area_label = "지방산화 형성 구간"
+
+    return {
+        "subject_id": subject_id,
+        "x": round(x, 1),
+        "y": round(y, 1),
+        "area_key": area_key,
+        "area_label": area_label,
+        "fatmax_power_w": profile_row.get("fatmax_power_w"),
+        "fatmax_gmin": profile_row.get("fatmax_gmin"),
+        "is_selected": False,
+    }
+
+
+def _build_fat_oxidation_efficiency_map(
+    snapshot_rows: list[dict],
+    selected_subject_id: str | None = None,
+) -> dict | None:
+    """Build cohort map for fat oxidation efficiency."""
+    profiles = _build_latest_snapshot_metric_profiles(
+        snapshot_rows,
+        ("fatmax_power_w", "fatmax_gmin"),
+    )
+    points = []
+    highlighted = None
+    for profile in profiles:
+        point = _build_fat_oxidation_efficiency_point(profiles, profile)
+        if not point:
+            continue
+        point["is_selected"] = point["subject_id"] == selected_subject_id
+        points.append(point)
+        if point["is_selected"]:
+            highlighted = point
+    if not points or highlighted is None:
+        return None
+    return {
+        "axes": {
+            "x_label": "FatMax 파워",
+            "y_label": "FatMax 산화율",
+        },
+        "style": {
+            "other_fill": "rgba(120, 128, 140, 0.30)",
+            "other_radius": 4,
+            "other_stroke": "transparent",
+            "selected_fill": "#a17b37",
+            "selected_radius": 8,
+            "selected_stroke": "#f4efe6",
+        },
+        "points": points,
+        "highlighted": highlighted,
+    }
+
+
+def _build_aerobic_decoupling_point(
+    cohort_rows: list[dict],
+    profile_row: dict,
+) -> dict:
+    """Build one aerobic engine vs threshold posture point."""
+    subject_id = profile_row["subject_id"]
+    engine_position = _build_metric_position(cohort_rows, subject_id, "vo2max_rel")
+    threshold_positions = [
+        _build_metric_position(cohort_rows, subject_id, "lt2_power_w"),
+        _build_metric_position(cohort_rows, subject_id, "lt1_power_w"),
+    ]
+    if engine_position is None:
+        return {}
+    threshold_score = _average_score(
+        [float(position["percentile"]) for position in threshold_positions if position is not None]
+    )
+    if threshold_score is None:
+        return {}
+
+    x = float(engine_position["percentile"])
+    y = threshold_score
+    if x >= 66.0 and y >= 66.0:
+        area_label = "엔진·threshold 균형 상위"
+    elif x >= 66.0:
+        area_label = "엔진 우위 구간"
+    elif y >= 66.0:
+        area_label = "threshold 효율 우위"
+    else:
+        area_label = "유산소 효율 형성 구간"
+    return {
+        "subject_id": subject_id,
+        "x": round(x, 1),
+        "y": round(y, 1),
+        "area_label": area_label,
+        "vo2max_rel": profile_row.get("vo2max_rel"),
+        "lt1_power_w": profile_row.get("lt1_power_w"),
+        "lt2_power_w": profile_row.get("lt2_power_w"),
+        "is_selected": False,
+    }
+
+
+def _build_aerobic_decoupling_map(
+    snapshot_rows: list[dict],
+    selected_subject_id: str | None = None,
+) -> dict | None:
+    """Build engine-vs-threshold cohort map."""
+    profiles = _build_latest_snapshot_metric_profiles(
+        snapshot_rows,
+        ("vo2max_rel", "lt1_power_w", "lt2_power_w"),
+    )
+    points = []
+    highlighted = None
+    for profile in profiles:
+        point = _build_aerobic_decoupling_point(profiles, profile)
+        if not point:
+            continue
+        point["is_selected"] = point["subject_id"] == selected_subject_id
+        points.append(point)
+        if point["is_selected"]:
+            highlighted = point
+    if not points or highlighted is None:
+        return None
+    return {
+        "axes": {
+            "x_label": "VO2max 엔진",
+            "y_label": "Threshold posture",
+        },
+        "style": {
+            "other_fill": "rgba(120, 128, 140, 0.30)",
+            "other_radius": 4,
+            "other_stroke": "transparent",
+            "selected_fill": "#184e59",
+            "selected_radius": 8,
+            "selected_stroke": "#f4efe6",
+        },
+        "points": points,
+        "highlighted": highlighted,
+    }
+
+
+def _build_dashboard_delta_matrix(detail: dict) -> dict | None:
+    """Build a compact delta matrix from the latest usable trend payload."""
+    latest_trend = detail.get("latest_trend") or {}
+    if detail.get("history_state") != "timeline" or latest_trend.get("state") != "delta_ready":
+        return None
+    delta_metrics = latest_trend.get("delta_metrics") or {}
+    rows = []
+    metric_defs = [
+        ("VO2max", "delta_vo2max_rel", "pct_delta_vo2max_rel", "mL/kg/min"),
+        ("LT1", "delta_lt1_power_w", "pct_delta_lt1_power_w", "W"),
+        ("FatMax", "delta_fatmax_power_w", None, "W"),
+        ("VLamax", "delta_vlamax", None, "mmol/L/s"),
+    ]
+    for label, delta_key, pct_key, unit in metric_defs:
+        if delta_key not in delta_metrics:
+            continue
+        delta_value = delta_metrics.get(delta_key)
+        if not isinstance(delta_value, (int, float)):
+            continue
+        direction = "up" if delta_value > 0 else "down" if delta_value < 0 else "flat"
+        rows.append({
+            "label": label,
+            "delta": delta_value,
+            "pct_delta": delta_metrics.get(pct_key) if pct_key else None,
+            "unit": unit,
+            "direction": direction,
+        })
+    if not rows:
+        return None
+    return {
+        "comparison_anchor_measured_at": latest_trend.get("comparison_anchor_measured_at", ""),
+        "rows": rows,
+    }
+
+
+def _build_glycogen_economy_point(
+    cohort_rows: list[dict],
+    profile_row: dict,
+) -> dict:
+    """Build one glycogen economy point for INSCYD subjects."""
+    subject_id = profile_row["subject_id"]
+    glycogen_position = _build_metric_position(cohort_rows, subject_id, "glycogen_g")
+    output_positions = [
+        _build_metric_position(cohort_rows, subject_id, "carbmax_w"),
+        _build_metric_position(cohort_rows, subject_id, "vlamax"),
+    ]
+    if glycogen_position is None:
+        return {}
+    output_score = _average_score(
+        [float(position["percentile"]) for position in output_positions if position is not None]
+    )
+    if output_score is None:
+        return {}
+    x = float(glycogen_position["percentile"])
+    y = output_score
+    if x >= 66.0 and y >= 66.0:
+        area_label = "glycogen·고출력 상위"
+    elif x >= 66.0:
+        area_label = "glycogen reserve 우위"
+    elif y >= 66.0:
+        area_label = "고출력 활용 우위"
+    else:
+        area_label = "glycogen economy 형성"
+    return {
+        "subject_id": subject_id,
+        "x": round(x, 1),
+        "y": round(y, 1),
+        "area_label": area_label,
+        "glycogen_g": profile_row.get("glycogen_g"),
+        "carbmax_w": profile_row.get("carbmax_w"),
+        "vlamax": profile_row.get("vlamax"),
+        "is_selected": False,
+    }
+
+
+def _build_glycogen_economy_map(
+    snapshot_rows: list[dict],
+    selected_subject_id: str | None = None,
+) -> dict | None:
+    """Build INSCYD-only glycogen economy map."""
+    profiles = _build_latest_snapshot_metric_profiles(
+        snapshot_rows,
+        ("glycogen_g", "carbmax_w", "vlamax"),
+    )
+    points = []
+    highlighted = None
+    for profile in profiles:
+        if all(profile.get(key) is None for key in ("carbmax_w", "vlamax")):
+            continue
+        point = _build_glycogen_economy_point(profiles, profile)
+        if not point:
+            continue
+        point["is_selected"] = point["subject_id"] == selected_subject_id
+        points.append(point)
+        if point["is_selected"]:
+            highlighted = point
+    if not points or highlighted is None:
+        return None
+    return {
+        "axes": {
+            "x_label": "Glycogen reserve",
+            "y_label": "High-output use",
+        },
+        "style": {
+            "other_fill": "rgba(120, 128, 140, 0.30)",
+            "other_radius": 4,
+            "other_stroke": "transparent",
+            "selected_fill": "#6d4c9f",
+            "selected_radius": 8,
+            "selected_stroke": "#f4efe6",
+        },
+        "points": points,
+        "highlighted": highlighted,
+    }
+
+
+def _build_dashboard_coverage_panel(
+    subject_snapshot_rows: list[dict],
+    detail: dict,
+) -> dict:
+    """Build compact readiness/coverage cards for subject drill-in."""
+    source_counts: dict[str, int] = {}
+    for row in subject_snapshot_rows:
+        source = str(row.get("source_kind") or "").strip() or "unknown"
+        source_counts[source] = source_counts.get(source, 0) + 1
+    return {
+        "cards": [
+            {"label": "CPET anchor", "value": source_counts.get("cpet_submission", 0)},
+            {"label": "INSCYD anchor", "value": source_counts.get("inscyd_report", 0)},
+            {"label": "반복 측정", "value": "준비됨" if detail.get("history_state") == "timeline" else "1회"},
+            {"label": "delta", "value": "가능" if detail.get("latest_trend", {}).get("state") == "delta_ready" else "대기"},
+            {"label": "연료 전략", "value": "가능" if detail.get("fuel_strategy_map") else "대기"},
+            {"label": "INSCYD 고급", "value": "가능" if detail.get("anaerobic_profile") or detail.get("glycogen_economy_map") else "없음"},
+        ]
+    }
+
+
 def _classify_anaerobic_band(score: float | None) -> str:
     """Translate a VLamax percentile into a readable anaerobic-mobilization band."""
     if score is None:
@@ -3986,8 +4338,24 @@ def get_dashboard_subject_analytics(
         all_snapshot_rows,
         selected_subject_id=subject_id,
     )
+    threshold_ladder = _build_threshold_ladder(
+        all_snapshot_rows,
+        selected_subject_id=subject_id,
+    )
+    fat_oxidation_efficiency_map = _build_fat_oxidation_efficiency_map(
+        all_snapshot_rows,
+        selected_subject_id=subject_id,
+    )
+    aerobic_decoupling_map = _build_aerobic_decoupling_map(
+        all_snapshot_rows,
+        selected_subject_id=subject_id,
+    )
+    glycogen_economy_map = _build_glycogen_economy_map(
+        all_snapshot_rows,
+        selected_subject_id=subject_id,
+    )
 
-    return {
+    detail = {
         "subject": {
             "id": target["subject_id"],
             "name": target["subject_name"],
@@ -4002,8 +4370,12 @@ def get_dashboard_subject_analytics(
         "cohort_map_point": target.get("cohort_map_point"),
         "cohort_map": cohort_map,
         "current_state_map": current_state_map,
+        "threshold_ladder": threshold_ladder,
         "fuel_strategy_map": fuel_strategy_map,
+        "fat_oxidation_efficiency_map": fat_oxidation_efficiency_map,
+        "aerobic_decoupling_map": aerobic_decoupling_map,
         "anaerobic_profile": anaerobic_profile,
+        "glycogen_economy_map": glycogen_economy_map,
         "latest_trend": latest_trend,
         "timeline_window": {
             "first_anchor_measured_at": timeline[0]["anchor_measured_at"] if timeline else "",
@@ -4011,6 +4383,12 @@ def get_dashboard_subject_analytics(
         },
         "timeline": timeline,
     }
+    subject_snapshot_rows = [
+        row for row in all_snapshot_rows if row.get("subject_id") == subject_id
+    ]
+    detail["delta_matrix"] = _build_dashboard_delta_matrix(detail)
+    detail["coverage_panel"] = _build_dashboard_coverage_panel(subject_snapshot_rows, detail)
+    return detail
 
 
 def build_subject_feature_set_compare(

@@ -53,7 +53,12 @@ test.describe("Dashboard analytics", () => {
     await expect(detail.locator("text=반복 측정 추세")).toBeVisible();
     await expect(detail.locator("text=vs 2026-01-10")).toBeVisible();
     await expect(detail.locator("text=Cohort Positioning")).toBeVisible();
+    await expect(detail.locator("text=데이터 준비도")).toBeVisible();
+    await expect(detail.locator("text=대사 threshold ladder")).toBeVisible();
     await expect(detail.locator("text=연료 전략 프로필")).toBeVisible();
+    await expect(detail.getByRole("heading", { name: "지방산화 효율" })).toBeVisible();
+    await expect(detail.getByRole("heading", { name: "유산소 엔진·threshold posture" })).toBeVisible();
+    await expect(detail.getByRole("heading", { name: "최근 변화 매트릭스" })).toBeVisible();
     await expect(detail.locator("text=현재 연료 전략")).toBeVisible();
     await expect(detail.locator("text=시계열 변화 차트")).toBeVisible();
     await expect(detail.locator("text=코호트 내 현재 위치")).toBeVisible();
@@ -62,7 +67,7 @@ test.describe("Dashboard analytics", () => {
     ).toBeVisible();
     await expect(detail.locator("[data-dashboard-chart-select]")).toHaveCount(0);
     await expect(detail.locator("[data-dashboard-chart-root]")).toHaveCount(3);
-    await expect(detail.locator("[data-dashboard-map-root]")).toHaveCount(2);
+    await expect(detail.locator("[data-dashboard-map-root]")).toHaveCount(4);
     await expect(detail.locator("text=현재 상태 카드")).toHaveCount(0);
     await expect(detail.getByText(/코호트 내 백분위/)).toHaveCount(2);
     await expect(detail.getByText("ΔFatMax 15.0")).toHaveCount(2);
@@ -89,8 +94,10 @@ test.describe("Dashboard analytics", () => {
     await expect(detail.locator("text=현재 상태 요약")).toBeVisible();
     await expect(detail.locator("text=변화 해석 준비도")).toBeVisible();
     await expect(detail.locator("text=코호트 내 현재 위치 맵")).toBeVisible();
-    await expect(detail.locator("text=현재 해석")).toBeVisible();
+    await expect(detail.getByText("현재 해석").first()).toBeVisible();
     await expect(detail.locator("text=다음 측정 권장")).toBeVisible();
+    await expect(detail.locator("text=데이터 준비도")).toBeVisible();
+    await expect(detail.locator("text=대사 threshold ladder")).toBeVisible();
     await expect(
       detail.locator(
         "text=변화 신호를 보려면 비교 가능한 측정이 한 번 더 필요합니다.",
@@ -98,11 +105,11 @@ test.describe("Dashboard analytics", () => {
     ).toHaveCount(0);
     await expect(detail.locator("text=시계열 변화 차트")).toHaveCount(0);
     await expect(detail.locator("text=Trend Signal")).toHaveCount(0);
-    await expect(detail.locator("text=Unavailable")).toHaveCount(2);
+    await expect(detail.locator("text=Unavailable")).toHaveCount(0);
     await expect(detail.locator("[data-dashboard-chart-select]")).toHaveCount(0);
     await expect(detail.locator("[data-dashboard-chart-root]")).toHaveCount(0);
-    await expect(detail.locator("text=연료 전략 프로필")).toHaveCount(0);
-    await expect(detail.locator("[data-dashboard-map-root]")).toHaveCount(1);
+    await expect(detail.locator("text=연료 전략 프로필")).toBeVisible();
+    await expect(detail.locator("[data-dashboard-map-root]")).toHaveCount(4);
   });
 
   test("inscyd subject shows anaerobic profile map only when vlamax is available", async ({
@@ -124,8 +131,10 @@ test.describe("Dashboard analytics", () => {
     const detail = page.locator("#dashboard-analytics-subject-detail");
     await expect(detail.locator("text=무산소 프로필")).toBeVisible();
     await expect(detail.locator("text=연료 전략 프로필")).toBeVisible();
+    await expect(detail.locator("text=대사 threshold ladder")).toBeVisible();
+    await expect(detail.getByRole("heading", { name: "glycogen economy" })).toBeVisible();
     await expect(detail.locator("text=현재 무산소 성향")).toBeVisible();
     await expect(detail.getByText("고강도 활용", { exact: true })).toBeVisible();
-    await expect(detail.locator("[data-dashboard-map-root]")).toHaveCount(3);
+    await expect(detail.locator("[data-dashboard-map-root]")).toHaveCount(6);
   });
 });

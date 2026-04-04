@@ -153,6 +153,52 @@
     </div>
   </div>
 
+  {% if detail.coverage_panel %}
+  <div class="analytics-panel-card">
+    <div class="analytics-section-tag">Coverage Panel</div>
+    <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">데이터 준비도</h4>
+    <p class="analytics-note mt-2">이 피험자에서 어떤 분석이 바로 가능한지 source와 이력 기준으로 요약합니다.</p>
+    <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {% for card in detail.coverage_panel.cards %}
+      <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+        <div class="analytics-panel-label">{{ card.label }}</div>
+        <div class="mt-2 text-2xl font-semibold text-[var(--ink)]">{{ card.value }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if detail.threshold_ladder %}
+  <div class="analytics-panel-card">
+    <div class="analytics-section-tag">Threshold Ladder</div>
+    <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">대사 threshold ladder</h4>
+    <p class="analytics-note mt-2">
+      최신 anchor {{ detail.threshold_ladder.latest_measured_at }} 기준으로 FatMax, LT1, LT2, AT, CarbMax를 한 power 축 위에 놓았습니다.
+      {% if detail.threshold_ladder.inscyd_enriched %}INSCYD marker가 같이 포함된 보강 ladder입니다.{% else %}현재는 CPET marker 중심 ladder입니다.{% endif %}
+    </p>
+    <div class="mt-5 rounded-[22px] border px-6 py-8" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+      <div class="relative h-16">
+        <div class="absolute left-0 right-0 top-7 h-[3px] rounded-full" style="background: rgba(22, 32, 40, 0.10);"></div>
+        {% for marker in detail.threshold_ladder.markers %}
+        <div class="absolute top-0 -translate-x-1/2" style="left: {{ marker.position_pct }}%;">
+          <div
+            class="mx-auto h-4 w-4 rounded-full border-2"
+            style="{% if marker.source == 'inscyd' %}background: #8f3b2f; border-color: #f4efe6;{% else %}background: #184e59; border-color: #f4efe6;{% endif %}"
+          ></div>
+          <div class="mt-2 whitespace-nowrap text-center text-xs font-semibold text-[var(--ink)]">{{ marker.label }}</div>
+          <div class="mt-1 whitespace-nowrap text-center text-xs text-[var(--muted)]">{{ marker.value }}{{ marker.unit }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="mt-8 flex items-center justify-between text-xs text-[var(--muted)]">
+        <span>{{ detail.threshold_ladder.min_power_w }}W</span>
+        <span>{{ detail.threshold_ladder.max_power_w }}W</span>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   {% if detail.fuel_strategy_map %}
   <div class="analytics-panel-card">
     <div class="analytics-section-tag">Fuel Strategy Profile</div>
@@ -218,6 +264,59 @@
   </div>
   {% endif %}
 
+  {% if detail.fat_oxidation_efficiency_map or detail.aerobic_decoupling_map %}
+  <div class="grid gap-4 xl:grid-cols-2">
+    {% if detail.fat_oxidation_efficiency_map %}
+    <div class="analytics-panel-card">
+      <div class="analytics-section-tag">Fat Oxidation Efficiency</div>
+      <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">지방산화 효율</h4>
+      <p class="analytics-note mt-2">FatMax 파워와 FatMax 산화율을 함께 놓고 코호트 안에서 현재 지방산화 효율을 읽습니다.</p>
+      <div class="mt-5 rounded-[22px] border p-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);" data-dashboard-map-root>
+        <svg viewBox="0 0 360 280" class="h-72 w-full" preserveAspectRatio="xMidYMid meet" aria-label="지방산화 효율 지도" data-dashboard-map-svg></svg>
+        <div class="mt-4 rounded-[18px] border px-4 py-4 text-sm text-[var(--muted)]" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          오른쪽일수록 FatMax 파워가 높고, 위쪽일수록 동일 cohort 대비 FatMax 산화율이 높습니다.
+        </div>
+        <script type="application/json" data-dashboard-map-data>{{ detail.fat_oxidation_efficiency_map|tojson }}</script>
+      </div>
+      <div class="mt-4 rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+        <div class="analytics-panel-label">현재 해석</div>
+        <div class="mt-2 text-lg font-semibold text-[var(--ink)]">{{ detail.fat_oxidation_efficiency_map.highlighted.area_label }}</div>
+        <div class="mt-1 text-sm text-[var(--muted)]">
+          FatMax {{ detail.fat_oxidation_efficiency_map.highlighted.fatmax_power_w if detail.fat_oxidation_efficiency_map.highlighted.fatmax_power_w is not none else "-" }}W ·
+          {{ detail.fat_oxidation_efficiency_map.highlighted.fatmax_gmin if detail.fat_oxidation_efficiency_map.highlighted.fatmax_gmin is not none else "-" }} g/min
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if detail.aerobic_decoupling_map %}
+    <div class="analytics-panel-card">
+      <div class="analytics-section-tag">Aerobic Decoupling</div>
+      <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">유산소 엔진·threshold posture</h4>
+      <p class="analytics-note mt-2">VO2max 엔진과 LT1/LT2 기반 threshold posture를 함께 읽어 절대 능력과 효율을 분리해 봅니다.</p>
+      <div class="mt-5 rounded-[22px] border p-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);" data-dashboard-map-root>
+        <svg viewBox="0 0 360 280" class="h-72 w-full" preserveAspectRatio="xMidYMid meet" aria-label="유산소 decoupling 지도" data-dashboard-map-svg></svg>
+        <div class="mt-4 rounded-[18px] border px-4 py-4 text-sm text-[var(--muted)]" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          오른쪽일수록 VO2max 엔진이 크고, 위쪽일수록 threshold posture가 더 좋습니다.
+        </div>
+        <script type="application/json" data-dashboard-map-data>{{ detail.aerobic_decoupling_map|tojson }}</script>
+      </div>
+      <div class="mt-4 rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+        <div class="analytics-panel-label">현재 해석</div>
+        <div class="mt-2 text-lg font-semibold text-[var(--ink)]">{{ detail.aerobic_decoupling_map.highlighted.area_label }}</div>
+        <div class="mt-1 text-sm text-[var(--muted)]">
+          VO2max {{ detail.aerobic_decoupling_map.highlighted.vo2max_rel if detail.aerobic_decoupling_map.highlighted.vo2max_rel is not none else "-" }} ·
+          LT1 {{ detail.aerobic_decoupling_map.highlighted.lt1_power_w if detail.aerobic_decoupling_map.highlighted.lt1_power_w is not none else "-" }}W
+          {% if detail.aerobic_decoupling_map.highlighted.lt2_power_w is not none %}
+          · LT2 {{ detail.aerobic_decoupling_map.highlighted.lt2_power_w }}W
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
   {% if detail.anaerobic_profile %}
   <div class="analytics-panel-card">
     <div class="analytics-section-tag">INSCYD Anaerobic Profile</div>
@@ -263,6 +362,69 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if detail.glycogen_economy_map %}
+  <div class="analytics-panel-card">
+    <div class="analytics-section-tag">INSCYD Glycogen Economy</div>
+    <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">glycogen economy</h4>
+    <p class="analytics-note mt-2">INSCYD glycogen reserve와 고출력 활용을 함께 읽어 고강도 연료 여유를 코호트 안에서 위치로 봅니다.</p>
+    <div class="mt-5 grid gap-4 xl:grid-cols-[1.5fr,1fr]">
+      <div class="rounded-[22px] border p-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);" data-dashboard-map-root>
+        <svg viewBox="0 0 360 280" class="h-72 w-full" preserveAspectRatio="xMidYMid meet" aria-label="glycogen economy 지도" data-dashboard-map-svg></svg>
+        <div class="mt-4 rounded-[18px] border px-4 py-4 text-sm text-[var(--muted)]" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          오른쪽일수록 glycogen reserve가 넓고, 위쪽일수록 고출력 활용이 큽니다.
+        </div>
+        <script type="application/json" data-dashboard-map-data>{{ detail.glycogen_economy_map|tojson }}</script>
+      </div>
+      <div class="grid gap-3">
+        <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          <div class="analytics-panel-label">현재 해석</div>
+          <div class="mt-2 text-lg font-semibold text-[var(--ink)]">{{ detail.glycogen_economy_map.highlighted.area_label }}</div>
+          <div class="mt-1 text-sm text-[var(--muted)]">
+            Glycogen {{ detail.glycogen_economy_map.highlighted.glycogen_g if detail.glycogen_economy_map.highlighted.glycogen_g is not none else "-" }}g
+          </div>
+        </div>
+        <div class="rounded-[18px] border px-4 py-4" style="border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);">
+          <div class="analytics-panel-label">현재 요약</div>
+          <div class="mt-2 text-sm text-[var(--muted)]">
+            {% if detail.glycogen_economy_map.highlighted.carbmax_w is not none %}
+            CarbMax {{ detail.glycogen_economy_map.highlighted.carbmax_w }}W
+            {% endif %}
+            {% if detail.glycogen_economy_map.highlighted.vlamax is not none %}
+            · VLamax {{ detail.glycogen_economy_map.highlighted.vlamax }}
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if detail.delta_matrix %}
+  <div class="analytics-panel-card">
+    <div class="analytics-section-tag">Delta Matrix</div>
+    <h4 class="mt-2 text-2xl font-semibold text-[var(--ink)]">최근 변화 매트릭스</h4>
+    <p class="analytics-note mt-2">직전 anchor {{ detail.delta_matrix.comparison_anchor_measured_at }} 대비 최근 변화량을 한 번에 요약합니다.</p>
+    <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {% for row in detail.delta_matrix.rows %}
+      <div
+        class="rounded-[18px] border px-4 py-4"
+        style="{% if row.direction == 'up' %}border-color: rgba(24, 78, 89, 0.14); background: rgba(24, 78, 89, 0.08);{% elif row.direction == 'down' %}border-color: rgba(143, 59, 47, 0.14); background: rgba(143, 59, 47, 0.08);{% else %}border-color: rgba(22, 32, 40, 0.08); background: rgba(255,255,255,0.72);{% endif %}"
+      >
+        <div class="analytics-panel-label">{{ row.label }}</div>
+        <div class="mt-2 text-2xl font-semibold text-[var(--ink)]">
+          {% if row.delta > 0 %}+{% endif %}{{ row.delta }} {{ row.unit }}
+        </div>
+        {% if row.pct_delta is not none %}
+        <div class="mt-1 text-sm text-[var(--muted)]">
+          {% if row.pct_delta > 0 %}+{% endif %}{{ row.pct_delta }}%
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
     </div>
   </div>
   {% endif %}
