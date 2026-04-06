@@ -292,6 +292,24 @@ class TestReportContentRegression:
         """Park report mentions lactate threshold values."""
         assert "171.2" in self._park_html  # LT1 fixed power
 
+    def test_cosmed_report_uses_protocol_aware_conservative_copy(self) -> None:
+        """COSMED-only report should surface indirect/suppressed metric messaging."""
+        from pipeline.parsers import parse_workspace
+        from pipeline.schema import create_database
+        from pipeline.analysis import run_analysis
+        from pipeline.report import generate_report
+
+        parsed = parse_workspace(COSMED_WS)
+        db_path = create_database(COSMED_WS, parsed)
+        run_analysis(db_path)
+        report_path = generate_report(db_path, COSMED_WS / "report")
+        html = report_path.read_text(encoding="utf-8")
+
+        assert "VT1 (간접)" in html
+        assert "LT1 (D-max)" not in html
+        assert "FatMax 근사 band" in html or "FatMax band" in html
+        assert "직접 lactate turnpoint 대신" in html or "ventilatory surrogate" in html
+
 
 # =====================================================================
 # Class 3: Full Lifecycle E2E
