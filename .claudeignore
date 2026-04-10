@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+htmlcov/
+*.egg-info/
+dist/
+build/
+tmp/
+repomix-output.xml
+*.log
+.env
+.DS_Store
+# Large data files
+CPET_data/
+data/
+inputs/
+inscyd/
+processed_*.csv
+breath_data.csv
+cpet_tests.csv
