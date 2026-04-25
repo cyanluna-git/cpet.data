@@ -12,6 +12,7 @@ from contextlib import redirect_stdout
 
 import pandas as pd
 
+from pipeline.fit_history import best_rolling_power
 from pipeline.inscyd_parser import InscydParser, ParsedInscydReport
 from pipeline.parsers.fit import parse_fit, segment_blocks
 from pipeline.parsers.zwo import parse_zwo
@@ -98,18 +99,6 @@ def _fallback_zwo_summary(zwo_path: Path) -> dict[str, Any]:
     }
 
 
-def _best_rolling_power(workout_df: pd.DataFrame, duration_sec: int) -> float | None:
-    if duration_sec <= 0 or workout_df.empty or "power_w" not in workout_df.columns:
-        return None
-    series = workout_df["power_w"].fillna(0)
-    if len(series) < duration_sec:
-        return None
-    best = series.rolling(window=duration_sec, min_periods=duration_sec).mean().max()
-    if pd.isna(best):
-        return None
-    return float(best)
-
-
 def _summarize_fit_session(
     fit_path: Path,
     durations: list[int],
@@ -137,7 +126,7 @@ def _summarize_fit_session(
         }
 
     rolling_best = {
-        str(duration): _best_rolling_power(workout_df, duration)
+        str(duration): best_rolling_power(workout_df, duration)
         for duration in sorted({int(d) for d in durations if d})
     }
     return (
