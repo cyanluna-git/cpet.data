@@ -1973,6 +1973,21 @@ def run_analysis(db_path: Path) -> dict[str, Any]:
     all_results["protocol"] = protocol_results
     all_results["suitability"] = suitability_results
 
+    # Step 10: CP / W' model (FIT-based)
+    fit_paths = list(db_path.parent.glob("*.fit"))
+    if fit_paths:
+        print("\n10. Critical Power / W' Model...")
+        from pipeline.fit_history import extract_workout_bests, save_fit_history
+        from pipeline.cp_model import compute_cp_model
+        history = extract_workout_bests(fit_paths)
+        save_fit_history(db_path, history)
+        cp_result = _safe_run("CP Model", compute_cp_model, history)
+        all_results["cp_model"] = {"cp_result": cp_result}
+        if cp_result.get("status") == "computed":
+            print(f"   CP: {cp_result.get('cp_w')}W, W': {cp_result.get('w_prime_j')}J, R²={cp_result.get('r_squared'):.3f}")
+        else:
+            print(f"   Abstained: {cp_result.get('abstain_reason')}")
+
     print("\nStoring results...")
     store_results(db_path, all_results)
 
