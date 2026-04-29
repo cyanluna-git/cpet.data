@@ -82,6 +82,7 @@ from server.db import (
     get_notes_list,
     get_note,
     upsert_note,
+    get_report_html,
 )
 from server.api import _list_dashboard_entries, sync_published_report_catalog, sync_submission_duplicate_metadata
 
@@ -144,17 +145,6 @@ _published_dir = Path(
 ).resolve()
 app.state.published_dir = _published_dir
 _published_dir.mkdir(parents=True, exist_ok=True)
-# Support both the documented /report/<slug>/ path and older /reports/<slug>/ links.
-app.mount(
-    "/report",
-    StaticFiles(directory=str(_published_dir), html=True),
-    name="report",
-)
-app.mount(
-    "/reports",
-    StaticFiles(directory=str(_published_dir), html=True),
-    name="reports",
-)
 
 
 
@@ -463,6 +453,44 @@ async def replace_note(
     upsert_note(db_path, slug, title, html_content, session_user.get("id"))
 
     return RedirectResponse(url="/notes", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Report serving — DB-primary, file fallback
+# ---------------------------------------------------------------------------
+
+def _serve_report_slug(db_path: Path, published_dir: Path, slug: str) -> HTMLResponse:
+    """Serve a report from DB, falling back to the published file."""
+    html = get_report_html(db_path, slug)
+    if html:
+        return HTMLResponse(html)
+    # File fallback (for reports not yet migrated)
+    index = published_dir / slug / "index.html"
+    if index.is_file():
+        return HTMLResponse(index.read_text(encoding="utf-8"))
+    raise HTTPException(status_code=404, detail="report not found")
+
+
+@app.get("/report/{slug}", response_class=HTMLResponse)
+async def report_redirect(slug: str) -> RedirectResponse:
+    return RedirectResponse(url=f"/report/{slug}/", status_code=301)
+
+
+@app.get("/report/{slug}/", response_class=HTMLResponse)
+async def report_page(request: Request, slug: str) -> HTMLResponse:
+    db_path = request.app.state.db_path
+    published_dir = request.app.state.published_dir
+    return _serve_report_slug(db_path, published_dir, slug)
+
+
+@app.get("/reports/{slug}", response_class=HTMLResponse)
+async def reports_redirect(slug: str) -> RedirectResponse:
+    return RedirectResponse(url=f"/report/{slug}/", status_code=301)
+
+
+@app.get("/reports/{slug}/", response_class=HTMLResponse)
+async def reports_slug_page(request: Request, slug: str) -> RedirectResponse:
+    return RedirectResponse(url=f"/report/{slug}/", status_code=301)
 
 
 def _render_dashboard_analytics(

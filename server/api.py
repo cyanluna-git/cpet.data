@@ -41,6 +41,7 @@ from server.db import (
     list_subjects,
     refresh_targeted_materializations,
     upsert_report_catalog_entry,
+    store_report_html,
     update_submission_duplicate_metadata,
     update_job_status,
 )
@@ -520,6 +521,10 @@ def _reconcile_job_artifacts(
         completed_at=datetime.now(timezone.utc).isoformat(),
         file_tags=_get_file_tags(submission, str(workspace)),
     )
+    try:
+        store_report_html(get_db_path(request), slug, report_index.read_text(encoding="utf-8"))
+    except Exception:
+        logger.exception("Failed to store report HTML in DB for slug %s", slug)
 
     update_job_status(
         get_db_path(request),
@@ -599,7 +604,8 @@ def _run_pipeline_job(
         safe_subject = subject_name or "subject"
         safe_test_date = test_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
         slug = publish_report(workspace, safe_subject, safe_test_date, publish_dir)
-        metadata = _extract_report_metadata(workspace / "report" / "index.html")
+        report_index = workspace / "report" / "index.html"
+        metadata = _extract_report_metadata(report_index)
         upsert_report_catalog_entry(
             db_path,
             report_slug=slug,
@@ -611,6 +617,10 @@ def _run_pipeline_job(
             completed_at=datetime.now(timezone.utc).isoformat(),
             file_tags=file_tags,
         )
+        try:
+            store_report_html(db_path, slug, report_index.read_text(encoding="utf-8"))
+        except Exception:
+            logger.exception("Failed to store report HTML in DB for slug %s", slug)
         update_job_status(
             db_path,
             job_id,
@@ -783,7 +793,12 @@ def _scan_published_reports(published_dir: Path) -> list[dict]:
 
 
 def sync_published_report_catalog(db_path: Path, published_dir: Path) -> None:
-    """Sync published HTML metadata into the SQLite report catalog."""
+    """Sync published HTML metadata into the SQLite report catalog.
+
+    For each report found on disk, upsert catalog metadata and store HTML in DB.
+    DB entries that have html_content are never deleted (they are DB-primary);
+    entries without html_content whose file is missing are pruned.
+    """
     current_slugs: set[str] = set()
     for row in _scan_published_reports(published_dir):
         report_slug = str(row["report_slug"])
@@ -799,10 +814,20 @@ def sync_published_report_catalog(db_path: Path, published_dir: Path) -> None:
             completed_at=str(row["completed_at"] or ""),
             file_tags=list(row.get("file_tags") or []),
         )
+        # Persist HTML into DB if not already stored
+        html_file = published_dir / report_slug / "index.html"
+        if html_file.is_file():
+            try:
+                store_report_html(db_path, report_slug, html_file.read_text(encoding="utf-8"))
+            except Exception:
+                logger.exception("Failed to store report HTML for %s during sync", report_slug)
 
     for row in list_report_catalog(db_path):
         report_slug = str(row["report_slug"])
         if report_slug not in current_slugs:
+            # Keep entries that already have HTML stored in DB
+            if row.get("html_content"):
+                continue
             delete_report_catalog_entry(db_path, report_slug)
 
 

@@ -212,6 +212,10 @@ MIGRATION_ADD_DUPLICATE_GROUP_KEY = """
 ALTER TABLE submissions ADD COLUMN duplicate_group_key TEXT;
 """
 
+MIGRATION_ADD_REPORT_HTML_CONTENT = """
+ALTER TABLE report_catalog ADD COLUMN html_content TEXT;
+"""
+
 VALID_STATUSES = {"pending", "processing", "done", "failed"}
 
 
@@ -267,6 +271,9 @@ def init_db(db_path: Path) -> None:
 
     if not _column_exists(conn, "submissions", "duplicate_group_key"):
         conn.execute(MIGRATION_ADD_DUPLICATE_GROUP_KEY)
+        conn.commit()
+    if not _column_exists(conn, "report_catalog", "html_content"):
+        conn.execute(MIGRATION_ADD_REPORT_HTML_CONTENT)
         conn.commit()
     # Migration: add subject_id to users if missing
     if not _column_exists(conn, "users", "subject_id"):
@@ -1200,6 +1207,28 @@ def upsert_report_catalog_entry(
     )
     conn.commit()
     conn.close()
+
+
+def store_report_html(db_path: Path, report_slug: str, html_content: str) -> None:
+    """Persist report HTML in report_catalog. Row must already exist."""
+    conn = _connect(db_path)
+    conn.execute(
+        "UPDATE report_catalog SET html_content = ?, updated_at = datetime('now') WHERE report_slug = ?",
+        (html_content, report_slug),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_report_html(db_path: Path, report_slug: str) -> str | None:
+    """Return stored HTML content for a slug, or None."""
+    conn = _connect(db_path)
+    row = conn.execute(
+        "SELECT html_content FROM report_catalog WHERE report_slug = ?",
+        (report_slug,),
+    ).fetchone()
+    conn.close()
+    return row["html_content"] if row and row["html_content"] else None
 
 
 def delete_report_catalog_entry(db_path: Path, report_slug: str) -> None:
