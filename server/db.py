@@ -177,6 +177,15 @@ ON subject_feature_sets(subject_id, anchor_measured_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_sfs_spec
 ON subject_feature_sets(feature_spec_key, feature_spec_version, anchor_measured_at DESC);
+
+CREATE TABLE IF NOT EXISTS notes_board (
+    slug TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    html_content TEXT NOT NULL,
+    uploaded_by_user_id TEXT REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 MIGRATION_ADD_USER_ID = """
@@ -3063,6 +3072,8 @@ def _get_dashboard_subject_display_names(
 
     conn = _connect(db_path)
     placeholders = ", ".join("?" for _ in subject_ids)
+
+    # Primary: latest submission name linked to this subject
     rows = conn.execute(
         f"""SELECT subject_id, subject_name
             FROM submissions
@@ -3072,13 +3083,27 @@ def _get_dashboard_subject_display_names(
             ORDER BY created_at DESC, rowid DESC""",
         subject_ids,
     ).fetchall()
-    conn.close()
 
     display_names: dict[str, str] = {}
     for row in rows:
         subject_id = str(row["subject_id"])
         if subject_id not in display_names:
             display_names[subject_id] = str(row["subject_name"]).strip()
+
+    # Fallback: subjects.name for IDs not covered by any submission
+    missing = [sid for sid in subject_ids if sid not in display_names]
+    if missing:
+        fallback_placeholders = ", ".join("?" for _ in missing)
+        fallback_rows = conn.execute(
+            f"""SELECT id, name FROM subjects
+                WHERE id IN ({fallback_placeholders})
+                  AND name IS NOT NULL AND trim(name) != ''""",
+            missing,
+        ).fetchall()
+        for row in fallback_rows:
+            display_names[str(row["id"])] = str(row["name"]).strip()
+
+    conn.close()
     return display_names
 
 
@@ -5163,3 +5188,54 @@ def build_fitness_trend_compare(
         "current_test_date": current_entry.get("test_date"),
         "metrics": metrics,
     }
+
+
+# ---------------------------------------------------------------------------
+# Notes board
+# ---------------------------------------------------------------------------
+
+
+def get_notes_list(db_path: Path) -> list[dict]:
+    """Return all notes sorted by updated_at DESC."""
+    conn = _connect(db_path)
+    rows = conn.execute(
+        "SELECT slug, title, updated_at, created_at FROM notes_board ORDER BY updated_at DESC"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_note(db_path: Path, slug: str) -> dict | None:
+    """Return one note by slug, or None if not found."""
+    conn = _connect(db_path)
+    row = conn.execute(
+        "SELECT slug, title, html_content, updated_at, created_at FROM notes_board WHERE slug = ?",
+        (slug,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def upsert_note(
+    db_path: Path,
+    slug: str,
+    title: str,
+    html_content: str,
+    user_id: str | None = None,
+) -> None:
+    """Insert or replace a note. updated_at is always refreshed on replace."""
+    conn = _connect(db_path)
+    conn.execute(
+        """
+        INSERT INTO notes_board (slug, title, html_content, uploaded_by_user_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+        ON CONFLICT(slug) DO UPDATE SET
+            title = excluded.title,
+            html_content = excluded.html_content,
+            uploaded_by_user_id = excluded.uploaded_by_user_id,
+            updated_at = datetime('now')
+        """,
+        (slug, title, html_content, user_id),
+    )
+    conn.commit()
+    conn.close()

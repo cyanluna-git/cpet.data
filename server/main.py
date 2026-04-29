@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -79,6 +79,9 @@ from server.db import (
     unlink_user_from_subject,
     update_user_role,
     upsert_user_profile,
+    get_notes_list,
+    get_note,
+    upsert_note,
 )
 from server.api import _list_dashboard_entries, sync_published_report_catalog, sync_submission_duplicate_metadata
 
@@ -153,44 +156,6 @@ app.mount(
     name="reports",
 )
 
-_notes_dir = _repo_dir / "docs" / "guides"
-_NOTE_SUMMARIES = {
-    "two-block-cpet-fuel-split-detail": {
-        "summary": "2블럭 CPET에서 RQ 1.0 이전 연료 기여율과 Metabolic Flexibility Index를 현재 구현 기준으로 정리한 상세 가이드입니다.",
-        "category": "Fuel Contribution",
-    },
-    "three-path-energy-system-detail": {
-        "summary": "산화적·해당적·인산계 3-path 에너지 시스템 기여도를 실제 코드 공식과 가정으로 정리한 상세 가이드입니다.",
-        "category": "Energy Systems",
-    },
-    "cpet-metflex-landscape-review": {
-        "summary": "CPET-derived metabolic flexibility metric 논문의 문헌·특허 지형과 ZeLIA 적용 함의를 정리한 내부 리뷰입니다.",
-        "category": "Paper Review",
-    },
-    "cycling-vo2-rnn-review": {
-        "summary": "Cycling VO2 RNN pilot study를 읽고, ZeLIA에서 VO2 surrogate 모델을 어디까지 연구용으로 받아들일 수 있는지 정리한 내부 리뷰입니다.",
-        "category": "Modeling Review",
-    },
-    "cpet-lactate-ai-masters-topics": {
-        "summary": "CPET + lactate + AI 데이터를 바탕으로 현실적인 석사 논문 주제 5개를 연구문제, 가설, 데이터, 분석방법, 한계 기준으로 비교한 노트입니다.",
-        "category": "Research Planning",
-    },
-    "lactate-surrogate-research-brief": {
-        "summary": "젖산 surrogate model 주제를 별도 연구 페이지로 분리해, 현재 연구 맥락과 Gemini Deep Research용 탐색 프롬프트를 함께 정리한 노트입니다.",
-        "category": "Research Planning",
-    },
-    "cpet-lactate-surrogate-strategy": {
-        "summary": "Gemini Deep Research 결과를 바탕으로 정리한 CPET 기반 혈중 젖산 대리 모델링 연구 전략 전문입니다.",
-        "category": "Deep Research Report",
-    },
-    "thesis-direction-lactate-surrogate-modeling": {
-        "summary": "docx 원문을 notes 템플릿으로 옮긴, 젖산 surrogate modeling 연구 방향 전문 문서입니다.",
-        "category": "Research Planning",
-    },
-}
-_notes_catalog_cache_key: tuple[tuple[str, float], ...] | None = None
-_notes_catalog_cache: list[dict] = []
-_notes_file_cache: dict[str, dict] = {}
 
 
 # ── Template context: inject current user into every response ────────
@@ -239,65 +204,20 @@ def _template_response(
     return templates.TemplateResponse(request, template_name, ctx)
 
 
-def _extract_note_title(html_text: str, fallback: str) -> str:
-    """Extract an HTML title for notes list cards."""
+
+def _slugify(name: str) -> str:
+    """Derive a URL-safe slug from a filename stem."""
+    slug = name.lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", slug)
+    return slug.strip("-")
+
+
+def _extract_html_title(html_text: str, fallback: str) -> str:
+    """Extract text from the first <title> tag, or return fallback."""
     match = re.search(r"<title>(.*?)</title>", html_text, flags=re.IGNORECASE | re.DOTALL)
     if not match:
         return fallback
     return re.sub(r"\s+", " ", match.group(1)).strip() or fallback
-
-
-def _build_notes_catalog() -> list[dict]:
-    """List protected note documents from docs/guides."""
-    global _notes_catalog_cache_key, _notes_catalog_cache, _notes_file_cache
-
-    notes: list[dict] = []
-    if not _notes_dir.exists():
-        return notes
-
-    paths = sorted(_notes_dir.glob("*.html"), key=lambda item: item.stat().st_mtime, reverse=True)
-    cache_key = tuple((path.name, path.stat().st_mtime) for path in paths)
-    if cache_key == _notes_catalog_cache_key:
-        return [dict(note) for note in _notes_catalog_cache]
-
-    valid_names = {path.name for path in paths}
-    _notes_file_cache = {
-        filename: meta for filename, meta in _notes_file_cache.items() if filename in valid_names
-    }
-
-    for path in paths:
-        slug = path.stem.lower().replace("_", "-")
-        meta = _NOTE_SUMMARIES.get(slug, {})
-        cached = _notes_file_cache.get(path.name)
-        if cached and cached.get("mtime") == path.stat().st_mtime:
-            title = str(cached.get("title") or path.stem.replace("_", " "))
-        else:
-            html_text = path.read_text(encoding="utf-8")
-            title = _extract_note_title(html_text, path.stem.replace("_", " "))
-            _notes_file_cache[path.name] = {
-                "mtime": path.stat().st_mtime,
-                "title": title,
-            }
-        notes.append({
-            "slug": slug,
-            "title": title,
-            "summary": meta.get("summary", "연구용 내부 문서입니다."),
-            "category": meta.get("category", "Research Note"),
-            "filename": path.name,
-            "updated_at": datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d"),
-        })
-
-    _notes_catalog_cache_key = cache_key
-    _notes_catalog_cache = [dict(note) for note in notes]
-    return notes
-
-
-def _get_note_entry(note_slug: str) -> dict | None:
-    """Return one note's metadata and file path."""
-    for note in _build_notes_catalog():
-        if note["slug"] == note_slug:
-            return {**note, "path": _notes_dir / note["filename"]}
-    return None
 
 
 def _build_note_content_security_policy() -> str:
@@ -436,10 +356,9 @@ async def notes_page(request: Request) -> HTMLResponse:
     auth_result = _require_notes_access(request)
     if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
         return auth_result
-    session_user = auth_result
+    db_path = request.app.state.db_path
     return _template_response(request, "notes.html", {
-        "notes": _build_notes_catalog(),
-        "session_user": session_user,
+        "notes": get_notes_list(db_path),
     })
 
 
@@ -449,33 +368,63 @@ async def note_viewer_page(request: Request, note_slug: str) -> HTMLResponse:
     auth_result = _require_notes_access(request)
     if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
         return auth_result
-    session_user = auth_result
-    note = _get_note_entry(note_slug)
+    db_path = request.app.state.db_path
+    note = get_note(db_path, note_slug)
     if note is None:
         raise HTTPException(status_code=404, detail="note not found")
-    return _template_response(request, "note_viewer.html", {
-        "note": note,
-        "session_user": session_user,
-    })
+    return _template_response(request, "note_viewer.html", {"note": note})
 
 
 @app.get("/notes/{note_slug}/content", response_class=HTMLResponse)
 async def note_content_page(request: Request, note_slug: str) -> HTMLResponse:
-    """Return the raw note HTML after access control."""
+    """Return the raw note HTML stored in DB after access control."""
     auth_result = _require_notes_access(request)
     if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
         return auth_result
-    note = _get_note_entry(note_slug)
+    db_path = request.app.state.db_path
+    note = get_note(db_path, note_slug)
     if note is None:
         raise HTTPException(status_code=404, detail="note not found")
     return HTMLResponse(
-        note["path"].read_text(encoding="utf-8"),
+        note["html_content"],
         headers={
             "Content-Security-Policy": _build_note_content_security_policy(),
             "Referrer-Policy": "no-referrer",
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@app.post("/api/notes", response_class=HTMLResponse)
+async def upload_note(
+    request: Request,
+    file: UploadFile = File(...),
+) -> HTMLResponse:
+    """Upload or replace a note HTML file. Slug is derived from filename."""
+    auth_result = _require_notes_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+
+    if not file.filename or not file.filename.lower().endswith(".html"):
+        raise HTTPException(status_code=400, detail="HTML 파일만 업로드할 수 있습니다.")
+
+    raw = await file.read()
+    try:
+        html_content = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="파일 인코딩이 UTF-8이어야 합니다.")
+
+    stem = Path(file.filename).stem
+    slug = _slugify(stem)
+    if not slug:
+        raise HTTPException(status_code=400, detail="파일명에서 slug를 추출할 수 없습니다.")
+
+    title = _extract_html_title(html_content, stem.replace("-", " ").replace("_", " "))
+    db_path = request.app.state.db_path
+    upsert_note(db_path, slug, title, html_content, session_user.get("id"))
+
+    return RedirectResponse(url="/notes", status_code=303)
 
 
 def _render_dashboard_analytics(
