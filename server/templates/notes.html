@@ -8,16 +8,15 @@
       Research Notes
     </div>
     <h1 class="mt-4 text-3xl font-semibold tracking-tight text-gray-900">연구 노트</h1>
-    <p class="mt-3 max-w-3xl text-sm leading-7 text-gray-600">
-      연구자와 admin만 보는 내부 문서 공간입니다. HTML 파일을 업로드하면 그대로 렌더링됩니다.
-      같은 파일명으로 다시 올리면 내용이 교체됩니다.
+    <p class="mt-2 text-sm leading-7 text-gray-500">
+      연구자·admin 전용 내부 문서 공간입니다. HTML 파일을 업로드하면 그대로 렌더링됩니다.
     </p>
 
     <form
       method="post"
       action="/api/notes"
       enctype="multipart/form-data"
-      class="mt-6 flex flex-wrap items-center gap-3"
+      class="mt-5 flex flex-wrap items-center gap-3"
     >
       <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-2 text-sm text-gray-600 transition hover:border-gray-400 hover:bg-gray-100">
         <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -44,30 +43,88 @@
     </form>
   </div>
 
-  {% if notes %}
-  <div class="grid gap-5 lg:grid-cols-2">
-    {% for note in notes %}
-    <a
-      href="/notes/{{ note.slug }}"
-      class="group rounded-[26px] border border-gray-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md"
-    >
-      <div class="flex items-center justify-between gap-3">
-        <span class="inline-flex rounded-full bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">
-          Note
-        </span>
-        <span class="text-xs text-gray-400">{{ note.updated_at[:10] }}</span>
-      </div>
-      <h2 class="mt-4 text-xl font-semibold tracking-tight text-gray-900 group-hover:text-gray-700">
-        {{ note.title }}
-      </h2>
-      <div class="mt-3 font-mono text-xs text-gray-400">{{ note.slug }}</div>
-    </a>
-    {% endfor %}
+  <div class="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-sm">
+    {% if notes %}
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-gray-100 bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+          <th class="px-6 py-3 w-8">#</th>
+          <th class="px-4 py-3">제목</th>
+          <th class="px-4 py-3 w-36 hidden sm:table-cell">업로더</th>
+          <th class="px-4 py-3 w-28 hidden md:table-cell">업로드일</th>
+          <th class="px-4 py-3 w-16"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {% for note in notes %}
+        <tr class="group transition hover:bg-gray-50">
+          <td class="px-6 py-4 text-xs text-gray-400 tabular-nums">{{ loop.index }}</td>
+          <td class="px-4 py-4">
+            <a href="/notes/{{ note.slug }}" class="font-medium text-gray-900 hover:text-gray-600">
+              {{ note.title }}
+            </a>
+            <div class="mt-0.5 font-mono text-[11px] text-gray-400">{{ note.slug }}</div>
+          </td>
+          <td class="px-4 py-4 text-gray-500 hidden sm:table-cell">{{ note.uploader_name }}</td>
+          <td class="px-4 py-4 text-gray-400 tabular-nums hidden md:table-cell">{{ note.updated_at[:10] }}</td>
+          <td class="px-4 py-4 text-right">
+            {% if current_user and (current_user.role == 'admin' or current_user.id == note.uploaded_by_user_id) %}
+            <button
+              type="button"
+              onclick="document.getElementById('edit-form-{{ note.slug }}').classList.toggle('hidden')"
+              class="rounded-md border border-gray-200 px-3 py-1 text-xs font-medium text-gray-600 transition hover:border-gray-400 hover:bg-gray-100"
+            >
+              Edit
+            </button>
+            {% endif %}
+          </td>
+        </tr>
+        {% if current_user and (current_user.role == 'admin' or current_user.id == note.uploaded_by_user_id) %}
+        <tr id="edit-form-{{ note.slug }}" class="hidden bg-amber-50">
+          <td colspan="5" class="px-6 py-3">
+            <form
+              method="post"
+              action="/api/notes/{{ note.slug }}/replace"
+              enctype="multipart/form-data"
+              class="flex flex-wrap items-center gap-3"
+            >
+              <span class="text-xs text-gray-500">새 HTML 파일로 교체:</span>
+              <label class="flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-amber-300 bg-white px-3 py-1.5 text-xs text-gray-600 hover:bg-amber-50">
+                <input
+                  type="file"
+                  name="file"
+                  accept=".html,text/html"
+                  class="sr-only"
+                  onchange="this.nextElementSibling.textContent = this.files[0]?.name || '파일 선택'; this.closest('form').querySelector('button[type=submit]').disabled = !this.files.length;"
+                />
+                <span>파일 선택</span>
+              </label>
+              <button
+                type="submit"
+                disabled
+                class="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                교체
+              </button>
+              <button
+                type="button"
+                onclick="document.getElementById('edit-form-{{ note.slug }}').classList.add('hidden')"
+                class="text-xs text-gray-400 hover:text-gray-600"
+              >
+                취소
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="p-10 text-center text-sm text-gray-500">
+      아직 등록된 노트가 없습니다. HTML 파일을 업로드해보세요.
+    </div>
+    {% endif %}
   </div>
-  {% else %}
-  <div class="rounded-[24px] border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500">
-    아직 등록된 노트가 없습니다. HTML 파일을 업로드해보세요.
-  </div>
-  {% endif %}
 </section>
 {% endblock %}

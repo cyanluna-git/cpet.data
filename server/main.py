@@ -427,6 +427,44 @@ async def upload_note(
     return RedirectResponse(url="/notes", status_code=303)
 
 
+@app.post("/api/notes/{slug}/replace", response_class=HTMLResponse)
+async def replace_note(
+    request: Request,
+    slug: str,
+    file: UploadFile = File(...),
+) -> HTMLResponse:
+    """Replace an existing note's HTML. Only the uploader or admin may replace."""
+    auth_result = _require_notes_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+    db_path = request.app.state.db_path
+
+    existing = get_note(db_path, slug)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="note not found")
+
+    role = session_user.get("role", "user")
+    owner_id = existing.get("uploaded_by_user_id")
+    if role != "admin" and owner_id != session_user.get("id"):
+        raise HTTPException(status_code=403, detail="본인이 올린 노트만 수정할 수 있습니다.")
+
+    if not file.filename or not file.filename.lower().endswith(".html"):
+        raise HTTPException(status_code=400, detail="HTML 파일만 업로드할 수 있습니다.")
+
+    raw = await file.read()
+    try:
+        html_content = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="파일 인코딩이 UTF-8이어야 합니다.")
+
+    stem = Path(file.filename).stem
+    title = _extract_html_title(html_content, stem.replace("-", " ").replace("_", " "))
+    upsert_note(db_path, slug, title, html_content, session_user.get("id"))
+
+    return RedirectResponse(url="/notes", status_code=303)
+
+
 def _render_dashboard_analytics(
     request: Request,
     session_user: dict,

@@ -5196,10 +5196,17 @@ def build_fitness_trend_compare(
 
 
 def get_notes_list(db_path: Path) -> list[dict]:
-    """Return all notes sorted by updated_at DESC."""
+    """Return all notes sorted by updated_at DESC, with uploader display_name."""
     conn = _connect(db_path)
     rows = conn.execute(
-        "SELECT slug, title, updated_at, created_at FROM notes_board ORDER BY updated_at DESC"
+        """
+        SELECT n.slug, n.title, n.updated_at, n.created_at,
+               n.uploaded_by_user_id,
+               COALESCE(u.display_name, '—') AS uploader_name
+        FROM notes_board n
+        LEFT JOIN users u ON u.id = n.uploaded_by_user_id
+        ORDER BY n.updated_at DESC
+        """
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -5209,7 +5216,14 @@ def get_note(db_path: Path, slug: str) -> dict | None:
     """Return one note by slug, or None if not found."""
     conn = _connect(db_path)
     row = conn.execute(
-        "SELECT slug, title, html_content, updated_at, created_at FROM notes_board WHERE slug = ?",
+        """
+        SELECT n.slug, n.title, n.html_content, n.updated_at, n.created_at,
+               n.uploaded_by_user_id,
+               COALESCE(u.display_name, '—') AS uploader_name
+        FROM notes_board n
+        LEFT JOIN users u ON u.id = n.uploaded_by_user_id
+        WHERE n.slug = ?
+        """,
         (slug,),
     ).fetchone()
     conn.close()
