@@ -15,8 +15,16 @@
         <button
           type="button"
           class="px-2 py-1 rounded text-[10px] font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
-          onclick="openManageNameModal({ mode: 'subject', subjectId: '{{ subj.id }}', currentName: {{ (subj.name or '')|tojson }} })"
-        >변경</button>
+          onclick="openSubjectEditModal({
+            id: '{{ subj.id }}',
+            name: {{ (subj.name or '')|tojson }},
+            gender: {{ (subj.gender or '')|tojson }},
+            birth_year: {{ subj.birth_year or 'null' }},
+            height_cm: {{ subj.height_cm or 'null' }},
+            weight_kg: {{ subj.weight_kg or 'null' }},
+            training_level: {{ (subj.training_level or '')|tojson }}
+          })"
+        >편집</button>
       </div>
       {% else %}
       <span class="font-medium text-sm text-gray-900">{{ subj.name or "—" }}</span>
