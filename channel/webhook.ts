@@ -14,7 +14,7 @@ const mcp = new Server(
       2. Check analysis_mode and file_tags to understand whether this is standalone INSCYD or standard CPET.
       3. Run: python -m pipeline --workspace {workspace_path}
          The CLI now auto-routes standalone INSCYD workspaces and standard CPET workspaces.
-      4. If successful, copy report to published/{slug}/ and update job status plus dashboard metadata
+      4. If successful, publish report via server.publish, inject HTML into report_catalog DB table, then update job status
       5. If failed, update job status with error message
       Use the cpet-pipeline skill for detailed instructions.`,
   },

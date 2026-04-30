@@ -5,6 +5,7 @@ Every function takes a db_path: Path parameter. No global state.
 Uses raw sqlite3, WAL mode, TEXT primary keys (UUID).
 """
 
+import gzip
 import html
 import hashlib
 import json
@@ -186,6 +187,19 @@ CREATE TABLE IF NOT EXISTS notes_board (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS submission_files (
+    id TEXT PRIMARY KEY,
+    submission_id TEXT NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
+    filename TEXT NOT NULL,
+    content_gz BLOB NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(submission_id, filename)
+);
+
+CREATE INDEX IF NOT EXISTS idx_submission_files_submission
+ON submission_files(submission_id);
 """
 
 MIGRATION_ADD_USER_ID = """
@@ -5282,3 +5296,48 @@ def upsert_note(
     )
     conn.commit()
     conn.close()
+
+
+def save_submission_files(
+    db_path: Path,
+    submission_id: str,
+    files: list[tuple[str, bytes]],
+) -> None:
+    """Persist raw submission files as gzip-compressed BLOBs.
+
+    Replaces all existing rows for submission_id in a single transaction.
+    """
+    conn = _connect(db_path)
+    conn.execute(
+        "DELETE FROM submission_files WHERE submission_id = ?",
+        (submission_id,),
+    )
+    for filename, content in files:
+        safe_name = Path(filename).name
+        compressed = gzip.compress(content, compresslevel=6)
+        conn.execute(
+            """
+            INSERT INTO submission_files (id, submission_id, filename, content_gz, size_bytes)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (uuid.uuid4().hex, submission_id, safe_name, compressed, len(content)),
+        )
+    conn.commit()
+    conn.close()
+
+
+def restore_submission_files(
+    db_path: Path,
+    submission_id: str,
+) -> list[tuple[str, bytes]]:
+    """Return decompressed file tuples for a submission, ordered by filename.
+
+    Returns an empty list if no rows exist.
+    """
+    conn = _connect(db_path)
+    rows = conn.execute(
+        "SELECT filename, content_gz FROM submission_files WHERE submission_id = ? ORDER BY filename",
+        (submission_id,),
+    ).fetchall()
+    conn.close()
+    return [(row["filename"], gzip.decompress(row["content_gz"])) for row in rows]

@@ -84,6 +84,38 @@ Flag any warnings (e.g., "Lactate test submitted but no lactate data file found"
 but do NOT fail the job for missing optional files. Only the COSMED XLSX is
 strictly required.
 
+### Step 3.5: Verify Workspace (Restore if Missing)
+
+Before running the pipeline, confirm that `$WORKSPACE_PATH/raw/` exists and contains files.
+If the directory is missing or empty, restore the raw files from the DB:
+
+```bash
+python3 -c "
+from pathlib import Path
+from server.db import restore_submission_files
+from server.workspace import create_workspace
+
+submission_id = '$SUBMISSION_ID'
+db_path = Path('data/cpet_platform.db')
+workspace = Path('$WORKSPACE_PATH')
+raw_dir = workspace / 'raw'
+
+files_exist = raw_dir.is_dir() and any(raw_dir.iterdir())
+if not files_exist:
+    stored = restore_submission_files(db_path, submission_id)
+    if not stored:
+        raise RuntimeError(f'no source files in DB for submission {submission_id}')
+    data_dir = Path('data')
+    create_workspace(data_dir, submission_id, stored)
+    print(f'Restored {len(stored)} file(s) into {raw_dir}')
+else:
+    print(f'Workspace raw/ OK: {list(raw_dir.iterdir())}')
+"
+```
+
+Replace `$SUBMISSION_ID` and `$WORKSPACE_PATH` with values from Step 1.
+If the restore raises RuntimeError, jump to Step 7 with that error message.
+
 ### Step 4: Run Pipeline
 
 Execute the analysis pipeline on the workspace:

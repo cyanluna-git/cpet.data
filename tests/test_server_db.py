@@ -23,6 +23,8 @@ from server.db import (
     get_submission,
     init_db,
     list_jobs,
+    restore_submission_files,
+    save_submission_files,
     update_job_status,
 )
 from server.workspace import create_workspace, get_workspace, list_files
@@ -78,12 +80,13 @@ class TestInitDb:
             "AND name NOT LIKE 'sqlite_%'"
         ).fetchall()
         conn.close()
-        # 10 tables: subjects, users, submissions, jobs,
-        #           report_user_links, report_name_overrides,
-        #           report_notes, user_profiles,
-        #           subject_metric_snapshots,
-        #           subject_feature_sets
-        assert len(tables) == 10
+        # 13 tables: subjects, users, submissions, jobs,
+        #            report_user_links, report_name_overrides,
+        #            report_notes, user_profiles,
+        #            subject_metric_snapshots, subject_feature_sets,
+        #            report_catalog, notes_board,
+        #            submission_files
+        assert len(tables) == 13
 
     def test_creates_subject_metric_snapshots_columns(self, db_path: Path) -> None:
         conn = sqlite3.connect(str(db_path))
@@ -804,3 +807,298 @@ class TestSchemaEdgeCases:
         """ReportSummary with any missing field raises ValidationError."""
         with pytest.raises(ValidationError):
             ReportSummary(slug="s", subject_name="n")  # type: ignore[call-arg]
+
+
+# ── Submission Files (BLOB storage) ─────────────────────────────────
+
+
+class TestSubmissionFiles:
+    """Tests for save_submission_files / restore_submission_files."""
+
+    def _make_submission(self, db_path: Path) -> str:
+        return create_submission(
+            db_path,
+            "blob test upload",
+            [{"name": "test.xlsx", "extension": "xlsx", "size_bytes": 10}],
+            "/data/ws/blob-test",
+        )
+
+    # ── schema ──────────────────────────────────────────────────────
+
+    def test_submission_files_table_exists(self, db_path: Path) -> None:
+        """submission_files table must be created by init_db."""
+        conn = sqlite3.connect(str(db_path))
+        tables = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='submission_files'"
+        ).fetchall()
+        conn.close()
+        assert len(tables) == 1
+
+    def test_submission_files_index_exists(self, db_path: Path) -> None:
+        """idx_submission_files_submission index must be created by init_db."""
+        conn = sqlite3.connect(str(db_path))
+        indexes = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' "
+            "AND name='idx_submission_files_submission'"
+        ).fetchall()
+        conn.close()
+        assert len(indexes) == 1
+
+    # ── save round-trip ──────────────────────────────────────────────
+
+    def test_save_and_restore_single_file(self, db_path: Path) -> None:
+        """Gzip round-trip: content saved equals content restored."""
+        sid = self._make_submission(db_path)
+        content = b"hello cpet world" * 100
+        save_submission_files(db_path, sid, [("data.xlsx", content)])
+        result = restore_submission_files(db_path, sid)
+        assert result == [("data.xlsx", content)]
+
+    def test_save_and_restore_multiple_files(self, db_path: Path) -> None:
+        """Multiple files are stored and returned ordered by filename."""
+        sid = self._make_submission(db_path)
+        files = [
+            ("report.pdf", b"%PDF-1.4 fake" * 50),
+            ("cosmed.xlsx", b"PK\x03\x04fake xlsx" * 30),
+        ]
+        save_submission_files(db_path, sid, files)
+        result = restore_submission_files(db_path, sid)
+        # Should be sorted by filename: cosmed < report
+        assert [name for name, _ in result] == ["cosmed.xlsx", "report.pdf"]
+        result_dict = dict(result)
+        assert result_dict["report.pdf"] == files[0][1]
+        assert result_dict["cosmed.xlsx"] == files[1][1]
+
+    def test_row_count_matches_file_count(self, db_path: Path) -> None:
+        """Row count in submission_files matches the number of files saved."""
+        sid = self._make_submission(db_path)
+        files = [
+            ("a.xlsx", b"aaa"),
+            ("b.pdf", b"bbb"),
+        ]
+        save_submission_files(db_path, sid, files)
+        conn = sqlite3.connect(str(db_path))
+        count = conn.execute(
+            "SELECT COUNT(*) FROM submission_files WHERE submission_id = ?", (sid,)
+        ).fetchone()[0]
+        conn.close()
+        assert count == 2
+
+    # ── idempotency / re-upload ──────────────────────────────────────
+
+    def test_reupload_replaces_not_accumulates(self, db_path: Path) -> None:
+        """Calling save_submission_files twice keeps the same row count (DELETE+INSERT)."""
+        sid = self._make_submission(db_path)
+        save_submission_files(db_path, sid, [("a.xlsx", b"v1"), ("b.pdf", b"v1b")])
+        save_submission_files(db_path, sid, [("a.xlsx", b"v2"), ("b.pdf", b"v2b")])
+        conn = sqlite3.connect(str(db_path))
+        count = conn.execute(
+            "SELECT COUNT(*) FROM submission_files WHERE submission_id = ?", (sid,)
+        ).fetchone()[0]
+        conn.close()
+        assert count == 2
+
+    def test_reupload_updates_content(self, db_path: Path) -> None:
+        """After re-upload the restored content reflects the new bytes."""
+        sid = self._make_submission(db_path)
+        save_submission_files(db_path, sid, [("data.xlsx", b"original")])
+        save_submission_files(db_path, sid, [("data.xlsx", b"updated")])
+        result = dict(restore_submission_files(db_path, sid))
+        assert result["data.xlsx"] == b"updated"
+
+    # ── empty-list edge cases ────────────────────────────────────────
+
+    def test_save_empty_list_clears_rows(self, db_path: Path) -> None:
+        """save_submission_files with [] removes all rows for that submission."""
+        sid = self._make_submission(db_path)
+        save_submission_files(db_path, sid, [("a.xlsx", b"data")])
+        save_submission_files(db_path, sid, [])
+        conn = sqlite3.connect(str(db_path))
+        count = conn.execute(
+            "SELECT COUNT(*) FROM submission_files WHERE submission_id = ?", (sid,)
+        ).fetchone()[0]
+        conn.close()
+        assert count == 0
+
+    def test_restore_no_files_returns_empty_list(self, db_path: Path) -> None:
+        """restore_submission_files returns [] when no rows exist."""
+        sid = self._make_submission(db_path)
+        result = restore_submission_files(db_path, sid)
+        assert result == []
+
+    def test_restore_unknown_submission_returns_empty_list(self, db_path: Path) -> None:
+        """restore_submission_files returns [] for a submission_id not in DB."""
+        result = restore_submission_files(db_path, "nonexistent-id")
+        assert result == []
+
+    # ── filename normalization ───────────────────────────────────────
+
+    def test_filename_path_stripped_to_basename(self, db_path: Path) -> None:
+        """Paths like 'uploads/sub/data.xlsx' must be stored as 'data.xlsx' only."""
+        sid = self._make_submission(db_path)
+        save_submission_files(db_path, sid, [("uploads/sub/data.xlsx", b"content")])
+        result = restore_submission_files(db_path, sid)
+        assert result == [("data.xlsx", b"content")]
+
+    def test_filename_windows_path_stripped(self, db_path: Path) -> None:
+        """Windows-style paths like 'C:\\Users\\foo\\data.xlsx' are stored as 'data.xlsx'."""
+        sid = self._make_submission(db_path)
+        # Path().name handles both separators on all platforms
+        raw_name = "C:\\Users\\foo\\data.xlsx"
+        safe_name = Path(raw_name).name
+        save_submission_files(db_path, sid, [(raw_name, b"win")])
+        result = restore_submission_files(db_path, sid)
+        assert result == [(safe_name, b"win")]
+
+    # ── gzip compression ────────────────────────────────────────────
+
+    def test_stored_blob_is_compressed(self, db_path: Path) -> None:
+        """The blob stored in the DB must be gzip-compressed (not raw bytes)."""
+        import gzip
+        sid = self._make_submission(db_path)
+        content = b"compressible " * 200
+        save_submission_files(db_path, sid, [("big.xlsx", content)])
+        conn = sqlite3.connect(str(db_path))
+        row = conn.execute(
+            "SELECT content_gz FROM submission_files WHERE submission_id = ?", (sid,)
+        ).fetchone()
+        conn.close()
+        blob = bytes(row[0])
+        # Gzip magic bytes
+        assert blob[:2] == b"\x1f\x8b"
+        # Decompressed matches original
+        assert gzip.decompress(blob) == content
+
+    def test_size_bytes_stores_uncompressed_size(self, db_path: Path) -> None:
+        """size_bytes column must reflect the original (uncompressed) file length."""
+        sid = self._make_submission(db_path)
+        content = b"x" * 512
+        save_submission_files(db_path, sid, [("file.xlsx", content)])
+        conn = sqlite3.connect(str(db_path))
+        size = conn.execute(
+            "SELECT size_bytes FROM submission_files WHERE submission_id = ?", (sid,)
+        ).fetchone()[0]
+        conn.close()
+        assert size == 512
+
+    # ── isolation between submissions ────────────────────────────────
+
+    def test_save_does_not_affect_other_submissions(self, db_path: Path) -> None:
+        """Saving files for one submission must not alter another's rows."""
+        sid_a = self._make_submission(db_path)
+        sid_b = create_submission(
+            db_path,
+            "second upload",
+            [{"name": "b.xlsx", "extension": "xlsx", "size_bytes": 5}],
+            "/data/ws/b",
+        )
+        save_submission_files(db_path, sid_a, [("a.xlsx", b"aaa")])
+        save_submission_files(db_path, sid_b, [("b.xlsx", b"bbb")])
+        # Overwrite only sid_a
+        save_submission_files(db_path, sid_a, [("a2.xlsx", b"new")])
+        result_b = restore_submission_files(db_path, sid_b)
+        assert result_b == [("b.xlsx", b"bbb")]
+
+
+# ── _ensure_workspace ────────────────────────────────────────────────
+
+
+class TestEnsureWorkspace:
+    """Tests for server.api._ensure_workspace via the DB+filesystem helpers."""
+
+    def _make_submission_with_workspace(
+        self, db_path: Path, base_dir: Path, files: list[tuple[str, bytes]]
+    ) -> tuple[str, Path]:
+        """Create a submission + workspace, save files to DB, return (sid, workspace)."""
+        sid = create_submission(
+            db_path,
+            "ensure ws test",
+            [{"name": f, "extension": f.rsplit(".", 1)[-1], "size_bytes": len(c)} for f, c in files],
+            "",  # workspace_path filled in after creation
+        )
+        workspace = create_workspace(base_dir, sid, files)
+        # Patch workspace_path into the DB
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "UPDATE submissions SET workspace_path = ? WHERE id = ?",
+            (str(workspace), sid),
+        )
+        conn.commit()
+        conn.close()
+        save_submission_files(db_path, sid, files)
+        return sid, workspace
+
+    def test_existing_workspace_returned_unchanged(
+        self, db_path: Path, base_dir: Path
+    ) -> None:
+        """If workspace/raw/ exists and is non-empty, _ensure_workspace returns it directly."""
+        from server.api import _ensure_workspace
+
+        files = [("data.xlsx", b"raw content")]
+        sid, workspace = self._make_submission_with_workspace(db_path, base_dir, files)
+        submission = get_submission(db_path, sid)
+        assert submission is not None
+        result = _ensure_workspace(base_dir, db_path, submission)
+        assert result == workspace
+
+    def test_missing_workspace_restored_from_db(
+        self, db_path: Path, base_dir: Path
+    ) -> None:
+        """When workspace directory is deleted, _ensure_workspace rebuilds it from DB."""
+        import shutil
+        from server.api import _ensure_workspace
+
+        files = [("cosmed.xlsx", b"fake xlsx data")]
+        sid, workspace = self._make_submission_with_workspace(db_path, base_dir, files)
+        # Simulate workspace loss
+        shutil.rmtree(workspace)
+        assert not workspace.exists()
+
+        submission = get_submission(db_path, sid)
+        assert submission is not None
+        result = _ensure_workspace(base_dir, db_path, submission)
+        assert result is not None
+        # Restored file must be present with original content
+        raw_file = result / "raw" / "cosmed.xlsx"
+        assert raw_file.exists()
+        assert raw_file.read_bytes() == b"fake xlsx data"
+
+    def test_missing_workspace_no_db_files_returns_none(
+        self, db_path: Path, base_dir: Path
+    ) -> None:
+        """If workspace is gone AND no files in DB, _ensure_workspace returns None."""
+        import shutil
+        from server.api import _ensure_workspace
+
+        files = [("a.xlsx", b"data")]
+        sid, workspace = self._make_submission_with_workspace(db_path, base_dir, files)
+        # Remove workspace and clear DB files
+        shutil.rmtree(workspace)
+        save_submission_files(db_path, sid, [])
+
+        submission = get_submission(db_path, sid)
+        assert submission is not None
+        result = _ensure_workspace(base_dir, db_path, submission)
+        assert result is None
+
+    def test_empty_raw_dir_triggers_restore(
+        self, db_path: Path, base_dir: Path
+    ) -> None:
+        """An empty raw/ dir is treated as missing; files are restored from DB."""
+        from server.api import _ensure_workspace
+
+        files = [("fit.fit", b"\x0e\x10\x14data")]
+        sid, workspace = self._make_submission_with_workspace(db_path, base_dir, files)
+        # Empty out raw/ dir
+        raw_dir = workspace / "raw"
+        for f in raw_dir.iterdir():
+            f.unlink()
+        assert not any(raw_dir.iterdir())
+
+        submission = get_submission(db_path, sid)
+        assert submission is not None
+        result = _ensure_workspace(base_dir, db_path, submission)
+        assert result is not None
+        restored_file = result / "raw" / "fit.fit"
+        assert restored_file.exists()
+        assert restored_file.read_bytes() == b"\x0e\x10\x14data"

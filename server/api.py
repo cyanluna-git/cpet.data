@@ -40,6 +40,8 @@ from server.db import (
     list_submissions_with_users,
     list_subjects,
     refresh_targeted_materializations,
+    restore_submission_files,
+    save_submission_files,
     upsert_report_catalog_entry,
     store_report_html,
     update_submission_duplicate_metadata,
@@ -652,6 +654,32 @@ def _run_pipeline_job(
         )
 
 
+def _ensure_workspace(
+    data_dir: Path,
+    db_path: Path,
+    submission: dict,
+) -> Path | None:
+    """Return the workspace Path, restoring raw/ from DB if the directory is missing or empty.
+
+    Returns None if the workspace cannot be reconstructed (no DB files stored).
+    """
+    workspace_path = submission.get("workspace_path")
+    if workspace_path:
+        workspace = Path(workspace_path)
+        raw_dir = workspace / "raw"
+        if raw_dir.is_dir() and any(raw_dir.iterdir()):
+            return workspace
+
+    # Attempt to restore from submission_files
+    submission_id = str(submission["id"])
+    stored_files = restore_submission_files(db_path, submission_id)
+    if not stored_files:
+        return None
+
+    workspace = create_workspace(data_dir, submission_id, stored_files)
+    return workspace
+
+
 def _start_fallback_analysis(
     db_path: Path,
     job: dict,
@@ -1192,6 +1220,14 @@ async def submit(
                     import shutil
                     shutil.rmtree(cleanup, ignore_errors=True)
 
+            # Persist the full raw/ state (original + newly added files) to DB
+            all_raw_pairs = [
+                (p.name, p.read_bytes())
+                for p in sorted(raw_dir.iterdir())
+                if p.is_file()
+            ]
+            save_submission_files(db_path, reanalyze, all_raw_pairs)
+
             # Update submission manifest + description
             manifest = list_files(workspace)
             conn = sqlite3.connect(str(db_path))
@@ -1298,6 +1334,7 @@ async def submit(
         duplicate_confidence="exact" if any(item.get("duplicate_confidence") == "exact" for item in duplicate_candidates) else ("likely" if duplicate_candidates else ""),
         duplicate_group_key=duplicate_group_key,
     )
+    save_submission_files(db_path, submission_id, file_pairs)
     job_id = create_job(db_path, submission_id)
     created_submission = get_submission(db_path, submission_id)
     payload = _build_channel_payload(
@@ -1421,6 +1458,28 @@ async def trigger_job(
             content={"error": f"submission not found for job: {job_id}"},
         )
 
+    data_dir = get_data_dir(request)
+    restored_workspace = _ensure_workspace(data_dir, db_path, submission)
+    if restored_workspace is None:
+        update_job_status(
+            db_path,
+            job_id,
+            "failed",
+            error_message="workspace missing and no source files stored in DB — cannot trigger",
+            report_slug=None,
+            report_url=None,
+        )
+        return JSONResponse(
+            status_code=409,
+            content={"error": "workspace missing and no source files available to restore"},
+        )
+
+    # Patch submission with the (possibly restored) workspace path so that the
+    # fallback runner and channel payload carry the correct path.
+    if str(submission.get("workspace_path") or "") != str(restored_workspace):
+        submission = dict(submission)
+        submission["workspace_path"] = str(restored_workspace)
+
     canonical_job = get_job_by_submission(db_path, str(submission["id"])) or job
     payload = _build_channel_payload(canonical_job, submission)
     update_job_status(
@@ -1441,7 +1500,7 @@ async def trigger_job(
             job=canonical_job,
             submission=submission,
             publish_dir=published_dir,
-            data_dir=get_data_dir(request),
+            data_dir=data_dir,
         )
         logger.info("Manual trigger started local fallback for job %s", job_id)
 
