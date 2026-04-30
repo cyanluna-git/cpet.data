@@ -11,7 +11,10 @@
       <button
         type="button"
         class="px-2 py-1 rounded text-[10px] font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
-        onclick="openUserEditModal({ id: '{{ user.id }}', display_name: {{ (user.display_name or '')|tojson }}, subject_id: {{ (user.subject_id or '')|tojson }} })"
+        data-uid="{{ user.id }}"
+        data-name="{{ user.display_name or '' }}"
+        data-subject="{{ user.subject_id or '' }}"
+        onclick="openUserEditModal({id:this.dataset.uid, display_name:this.dataset.name, subject_id:this.dataset.subject})"
       >편집</button>
       {% endif %}
       <span class="text-xs text-gray-400 truncate hidden sm:inline">{{ user.email or "" }}</span>
