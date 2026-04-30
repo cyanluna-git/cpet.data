@@ -234,10 +234,11 @@ VALID_STATUSES = {"pending", "processing", "done", "failed"}
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
-    """Open a connection with Row factory and WAL mode."""
+    """Open a connection with Row factory, WAL mode, and FK enforcement."""
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
