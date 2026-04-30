@@ -25,10 +25,6 @@
       <div class="font-medium text-sm text-gray-900 truncate">
         {{ job.subject_name or "—" }}
       </div>
-      {% elif job.report_slug %}
-      <div class="font-medium text-sm text-gray-700 truncate max-w-[220px]" title="{{ job.report_slug }}">
-        {{ job.report_slug }}
-      </div>
       {% elif job.analysis_method %}
       <div class="font-medium text-sm text-gray-700 truncate">
         {{ job.analysis_method }}
@@ -138,9 +134,6 @@
       {% endif %}
     {% endfor %}
 
-    {% if job.report_slug and not grouped_by_subject %}
-      <span class="text-[11px] text-gray-300 truncate max-w-[160px]" title="{{ job.report_slug }}">{{ job.report_slug }}</span>
-    {% endif %}
 
     {% if job.note %}
     <span class="ml-auto rounded bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700" title="{{ job.note }}">
