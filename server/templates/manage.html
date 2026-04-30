@@ -311,6 +311,33 @@
   {% endif %}
 </div>
 
+<!-- User edit modal -->
+<div id="user-edit-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50" onclick="if(event.target===this)closeUserEditModal()">
+  <div class="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl mx-4" onclick="event.stopPropagation()">
+    <h3 class="mb-4 text-lg font-semibold text-gray-900">유저 편집</h3>
+    <input id="uem-id" type="hidden" />
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">표시 이름</label>
+        <input id="uem-name" type="text" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400" placeholder="홍길동" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-600 mb-1">연결할 피험자</label>
+        <select id="uem-subject" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400">
+          <option value="">— 연결 없음 —</option>
+          {% for subj in subjects %}
+          <option value="{{ subj.id }}">{{ subj.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="mt-5 flex justify-end gap-3">
+      <button type="button" onclick="closeUserEditModal()" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">취소</button>
+      <button type="button" onclick="submitUserEditModal()" class="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">저장</button>
+    </div>
+  </div>
+</div>
+
 <!-- Subject full edit modal -->
 <div id="subject-edit-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50" onclick="if(event.target===this)closeSubjectEditModal()">
   <div class="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl mx-4" onclick="event.stopPropagation()">
@@ -379,6 +406,40 @@
 </div>
 
 <script>
+  function openUserEditModal(u) {
+    document.getElementById('uem-id').value = u.id || '';
+    document.getElementById('uem-name').value = u.display_name || '';
+    const sel = document.getElementById('uem-subject');
+    sel.value = u.subject_id || '';
+    const modal = document.getElementById('user-edit-modal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    document.getElementById('uem-name').focus();
+  }
+
+  function closeUserEditModal() {
+    const modal = document.getElementById('user-edit-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+
+  function submitUserEditModal() {
+    const id = document.getElementById('uem-id').value;
+    const body = new URLSearchParams();
+    body.set('display_name', document.getElementById('uem-name').value.trim());
+    body.set('subject_id', document.getElementById('uem-subject').value);
+    fetch(`/api/manage/users/${id}`, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body.toString()
+    }).then(async function(resp) {
+      if (!resp.ok) return;
+      const html = await resp.text();
+      document.getElementById('manage-users-body').innerHTML = html;
+      closeUserEditModal();
+    });
+  }
+
   function openSubjectEditModal(s) {
     document.getElementById('sem-id').value = s.id || '';
     document.getElementById('sem-name').value = s.name || '';

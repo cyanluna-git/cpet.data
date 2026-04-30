@@ -77,6 +77,7 @@ from server.db import (
     unlink_report_from_user,
     unlink_submission_user,
     unlink_user_from_subject,
+    update_user,
     update_user_role,
     upsert_user_profile,
     get_notes_list,
@@ -1262,10 +1263,46 @@ async def manage_update_user_role(
         request.session["role"] = new_role
 
     users = list_users(db_path)
+    subjects = list_subjects(db_path)
     return templates.TemplateResponse(
         request,
         "partials/manage_users.html",
-        {"users": users, "session_user": session_user, "current_user": session_user},
+        {"users": users, "subjects": subjects, "session_user": session_user, "current_user": session_user},
+    )
+
+
+@app.patch("/api/manage/users/{user_id}", response_class=HTMLResponse)
+async def manage_update_user(request: Request, user_id: str) -> HTMLResponse:
+    """Update user display_name and/or subject_id link."""
+    from fastapi.responses import JSONResponse
+
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+    if session_user.get("role") != "admin":
+        return JSONResponse(status_code=403, content={"error": "admin only"})
+
+    form = await request.form()
+    db_path = request.app.state.db_path
+
+    if "display_name" in form:
+        name = str(form["display_name"]).strip()
+        update_user(db_path, user_id, display_name=name or None)
+
+    if "subject_id" in form:
+        sid = str(form["subject_id"]).strip()
+        if sid:
+            link_user_to_subject(db_path, user_id, sid)
+        else:
+            unlink_user_from_subject(db_path, user_id)
+
+    users = list_users(db_path)
+    subjects = list_subjects(db_path)
+    return templates.TemplateResponse(
+        request,
+        "partials/manage_users.html",
+        {"users": users, "subjects": subjects, "session_user": session_user, "current_user": session_user},
     )
 
 

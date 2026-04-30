@@ -984,6 +984,20 @@ def update_user_role(db_path: Path, user_id: str, new_role: str) -> dict | None:
     return dict(row)
 
 
+def update_user(db_path: Path, user_id: str, display_name: str | None = None) -> dict | None:
+    """Update mutable user fields. Returns updated user dict, or None if not found."""
+    conn = _connect(db_path)
+    if display_name is not None:
+        conn.execute(
+            "UPDATE users SET display_name = ? WHERE id = ?",
+            (display_name.strip() or None, user_id),
+        )
+    conn.commit()
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 def list_submissions_with_users(db_path: Path) -> list[dict]:
     """List all submissions with linked user/subject info and latest job status."""
     conn = _connect(db_path)

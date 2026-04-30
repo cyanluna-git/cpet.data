@@ -7,6 +7,13 @@
       {% if session_user and session_user.id == user.id %}
         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-100 text-violet-700">나</span>
       {% endif %}
+      {% if session_user and session_user.role == 'admin' %}
+      <button
+        type="button"
+        class="px-2 py-1 rounded text-[10px] font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
+        onclick="openUserEditModal({ id: '{{ user.id }}', display_name: {{ (user.display_name or '')|tojson }}, subject_id: {{ (user.subject_id or '')|tojson }} })"
+      >편집</button>
+      {% endif %}
       <span class="text-xs text-gray-400 truncate hidden sm:inline">{{ user.email or "" }}</span>
     </div>
     <select
