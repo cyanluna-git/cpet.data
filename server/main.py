@@ -75,6 +75,7 @@ from server.db import (
     list_submissions_with_users,
     list_users,
     unlink_report_from_user,
+    unlink_submission_subject,
     unlink_submission_user,
     unlink_user_from_subject,
     update_user,
@@ -919,11 +920,7 @@ def _ensure_dashboard_feature_analytics_materialized(
 def _suggest_user_for_submission(
     subject_name: str, users: list[dict],
 ) -> str | None:
-    """Return the user_id of the best matching user by display_name similarity.
-
-    Uses simple normalized containment for Korean/English name matching.
-    Returns None if no reasonable match is found.
-    """
+    """Return the user_id of the best matching user by display_name similarity."""
     if not subject_name or not subject_name.strip():
         return None
 
@@ -936,11 +933,9 @@ def _suggest_user_for_submission(
         if not dn:
             continue
 
-        # Exact match
         if sn == dn:
             return user["id"]
 
-        # Containment match
         score = 0.0
         if sn in dn or dn in sn:
             shorter = min(len(sn), len(dn))
@@ -954,9 +949,41 @@ def _suggest_user_for_submission(
     return best_id
 
 
+def _suggest_subject_for_submission(
+    subject_name: str, subjects: list[dict],
+) -> str | None:
+    """Return the subject_id of the best matching subject by name similarity."""
+    if not subject_name or not subject_name.strip():
+        return None
+
+    sn = subject_name.strip().lower()
+    best_id: str | None = None
+    best_score = 0.0
+
+    for subj in subjects:
+        dn = (subj.get("name") or "").strip().lower()
+        if not dn:
+            continue
+
+        if sn == dn:
+            return subj["id"]
+
+        score = 0.0
+        if sn in dn or dn in sn:
+            shorter = min(len(sn), len(dn))
+            longer = max(len(sn), len(dn))
+            score = shorter / longer if longer > 0 else 0.0
+
+        if score > best_score and score >= 0.5:
+            best_score = score
+            best_id = subj["id"]
+
+    return best_id
+
+
 def _get_manage_submissions(
     request: Request,
-    users: list[dict],
+    subjects: list[dict],
     *,
     unlinked_only: str = "",
     sort_by: str = "recent_desc",
@@ -966,8 +993,6 @@ def _get_manage_submissions(
     db_path = request.app.state.db_path
     all_entries = _list_dashboard_entries(request)
     db_submissions = list_submissions_with_users(db_path)
-    report_links = get_report_user_links(db_path)
-    users_by_id = {u["id"]: u for u in users}
     entries_by_submission_id = {
         str(entry.get("submission_id")): entry
         for entry in all_entries
@@ -986,8 +1011,8 @@ def _get_manage_submissions(
             "status": entry.get("status") or sub_row.get("job_status") or "",
             "report_slug": entry.get("report_slug") or "",
             "report_url": entry.get("report_url") or sub_row.get("report_url") or "",
-            "user_id": sub_row.get("user_id"),
-            "linked_user_name": sub_row.get("linked_user_name") or sub_row.get("linked_user_email"),
+            "subject_id": sub_row.get("subject_id"),
+            "linked_subject_name": sub_row.get("linked_subject_name"),
             "created_at": sub_row.get("created_at") or "",
             "source_signature": sub_row.get("source_signature") or "",
             "submission_fingerprint": sub_row.get("submission_fingerprint") or "",
@@ -1000,27 +1025,8 @@ def _get_manage_submissions(
     for entry in all_entries:
         if entry.get("submission_id"):
             continue
-        # Check user_id from submission first
-        sub_id = entry.get("submission_id")
-        user_id = None
-        linked_user_name = None
-
-        if sub_id:
-            sub = get_submission(db_path, sub_id)
-            if sub:
-                user_id = sub.get("user_id")
-
-        # Fallback: check report_user_links for standalone reports
-        report_slug = entry.get("report_slug", "")
-        if not user_id and report_slug and report_slug in report_links:
-            user_id = report_links[report_slug]
-
-        if user_id and user_id in users_by_id:
-            u = users_by_id[user_id]
-            linked_user_name = u.get("display_name") or u.get("email")
-
-        entry["user_id"] = user_id
-        entry["linked_user_name"] = linked_user_name
+        entry["subject_id"] = None
+        entry["linked_subject_name"] = None
         submissions.append(entry)
 
     clusters: dict[str, list[dict]] = {}
@@ -1036,7 +1042,7 @@ def _get_manage_submissions(
         elif str(row.get("duplicate_group_key") or "").strip():
             key = f"likely:{str(row.get('duplicate_group_key') or '').strip()}"
         else:
-            linked_name = str(row.get("linked_user_name") or row.get("subject_name") or "").strip()
+            linked_name = str(row.get("linked_subject_name") or row.get("subject_name") or "").strip()
             test_date = str(row.get("test_date") or "").strip()
             if linked_name and test_date and source_signature:
                 key = "likely:" + hashlib.sha256(
@@ -1058,12 +1064,12 @@ def _get_manage_submissions(
             row["duplicate_badge"] = badge
 
     if unlinked_only == "1":
-        submissions = [row for row in submissions if not row.get("user_id")]
+        submissions = [row for row in submissions if not row.get("subject_id")]
     if duplicate_only == "1":
         submissions = [row for row in submissions if int(row.get("duplicate_cluster_count") or 0) > 1]
 
     def _group_sort_key(row: dict) -> tuple[int, str]:
-        linked_name = str(row.get("linked_user_name") or "").strip().lower()
+        linked_name = str(row.get("linked_subject_name") or "").strip().lower()
         if linked_name:
             return (0, linked_name)
         return (1, "zzzz-unlinked")
@@ -1106,9 +1112,9 @@ def _get_manage_submissions(
     # Build suggestion map
     suggestions: dict[str, str] = {}
     for sub in submissions:
-        if sub.get("user_id") is None:
-            suggested = _suggest_user_for_submission(
-                sub.get("subject_name", ""), users,
+        if sub.get("subject_id") is None:
+            suggested = _suggest_subject_for_submission(
+                sub.get("subject_name", ""), subjects,
             )
             if suggested:
                 suggestions[sub["id"]] = suggested
@@ -1145,7 +1151,7 @@ async def manage_page(
     subjects = list_subjects(db_path)
     submissions, suggestions = _get_manage_submissions(
         request,
-        users,
+        subjects,
         unlinked_only=submissions_unlinked_only,
         sort_by=submissions_sort_by,
         duplicate_only=submissions_duplicate_only,
@@ -1316,10 +1322,10 @@ def _render_manage_submissions(
 ) -> HTMLResponse:
     """Helper to render the submissions partial after a link/unlink operation."""
     db_path = request.app.state.db_path
-    users = list_users(db_path)
+    subjects = list_subjects(db_path)
     submissions, suggestions = _get_manage_submissions(
         request,
-        users,
+        subjects,
         unlinked_only=unlinked_only,
         sort_by=sort_by,
         duplicate_only=duplicate_only,
@@ -1329,7 +1335,7 @@ def _render_manage_submissions(
         "partials/manage_submissions.html",
         {
             "submissions": submissions,
-            "users": users,
+            "subjects": subjects,
             "suggestions": suggestions,
             "submission_filters": {
                 "unlinked_only": unlinked_only,
@@ -1353,8 +1359,8 @@ async def manage_duplicate_cluster(
         return auth_result
     session_user = auth_result
 
-    users = list_users(request.app.state.db_path)
-    submissions, _suggestions = _get_manage_submissions(request, users)
+    subjects = list_subjects(request.app.state.db_path)
+    submissions, _suggestions = _get_manage_submissions(request, subjects)
     rows = [row for row in submissions if str(row.get("duplicate_cluster_key") or "") == group_key]
     if not group_key or not rows:
         return HTMLResponse(
@@ -1472,7 +1478,7 @@ def _render_manage_feature_sets(
 async def manage_link_entry(
     request: Request, entry_id: str,
 ) -> HTMLResponse:
-    """Link any entry (submission or standalone report) to a user."""
+    """Link a submission to a subject."""
     from fastapi.responses import JSONResponse
 
     auth_result = _require_manage_access(request)
@@ -1481,14 +1487,14 @@ async def manage_link_entry(
     session_user = auth_result
 
     form = await request.form()
-    link_user_id = str(form.get("user_id", "")).strip()
+    link_subject_id = str(form.get("subject_id", "")).strip()
     report_slug = str(form.get("report_slug", "")).strip()
     submissions_unlinked_only = str(form.get("submissions_unlinked_only", "")).strip()
     submissions_duplicate_only = str(form.get("submissions_duplicate_only", "")).strip()
     submissions_sort_by = str(form.get("submissions_sort_by", "recent_desc")).strip() or "recent_desc"
 
-    if not link_user_id:
-        return JSONResponse(status_code=400, content={"error": "user_id is required"})
+    if not link_subject_id:
+        return JSONResponse(status_code=400, content={"error": "subject_id is required"})
 
     db_path = request.app.state.db_path
 
@@ -1502,15 +1508,9 @@ async def manage_link_entry(
     refresh_subject_ids: list[str] = []
 
     if sub:
-        updated_submission = link_submission_user(db_path, entry_id, link_user_id)
+        link_submission_subject(db_path, entry_id, link_subject_id)
         refresh_submission_ids.append(entry_id)
-        if updated_submission and updated_submission.get("subject_id"):
-            refresh_subject_ids.append(str(updated_submission["subject_id"]))
-
-    # Always also link by report_slug (covers standalone reports)
-    if report_slug:
-        link_report_to_user(db_path, report_slug, link_user_id)
-        refresh_report_slugs.append(report_slug)
+        refresh_subject_ids.append(link_subject_id)
 
     try:
         refresh_targeted_materializations(
@@ -1967,13 +1967,8 @@ async def manage_unlink_entry(
     if sub:
         if sub.get("subject_id"):
             refresh_subject_ids.append(str(sub["subject_id"]))
-        unlink_submission_user(db_path, entry_id)
+        unlink_submission_subject(db_path, entry_id)
         refresh_submission_ids.append(entry_id)
-
-    # Also unlink by report_slug
-    if report_slug:
-        refresh_report_slugs.append(report_slug)
-        unlink_report_from_user(db_path, report_slug)
 
     try:
         refresh_targeted_materializations(

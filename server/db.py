@@ -1766,6 +1766,25 @@ def unlink_submission_user(db_path: Path, submission_id: str) -> dict | None:
     return result
 
 
+def unlink_submission_subject(db_path: Path, submission_id: str) -> dict | None:
+    """Remove subject link from a submission. Returns the updated submission, or None."""
+    conn = _connect(db_path)
+    conn.execute(
+        "UPDATE submissions SET subject_id = NULL WHERE id = ?",
+        (submission_id,),
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT * FROM submissions WHERE id = ?", (submission_id,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    result = dict(row)
+    result["file_manifest"] = json.loads(result["file_manifest"])
+    return result
+
+
 # ── Report-User Links (for standalone published reports) ─────────────
 
 
