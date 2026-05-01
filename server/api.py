@@ -953,6 +953,16 @@ def _list_dashboard_entries(
     from server.db import get_report_user_links
     report_links = get_report_user_links(db_path)
     user_name_cache: dict[str, str] = {}
+    subject_name_cache: dict[str, str] = {}
+
+    def resolve_subject_name(subject_id_value: str | None) -> str:
+        subject_id_str = str(subject_id_value or "").strip()
+        if not subject_id_str:
+            return ""
+        if subject_id_str not in subject_name_cache:
+            subject = get_subject(db_path, subject_id_str)
+            subject_name_cache[subject_id_str] = str((subject or {}).get("name") or "").strip()
+        return subject_name_cache[subject_id_str]
 
     def resolve_user_display_name(user_id_value: str | None) -> str:
         user_id_str = str(user_id_value or "").strip()
@@ -1006,6 +1016,7 @@ def _list_dashboard_entries(
     report_notes = get_report_notes(db_path)
     for row in enriched:
         slug = row.get("report_slug", "")
+        linked_subject_name = resolve_subject_name(row.get("submission_subject_id"))
         linked_user_name = resolve_user_display_name(row.get("submission_user_id"))
         if not linked_user_name and slug:
             linked_user_name = resolve_user_display_name(report_links.get(slug))
@@ -1013,7 +1024,11 @@ def _list_dashboard_entries(
         if slug and slug in name_overrides:
             row["subject_name"] = name_overrides[slug]
         row["note"] = report_notes.get(slug, "") if slug else ""
-        row["group_name"] = linked_user_name or str(row.get("subject_name") or "").strip() or "미연결 리포트"
+        row["group_name"] = (
+            linked_subject_name
+            or str(row.get("subject_name") or "").strip()
+            or "미연결 리포트"
+        )
 
     _annotate_duplicate_rows(enriched)
 

@@ -85,6 +85,15 @@ Important variables:
 - Avoid introducing service dependencies that bypass the SQLite-first v2 design.
 - Do not edit `published/` by hand unless the task is explicitly about fixture/output regeneration.
 
+## Skills
+
+### `/deploy` — VM 배포
+
+**자동 트리거:** "배포해줘", "배포해", "서버에 올려줘", "VM에 배포", "deploy해줘" 패턴 감지 시 자동 실행.
+
+미커밋 변경사항 커밋 → `git push` → VM `git pull` → uvicorn 재시작 → 헬스체크.
+상세 절차: `.claude/skills/deploy/skill.md`
+
 ## Memory & Shared Rules
 
 See `.claude/rules/` for shared coding conventions:
