@@ -20,6 +20,7 @@ from server.db import (
     get_job,
     get_job_by_submission,
     get_pending_jobs,
+    get_prior_report_slug,
     get_submission,
     init_db,
     list_jobs,
@@ -1102,3 +1103,84 @@ class TestEnsureWorkspace:
         restored_file = result / "raw" / "fit.fit"
         assert restored_file.exists()
         assert restored_file.read_bytes() == b"\x0e\x10\x14data"
+
+
+# ── get_prior_report_slug ─────────────────────────────────────────────
+
+
+class TestGetPriorReportSlug:
+    """Tests for get_prior_report_slug() helper in server.db."""
+
+    def test_no_jobs_returns_none(self, db_path: Path) -> None:
+        """Returns None when no jobs exist for the submission."""
+        sid = create_submission(db_path, "d", [], "/ws")
+        assert get_prior_report_slug(db_path, sid) is None
+
+    def test_only_pending_jobs_returns_none(self, db_path: Path) -> None:
+        """Returns None when only pending/processing jobs exist (no done)."""
+        sid = create_submission(db_path, "d", [], "/ws")
+        jid = create_job(db_path, sid)
+        update_job_status(db_path, jid, "processing")
+        assert get_prior_report_slug(db_path, sid) is None
+
+    def test_done_job_without_slug_returns_none(self, db_path: Path) -> None:
+        """Returns None when the done job has a null/empty report_slug."""
+        sid = create_submission(db_path, "d", [], "/ws")
+        jid = create_job(db_path, sid)
+        update_job_status(db_path, jid, "done")  # no report_slug kwarg
+        assert get_prior_report_slug(db_path, sid) is None
+
+    def test_single_done_job_returns_slug(self, db_path: Path) -> None:
+        """Returns the report_slug of the single done job."""
+        sid = create_submission(db_path, "d", [], "/ws")
+        jid = create_job(db_path, sid)
+        update_job_status(db_path, jid, "done", report_slug="park-20260320")
+        result = get_prior_report_slug(db_path, sid)
+        assert result == "park-20260320"
+
+    def test_multiple_done_jobs_returns_most_recent(self, db_path: Path) -> None:
+        """Returns the most-recent done job's slug (rowid DESC)."""
+        sid = create_submission(db_path, "d", [], "/ws")
+        j1 = create_job(db_path, sid)
+        j2 = create_job(db_path, sid)
+        update_job_status(db_path, j1, "done", report_slug="park-20260320")
+        update_job_status(db_path, j2, "done", report_slug="park-20260320-new")
+        result = get_prior_report_slug(db_path, sid)
+        assert result == "park-20260320-new"
+
+    def test_exclude_job_id_is_only_done_job_returns_none(self, db_path: Path) -> None:
+        """With exclude_job_id, if that's the only done job, returns None."""
+        sid = create_submission(db_path, "d", [], "/ws")
+        jid = create_job(db_path, sid)
+        update_job_status(db_path, jid, "done", report_slug="park-20260320")
+        result = get_prior_report_slug(db_path, sid, exclude_job_id=jid)
+        assert result is None
+
+    def test_exclude_job_id_returns_prior_slug(self, db_path: Path) -> None:
+        """With exclude_job_id pointing to the new job, returns the prior done slug."""
+        sid = create_submission(db_path, "d", [], "/ws")
+        j1 = create_job(db_path, sid)
+        j2 = create_job(db_path, sid)
+        update_job_status(db_path, j1, "done", report_slug="park-20260320")
+        # j2 is pending (new re-analysis job); exclude it to find prior slug
+        result = get_prior_report_slug(db_path, sid, exclude_job_id=j2)
+        assert result == "park-20260320"
+
+    def test_unknown_submission_returns_none(self, db_path: Path) -> None:
+        """Returns None for a submission_id that doesn't exist in the DB."""
+        assert get_prior_report_slug(db_path, "nonexistent-submission-id") is None
+
+    def test_failed_job_not_returned(self, db_path: Path) -> None:
+        """Failed jobs are not included; only done jobs with report_slug."""
+        sid = create_submission(db_path, "d", [], "/ws")
+        jid = create_job(db_path, sid)
+        update_job_status(db_path, jid, "failed", error_message="crash")
+        assert get_prior_report_slug(db_path, sid) is None
+
+    def test_isolates_per_submission(self, db_path: Path) -> None:
+        """Slugs from one submission do not bleed into another."""
+        sid_a = create_submission(db_path, "a", [], "/ws")
+        sid_b = create_submission(db_path, "b", [], "/ws")
+        ja = create_job(db_path, sid_a)
+        update_job_status(db_path, ja, "done", report_slug="slug-for-a")
+        assert get_prior_report_slug(db_path, sid_b) is None

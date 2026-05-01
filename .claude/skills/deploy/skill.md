@@ -59,19 +59,18 @@ $SSH "cd $DEPLOY_PROJECT_DIR && git pull"
 ### Step 4 — Restart process
 
 ```bash
-# Kill existing process
-PID=$($SSH "pgrep -f 'uvicorn server.main'" 2>/dev/null)
-if [ -n "$PID" ]; then
-  $SSH "kill $PID"
-  sleep 1
-fi
+# Kill ALL matching processes (pkill returns non-zero if none found — that's fine)
+ssh -i $DEPLOY_SSH_KEY $DEPLOY_USER@$DEPLOY_HOST \
+  "pkill -f 'uvicorn server.main' || true"
+sleep 2
 
 # Start new process
-$SSH "cd $DEPLOY_PROJECT_DIR && source .venv/bin/activate && \
-  nohup uvicorn server.main:app \
-    --host $DEPLOY_APP_HOST \
-    --port $DEPLOY_APP_PORT \
-    >> $DEPLOY_LOG 2>&1 &"
+ssh -i $DEPLOY_SSH_KEY $DEPLOY_USER@$DEPLOY_HOST \
+  "cd $DEPLOY_PROJECT_DIR && source .venv/bin/activate && \
+   nohup uvicorn server.main:app \
+     --host $DEPLOY_APP_HOST \
+     --port $DEPLOY_APP_PORT \
+     >> $DEPLOY_LOG 2>&1 &"
 ```
 
 ### Step 5 — Health check

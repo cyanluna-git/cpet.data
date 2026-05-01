@@ -155,3 +155,115 @@ class TestPublishReport:
         """Return value is the slug string, not a Path."""
         slug = publish_report(workspace, "Test", "2026-01-01", publish_dir)
         assert isinstance(slug, str)
+
+
+# ── publish_report with explicit slug (re-analysis) ──────────────────
+
+
+class TestPublishReportWithSlug:
+    """Tests for publish_report() when slug= is supplied (re-analysis path)."""
+
+    @pytest.fixture()
+    def workspace(self, tmp_path: Path) -> Path:
+        """Create a workspace with a report/index.html."""
+        ws = tmp_path / "workspace"
+        report_dir = ws / "report"
+        report_dir.mkdir(parents=True)
+        (report_dir / "index.html").write_text("<html>fresh report</html>")
+        return ws
+
+    @pytest.fixture()
+    def publish_dir(self, tmp_path: Path) -> Path:
+        """Provide a temporary publish directory."""
+        d = tmp_path / "published"
+        d.mkdir()
+        return d
+
+    def test_slug_provided_no_target_creates_dir(
+        self, workspace: Path, publish_dir: Path
+    ) -> None:
+        """When target dir doesn't exist, slug= creates and publishes without collision."""
+        slug = publish_report(
+            workspace, "Ignored Name", "2099-01-01", publish_dir,
+            slug="park-20260320",
+        )
+        assert slug == "park-20260320"
+        assert (publish_dir / "park-20260320" / "index.html").is_file()
+        # No -2 directory must have been created
+        assert not (publish_dir / "park-20260320-2").exists()
+
+    def test_slug_provided_returns_exact_slug(
+        self, workspace: Path, publish_dir: Path
+    ) -> None:
+        """Return value equals the provided slug (no suffix appended)."""
+        returned = publish_report(
+            workspace, "Any Name", "2026-01-01", publish_dir,
+            slug="stable-slug",
+        )
+        assert returned == "stable-slug"
+
+    def test_slug_overwrite_no_collision_dir_created(
+        self, workspace: Path, publish_dir: Path
+    ) -> None:
+        """Re-publishing with same slug doesn't create a -2 directory."""
+        slug = "park-20260320"
+        publish_report(workspace, "Park", "2026-03-20", publish_dir, slug=slug)
+        publish_report(workspace, "Park", "2026-03-20", publish_dir, slug=slug)
+        assert not (publish_dir / f"{slug}-2").exists()
+
+    def test_slug_overwrite_clears_stale_files(
+        self, workspace: Path, publish_dir: Path, tmp_path: Path
+    ) -> None:
+        """Re-publishing removes stale assets that are absent from the new report."""
+        slug = "park-20260320"
+        # First publish: report has index.html + stale.png
+        (workspace / "report" / "stale.png").write_bytes(b"\x89PNG stale")
+        publish_report(workspace, "Park", "2026-03-20", publish_dir, slug=slug)
+        assert (publish_dir / slug / "stale.png").is_file()
+
+        # Replace report dir with fresh content (only index.html + fresh.css)
+        ws2 = tmp_path / "workspace2"
+        report2 = ws2 / "report"
+        report2.mkdir(parents=True)
+        (report2 / "index.html").write_text("<html>fresh</html>")
+        (report2 / "fresh.css").write_text("body{}")
+
+        publish_report(ws2, "Park", "2026-03-20", publish_dir, slug=slug)
+
+        target = publish_dir / slug
+        assert (target / "index.html").is_file()
+        assert (target / "fresh.css").is_file()
+        # stale.png must be gone
+        assert not (target / "stale.png").exists()
+
+    def test_slug_overwrite_updates_content(
+        self, workspace: Path, publish_dir: Path, tmp_path: Path
+    ) -> None:
+        """After re-publishing with same slug, index.html contains the new content."""
+        slug = "park-20260320"
+        publish_report(workspace, "Park", "2026-03-20", publish_dir, slug=slug)
+
+        ws2 = tmp_path / "workspace2"
+        (ws2 / "report").mkdir(parents=True)
+        (ws2 / "report" / "index.html").write_text("<html>updated</html>")
+        publish_report(ws2, "Park", "2026-03-20", publish_dir, slug=slug)
+
+        content = (publish_dir / slug / "index.html").read_text()
+        assert content == "<html>updated</html>"
+
+    def test_first_publish_no_slug_still_generates_fresh(
+        self, workspace: Path, publish_dir: Path
+    ) -> None:
+        """First-time submission (slug=None) still generates a fresh slug — no regression."""
+        slug = publish_report(workspace, "Park Geunyun", "2026-03-20", publish_dir)
+        assert slug == "park-geunyun-20260320"
+        assert (publish_dir / slug / "index.html").is_file()
+
+    def test_slug_missing_report_still_raises(
+        self, tmp_path: Path, publish_dir: Path
+    ) -> None:
+        """FileNotFoundError is raised when report/index.html is missing, even with slug=."""
+        empty_ws = tmp_path / "empty_workspace"
+        empty_ws.mkdir()
+        with pytest.raises(FileNotFoundError, match="Report not found"):
+            publish_report(empty_ws, "User", "2026-01-01", publish_dir, slug="some-slug")

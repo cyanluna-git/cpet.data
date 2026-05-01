@@ -741,6 +741,44 @@ def get_job_by_submission(
     return dict(row)
 
 
+def get_prior_report_slug(
+    db_path: Path,
+    submission_id: str,
+    exclude_job_id: str | None = None,
+) -> str | None:
+    """Return the most recent done job's report_slug for a submission.
+
+    Used by re-analysis to find the existing published slug so the report
+    URL stays stable across re-runs.
+    """
+    conn = _connect(db_path)
+    if exclude_job_id is not None:
+        row = conn.execute(
+            """SELECT report_slug FROM jobs
+               WHERE submission_id = ?
+                 AND status = 'done'
+                 AND report_slug IS NOT NULL
+                 AND report_slug != ''
+                 AND id != ?
+               ORDER BY rowid DESC
+               LIMIT 1""",
+            (submission_id, exclude_job_id),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """SELECT report_slug FROM jobs
+               WHERE submission_id = ?
+                 AND status = 'done'
+                 AND report_slug IS NOT NULL
+                 AND report_slug != ''
+               ORDER BY rowid DESC
+               LIMIT 1""",
+            (submission_id,),
+        ).fetchone()
+    conn.close()
+    return row["report_slug"] if row else None
+
+
 # ── User CRUD ───────────────────────────────────────────────────────
 
 

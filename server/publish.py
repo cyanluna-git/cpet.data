@@ -48,17 +48,23 @@ def publish_report(
     subject_name: str,
     test_date: str,
     publish_dir: Path = Path("published"),
+    slug: str | None = None,
 ) -> str:
     """Copy the generated report to the public directory.
 
     Copies workspace/report/index.html (and any sibling assets) to
     publish_dir/<slug>/. Handles slug collisions by appending -2, -3, etc.
 
+    When slug is provided, skips generation and overwrites the target directory
+    in place (clears it first) so the published URL stays stable across
+    re-analysis runs.
+
     Args:
         workspace: Path to the workspace root (contains report/ subdirectory).
         subject_name: Display name for slug generation.
         test_date: ISO date string for slug generation.
         publish_dir: Root directory for published reports.
+        slug: Existing slug to reuse; when None a fresh slug is generated.
 
     Returns:
         The final slug (directory name under publish_dir).
@@ -74,16 +80,18 @@ def publish_report(
             f"Report not found at {index_file}"
         )
 
-    base_slug = generate_slug(subject_name, test_date)
-    slug = base_slug
-    counter = 2
+    if slug is None:
+        base_slug = generate_slug(subject_name, test_date)
+        slug = base_slug
+        counter = 2
 
-    # Handle collision: append -2, -3, etc.
-    while (publish_dir / slug).exists():
-        slug = f"{base_slug}-{counter}"
-        counter += 1
+        # Handle collision: append -2, -3, etc.
+        while (publish_dir / slug).exists():
+            slug = f"{base_slug}-{counter}"
+            counter += 1
 
     target_dir = publish_dir / slug
+    shutil.rmtree(target_dir, ignore_errors=True)
     target_dir.mkdir(parents=True, exist_ok=True)
 
     # Copy all files from report/ to published/<slug>/

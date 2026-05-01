@@ -29,6 +29,7 @@ from server.db import (
     delete_report_catalog_entry,
     get_job,
     get_job_by_submission,
+    get_prior_report_slug,
     get_subject,
     get_submission,
     get_user,
@@ -485,32 +486,32 @@ def _reconcile_job_artifacts(
         return job
 
     published_dir = get_published_dir(request)
-    slug = _find_published_slug_for_report(report_index, published_dir)
     metadata = _extract_report_metadata(report_index)
+    subject_name = (
+        str(submission.get("subject_name") or "")
+        or metadata.get("subject_name")
+        or "subject"
+    )
+    test_date = (
+        str(submission.get("test_date") or "")
+        or metadata.get("test_date")
+        or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    )
 
-    if slug is None:
-        subject_name = (
-            str(submission.get("subject_name") or "")
-            or metadata.get("subject_name")
-            or "subject"
-        )
-        test_date = (
-            str(submission.get("test_date") or "")
-            or metadata.get("test_date")
-            or datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        )
-        slug = publish_report(workspace, subject_name, test_date, published_dir)
+    prior_slug = get_prior_report_slug(
+        get_db_path(request),
+        str(submission["id"]),
+        exclude_job_id=str(job["id"]),
+    )
+    if prior_slug:
+        slug = prior_slug
+        publish_report(workspace, subject_name, test_date, published_dir, slug=prior_slug)
     else:
-        subject_name = (
-            str(submission.get("subject_name") or "")
-            or metadata.get("subject_name")
-            or "subject"
-        )
-        test_date = (
-            str(submission.get("test_date") or "")
-            or metadata.get("test_date")
-            or datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        )
+        slug = _find_published_slug_for_report(report_index, published_dir)
+        if slug is None:
+            slug = publish_report(workspace, subject_name, test_date, published_dir)
+        else:
+            publish_report(workspace, subject_name, test_date, published_dir, slug=slug)
 
     upsert_report_catalog_entry(
         get_db_path(request),
@@ -1255,6 +1256,15 @@ async def submit(
 
             # Create new job for re-analysis
             job_id = create_job(db_path, reanalyze)
+            prior_slug = get_prior_report_slug(db_path, reanalyze, exclude_job_id=job_id)
+            if prior_slug:
+                update_job_status(
+                    db_path,
+                    job_id,
+                    "pending",
+                    report_slug=prior_slug,
+                    report_url=f"/report/{prior_slug}/",
+                )
             refreshed_sub = get_submission(db_path, reanalyze) or existing_sub
             payload = _build_channel_payload(
                 {"id": job_id},

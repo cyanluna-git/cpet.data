@@ -324,6 +324,42 @@ def _trend_pattern(rng: random.Random, history_length: int) -> str:
     )[0]
 
 
+def _normalize_threshold_state(
+    state: dict[str, float],
+    *,
+    rng: random.Random,
+) -> dict[str, float]:
+    """Enforce physiology-aware ordering for synthetic threshold metrics."""
+    lt1 = max(120.0, state["lt1_power_w"])
+    fatmax = min(max(90.0, state["fatmax_power_w"]), lt1 - rng.uniform(8.0, 28.0))
+    fatmax = max(85.0, fatmax)
+
+    lt2_floor = lt1 + rng.uniform(20.0, 55.0)
+    lt2 = max(lt2_floor, state["lt2_power_w"])
+    lt2 = min(lt2, lt1 + 95.0)
+
+    at = min(max(state["at_power_w"], lt1 + rng.uniform(6.0, 18.0)), lt2 - rng.uniform(3.0, 12.0))
+    at = max(lt1 + 4.0, at)
+
+    carbmax = max(state["carbmax_w"], max(lt2, at) + rng.uniform(28.0, 72.0))
+    glycogen = max(180.0, state["glycogen_g"])
+    fatmax_gmin = min(max(0.16, state["fatmax_gmin"]), 0.85)
+    vlamax = min(max(0.15, state["vlamax"]), 0.95)
+
+    state["fatmax_power_w"] = round(fatmax, 1)
+    state["lt1_power_w"] = round(lt1, 1)
+    state["lt2_power_w"] = round(max(state["lt1_power_w"] + 12.0, lt2), 1)
+    state["at_power_w"] = round(
+        min(max(state["lt1_power_w"] + 4.0, at), state["lt2_power_w"] - 2.0),
+        1,
+    )
+    state["carbmax_w"] = round(max(state["lt2_power_w"] + 18.0, carbmax), 1)
+    state["glycogen_g"] = round(glycogen, 1)
+    state["fatmax_gmin"] = round(fatmax_gmin, 2)
+    state["vlamax"] = round(vlamax, 2)
+    return state
+
+
 def _next_metrics(
     *,
     rng: random.Random,
@@ -375,6 +411,8 @@ def _next_metrics(
     elif source_kind == "published_cpet_report":
         state["vo2max_rel"] = round(state["vo2max_rel"] + rng.uniform(-0.5, 0.5), 1)
 
+    state = _normalize_threshold_state(state, rng=rng)
+
     payload = {
         "subject_id": subject_id,
         "source_kind": source_kind,
@@ -390,10 +428,10 @@ def _next_metrics(
         "lt2_power_w": state["lt2_power_w"],
         "fatmax_power_w": state["fatmax_power_w"],
         "fatmax_gmin": state["fatmax_gmin"],
-        "vlamax": state["vlamax"],
-        "at_power_w": state["at_power_w"],
-        "carbmax_w": state["carbmax_w"],
-        "glycogen_g": state["glycogen_g"],
+        "vlamax": state["vlamax"] if source_kind == "inscyd_report" else None,
+        "at_power_w": state["at_power_w"] if source_kind == "inscyd_report" else None,
+        "carbmax_w": state["carbmax_w"] if source_kind == "inscyd_report" else None,
+        "glycogen_g": state["glycogen_g"] if source_kind == "inscyd_report" else None,
         "extraction_version": "demo_seed_v1",
         "quality_flags_json": json.dumps(["synthetic_demo"] + (["partial_case"] if missing else [])),
         "payload_json": json.dumps(
@@ -411,6 +449,8 @@ def _next_metrics(
         payload["fatmax_gmin"] = None
         payload["vlamax"] = None if source_kind != "inscyd_report" else payload["vlamax"]
         payload["glycogen_g"] = None
+        payload["at_power_w"] = None if source_kind != "inscyd_report" else payload["at_power_w"]
+        payload["carbmax_w"] = None if source_kind != "inscyd_report" else payload["carbmax_w"]
 
     return payload, state
 
