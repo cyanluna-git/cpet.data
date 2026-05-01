@@ -19,7 +19,7 @@ import re
 import threading
 
 import httpx
-from fastapi import APIRouter, Form, Query, Request, UploadFile
+from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from server.db import (
@@ -1160,7 +1160,7 @@ async def submit_preflight(
 @router.post("/api/submit", status_code=201)
 async def submit(
     request: Request,
-    files: list[UploadFile],
+    files: list[UploadFile] = File(default_factory=list),
     description: str = Form(""),
     subject_name: str = Form(""),
     test_date: str = Form(""),
@@ -1185,9 +1185,14 @@ async def submit(
     data_dir = get_data_dir(request)
     channel_url = get_channel_url(request)
     sync_submission_duplicate_metadata(db_path)
-    file_pairs, error = await _read_upload_file_pairs(files)
-    if error:
-        return error
+    # Reanalyze-only mode: empty multipart is allowed (skip file-pair read).
+    # Non-reanalyze paths still require files (helper returns 400 on empty).
+    if reanalyze and not files:
+        file_pairs: list[tuple[str, bytes]] = []
+    else:
+        file_pairs, error = await _read_upload_file_pairs(files)
+        if error:
+            return error
 
     # Login required for uploads
     user_id = request.session.get("user_id") if hasattr(request, "session") else None
@@ -1220,15 +1225,26 @@ async def submit(
     if reanalyze:
         existing_sub = get_submission(db_path, reanalyze)
         if existing_sub and existing_sub.get("workspace_path"):
+            # Ownership check: only the submission owner, researcher, or admin
+            # may trigger reanalyze on someone else's submission.
+            owner_id = str(existing_sub.get("user_id") or "")
+            if owner_id != str(user_id) and session_role not in ("researcher", "admin"):
+                return JSONResponse(
+                    status_code=403,
+                    content={"error": "권한이 없습니다"},
+                )
+
             workspace = Path(existing_sub["workspace_path"])
             raw_dir = workspace / "raw"
             raw_dir.mkdir(parents=True, exist_ok=True)
 
-            # Write new files into existing workspace
-            for filename, content in file_pairs:
-                (raw_dir / filename).write_bytes(content)
+            # Write new files into existing workspace (skipped for reanalyze-only)
+            if file_pairs:
+                for filename, content in file_pairs:
+                    (raw_dir / filename).write_bytes(content)
 
             # Remove old analysis.db and report to force fresh analysis
+            # (always runs — this is the whole point of reanalyze)
             for cleanup in [workspace / "analysis.db", workspace / "report"]:
                 if cleanup.is_file():
                     cleanup.unlink()
@@ -1236,23 +1252,24 @@ async def submit(
                     import shutil
                     shutil.rmtree(cleanup, ignore_errors=True)
 
-            # Persist the full raw/ state (original + newly added files) to DB
-            all_raw_pairs = [
-                (p.name, p.read_bytes())
-                for p in sorted(raw_dir.iterdir())
-                if p.is_file()
-            ]
-            save_submission_files(db_path, reanalyze, all_raw_pairs)
+            if file_pairs:
+                # Persist the full raw/ state (original + newly added files) to DB
+                all_raw_pairs = [
+                    (p.name, p.read_bytes())
+                    for p in sorted(raw_dir.iterdir())
+                    if p.is_file()
+                ]
+                save_submission_files(db_path, reanalyze, all_raw_pairs)
 
-            # Update submission manifest + description
-            manifest = list_files(workspace)
-            conn = sqlite3.connect(str(db_path))
-            conn.execute(
-                "UPDATE submissions SET file_manifest = ?, description = ? WHERE id = ?",
-                (json.dumps(manifest), description, reanalyze),
-            )
-            conn.commit()
-            conn.close()
+                # Update submission manifest + description
+                manifest = list_files(workspace)
+                conn = sqlite3.connect(str(db_path))
+                conn.execute(
+                    "UPDATE submissions SET file_manifest = ?, description = ? WHERE id = ?",
+                    (json.dumps(manifest), description, reanalyze),
+                )
+                conn.commit()
+                conn.close()
 
             # Create new job for re-analysis
             job_id = create_job(db_path, reanalyze)

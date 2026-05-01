@@ -900,3 +900,355 @@ class TestPathTraversalPrevention:
         assert len(saved) == 1
         assert saved[0].parent == raw, "file escaped raw/ directory"
         assert saved[0].name == "evil.xlsx"
+
+
+# ── Reanalyze-only mode (kanban #2720) ──────────────────────────────
+
+
+def _login_helper(
+    client: TestClient,
+    role: str = "user",
+    google_id: str = "reanalyze-gid",
+    email: str = "reanalyze@test.com",
+    name: str = "Reanalyze User",
+) -> dict:
+    """Log a user in via mocked Google OAuth and set their role.
+
+    Mirrors `_login_as` from test_manage.py but local to test_api.py so
+    test_api.py remains self-contained.
+    """
+    from server.db import _connect, complete_onboarding, get_user, upsert_user
+
+    db_path = app.state.db_path
+    user = upsert_user(db_path, google_id=google_id, email=email, display_name=name)
+    complete_onboarding(db_path, user["id"], name)
+
+    conn = _connect(db_path)
+    conn.execute("UPDATE users SET role = ? WHERE id = ?", (role, user["id"]))
+    conn.commit()
+    conn.close()
+
+    with patch(
+        "server.auth.oauth.google.authorize_access_token",
+        new_callable=AsyncMock,
+    ) as mock_token:
+        mock_token.return_value = {
+            "userinfo": {
+                "sub": google_id,
+                "email": email,
+                "name": name,
+                "picture": "",
+            }
+        }
+        client.get("/auth/google/callback", follow_redirects=False)
+
+    return get_user(db_path, user["id"])
+
+
+def _seed_reanalyzable_submission(
+    base_dir: Path,
+    db_path: Path,
+    owner_user_id: str,
+    *,
+    description: str = "original description",
+    raw_files: list[tuple[str, bytes]] | None = None,
+) -> tuple[str, Path]:
+    """Create a submission + on-disk workspace owned by `owner_user_id`.
+
+    Returns (submission_id, workspace_path).
+    """
+    from server.db import create_submission
+    from server.workspace import create_workspace
+
+    raw_files = raw_files or [("data.xlsx", b"PK\x03\x04seed-original")]
+    sid = create_submission(
+        db_path,
+        description,
+        [
+            {"name": name, "extension": name.rsplit(".", 1)[-1], "size_bytes": len(c)}
+            for name, c in raw_files
+        ],
+        "",  # workspace_path patched below
+        subject_name="Park",
+        test_date="2026-03-20",
+        user_id=owner_user_id,
+    )
+    workspace = create_workspace(base_dir, sid, raw_files)
+    # Patch workspace_path into the DB
+    import sqlite3 as _sqlite3
+    conn = _sqlite3.connect(str(db_path))
+    conn.execute(
+        "UPDATE submissions SET workspace_path = ? WHERE id = ?",
+        (str(workspace), sid),
+    )
+    conn.commit()
+    conn.close()
+    return sid, workspace
+
+
+def _sha256_dir(directory: Path) -> dict[str, str]:
+    """Return {filename: sha256_hex} for every file in `directory`."""
+    import hashlib
+
+    digests: dict[str, str] = {}
+    for p in sorted(directory.iterdir()):
+        if p.is_file():
+            digests[p.name] = hashlib.sha256(p.read_bytes()).hexdigest()
+    return digests
+
+
+class TestReanalyzeOnly:
+    """Tests for POST /api/submit?reanalyze=<id> with no files attached."""
+
+    @patch("server.api.notify_channel", new_callable=AsyncMock)
+    def test_owner_empty_reanalyze_returns_201(
+        self, mock_channel: AsyncMock, client: TestClient, tmp_path: Path
+    ) -> None:
+        """Owner can trigger reanalyze with empty multipart and gets 201."""
+        owner = _login_helper(client, role="user", google_id="owner-1", email="o1@t.com")
+        sid, _ws = _seed_reanalyzable_submission(
+            app.state.data_dir, app.state.db_path, owner["id"]
+        )
+        resp = client.post(
+            f"/api/submit?reanalyze={sid}",
+            files=[],
+            data={"description": "owner reanalyze"},
+        )
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        assert "job_id" in body
+        assert body["status"] == "pending"
+        mock_channel.assert_awaited_once()
+
+    @patch("server.api.notify_channel", new_callable=AsyncMock)
+    def test_empty_reanalyze_preserves_raw_files(
+        self, mock_channel: AsyncMock, client: TestClient, tmp_path: Path
+    ) -> None:
+        """sha256 of every raw/ file is identical before and after empty reanalyze."""
+        owner = _login_helper(client, role="user", google_id="owner-2", email="o2@t.com")
+        raw_files = [
+            ("cosmed.xlsx", b"PK\x03\x04excel-original" * 5),
+            ("ride.fit", b"\x0e\x10\x14fit-original" * 3),
+        ]
+        sid, ws = _seed_reanalyzable_submission(
+            app.state.data_dir, app.state.db_path, owner["id"], raw_files=raw_files
+        )
+        before = _sha256_dir(ws / "raw")
+        assert set(before) == {"cosmed.xlsx", "ride.fit"}
+
+        resp = client.post(
+            f"/api/submit?reanalyze={sid}",
+            files=[],
+            data={"description": "preserve me"},
+        )
+        assert resp.status_code == 201, resp.text
+
+        after = _sha256_dir(ws / "raw")
+        assert after == before, "raw/ files must not change during empty reanalyze"
+
+    @patch("server.api.notify_channel", new_callable=AsyncMock)
+    def test_empty_reanalyze_preserves_description(
+        self, mock_channel: AsyncMock, client: TestClient, tmp_path: Path
+    ) -> None:
+        """submissions.description is NOT overwritten when no files are uploaded."""
+        owner = _login_helper(client, role="user", google_id="owner-3", email="o3@t.com")
+        sid, _ws = _seed_reanalyzable_submission(
+            app.state.data_dir,
+            app.state.db_path,
+            owner["id"],
+            description="ORIGINAL_KEEP_ME",
+        )
+        resp = client.post(
+            f"/api/submit?reanalyze={sid}",
+            files=[],
+            data={"description": "would-overwrite-but-must-not"},
+        )
+        assert resp.status_code == 201
+        sub = get_submission(app.state.db_path, sid)
+        assert sub is not None
+        assert sub["description"] == "ORIGINAL_KEEP_ME"
+
+    @patch("server.api.notify_channel", new_callable=AsyncMock)
+    def test_empty_reanalyze_removes_analysis_db_and_report(
+        self, mock_channel: AsyncMock, client: TestClient, tmp_path: Path
+    ) -> None:
+        """The unconditional cleanup must remove analysis.db and report/."""
+        owner = _login_helper(client, role="user", google_id="owner-4", email="o4@t.com")
+        sid, ws = _seed_reanalyzable_submission(
+            app.state.data_dir, app.state.db_path, owner["id"]
+        )
+        # Plant artefacts that the reanalyze should clean up
+        (ws / "analysis.db").write_bytes(b"old-analysis")
+        (ws / "report").mkdir(exist_ok=True)
+        (ws / "report" / "old.html").write_text("old", encoding="utf-8")
+        assert (ws / "analysis.db").is_file()
+        assert (ws / "report" / "old.html").is_file()
+
+        resp = client.post(
+            f"/api/submit?reanalyze={sid}",
+            files=[],
+            data={"description": "trigger cleanup"},
+        )
+        assert resp.status_code == 201
+        assert not (ws / "analysis.db").exists()
+        assert not (ws / "report").exists()
+
+    @patch("server.api.notify_channel", new_callable=AsyncMock)
+    def test_non_owner_regular_user_empty_reanalyze_returns_403(
+        self, mock_channel: AsyncMock, client: TestClient, tmp_path: Path
+    ) -> None:
+        """A regular user that does not own the submission gets 403."""
+        # Create the submission under owner-A
+        from server.db import upsert_user
+        owner = upsert_user(
+            app.state.db_path,
+            google_id="other-owner",
+            email="other-owner@t.com",
+            display_name="Other Owner",
+        )
+        sid, _ws = _seed_reanalyzable_submission(
+            app.state.data_dir, app.state.db_path, owner["id"]
+        )
+        # Log in as a *different* regular user
+        _login_helper(client, role="user", google_id="intruder", email="int@t.com")
+
+        resp = client.post(
+            f"/api/submit?reanalyze={sid}",
+            files=[],
+            data={"description": "should be denied"},
+        )
+        assert resp.status_code == 403
+        body = resp.json()
+        assert "error" in body
+        mock_channel.assert_not_awaited()
+
+    @patch("server.api.notify_channel", new_callable=AsyncMock)
+    def test_researcher_can_reanalyze_other_users_submission(
+        self, mock_channel: AsyncMock, client: TestClient, tmp_path: Path
+    ) -> None:
+        """A researcher gets 201 even when not the owner."""
+        from server.db import upsert_user
+        owner = upsert_user(
+            app.state.db_path,
+            google_id="r-owner",
+            email="r-owner@t.com",
+            display_name="R Owner",
+        )
+        sid, _ws = _seed_reanalyzable_submission(
+            app.state.data_dir, app.state.db_path, owner["id"]
+        )
+        _login_helper(
+            client, role="researcher", google_id="research-1", email="rr@t.com"
+        )
+
+        resp = client.post(
+            f"/api/submit?reanalyze={sid}",
+            files=[],
+            data={"description": "researcher reanalyze"},
+        )
+        assert resp.status_code == 201, resp.text
+        mock_channel.assert_awaited_once()
+
+    @patch("server.api.notify_channel", new_callable=AsyncMock)
+    def test_admin_can_reanalyze_other_users_submission(
+        self, mock_channel: AsyncMock, client: TestClient, tmp_path: Path
+    ) -> None:
+        """An admin gets 201 even when not the owner."""
+        from server.db import upsert_user
+        owner = upsert_user(
+            app.state.db_path,
+            google_id="a-owner",
+            email="a-owner@t.com",
+            display_name="A Owner",
+        )
+        sid, _ws = _seed_reanalyzable_submission(
+            app.state.data_dir, app.state.db_path, owner["id"]
+        )
+        _login_helper(client, role="admin", google_id="admin-1", email="adm@t.com")
+
+        resp = client.post(
+            f"/api/submit?reanalyze={sid}",
+            files=[],
+            data={"description": "admin reanalyze"},
+        )
+        assert resp.status_code == 201, resp.text
+        mock_channel.assert_awaited_once()
+
+    @patch("server.api.notify_channel", new_callable=AsyncMock)
+    def test_anonymous_empty_reanalyze_returns_401(
+        self, mock_channel: AsyncMock, client: TestClient, tmp_path: Path
+    ) -> None:
+        """Regression guard: anonymous callers get 401 (existing auth behavior)."""
+        from server.db import upsert_user
+        owner = upsert_user(
+            app.state.db_path,
+            google_id="anon-owner",
+            email="anon-owner@t.com",
+            display_name="Anon Owner",
+        )
+        sid, _ws = _seed_reanalyzable_submission(
+            app.state.data_dir, app.state.db_path, owner["id"]
+        )
+
+        resp = client.post(
+            f"/api/submit?reanalyze={sid}",
+            files=[],
+            data={"description": "no auth"},
+        )
+        assert resp.status_code == 401
+        mock_channel.assert_not_awaited()
+
+    @patch("server.api.notify_channel", new_callable=AsyncMock)
+    def test_reanalyze_with_files_still_works_regression(
+        self, mock_channel: AsyncMock, client: TestClient, tmp_path: Path
+    ) -> None:
+        """With-files reanalyze: new file lands in raw/, manifest + description update."""
+        owner = _login_helper(
+            client, role="user", google_id="owner-files", email="of@t.com"
+        )
+        sid, ws = _seed_reanalyzable_submission(
+            app.state.data_dir,
+            app.state.db_path,
+            owner["id"],
+            description="ORIGINAL_DESC",
+        )
+        new_xlsx = ("files", ("extra.xlsx", io.BytesIO(b"PK\x03\x04new"), "application/octet-stream"))
+        resp = client.post(
+            f"/api/submit?reanalyze={sid}",
+            files=[new_xlsx],
+            data={"description": "UPDATED_DESC"},
+        )
+        assert resp.status_code == 201, resp.text
+        # New file is in raw/
+        assert (ws / "raw" / "extra.xlsx").exists()
+        # Description was updated (file_pairs branch)
+        sub = get_submission(app.state.db_path, sid)
+        assert sub is not None
+        assert sub["description"] == "UPDATED_DESC"
+        mock_channel.assert_awaited_once()
+
+    @patch("server.api.notify_channel", new_callable=AsyncMock)
+    def test_owner_empty_reanalyze_creates_new_job(
+        self, mock_channel: AsyncMock, client: TestClient, tmp_path: Path
+    ) -> None:
+        """A new job row is created for the existing submission_id on reanalyze."""
+        owner = _login_helper(
+            client, role="user", google_id="owner-job", email="oj@t.com"
+        )
+        sid, _ws = _seed_reanalyzable_submission(
+            app.state.data_dir, app.state.db_path, owner["id"]
+        )
+        resp = client.post(
+            f"/api/submit?reanalyze={sid}",
+            files=[],
+            data={"description": "trigger"},
+        )
+        assert resp.status_code == 201
+        body = resp.json()
+
+        from server.db import get_job
+
+        job = get_job(app.state.db_path, body["job_id"])
+        assert job is not None
+        assert job["submission_id"] == sid
+        assert job["status"] == "pending"

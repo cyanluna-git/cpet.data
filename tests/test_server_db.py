@@ -22,6 +22,7 @@ from server.db import (
     get_pending_jobs,
     get_prior_report_slug,
     get_submission,
+    get_submission_id_for_report_slug,
     init_db,
     list_jobs,
     restore_submission_files,
@@ -1184,3 +1185,85 @@ class TestGetPriorReportSlug:
         ja = create_job(db_path, sid_a)
         update_job_status(db_path, ja, "done", report_slug="slug-for-a")
         assert get_prior_report_slug(db_path, sid_b) is None
+
+
+# ── get_submission_id_for_report_slug ───────────────────────────────
+
+
+class TestGetSubmissionIdForReportSlug:
+    """Tests for get_submission_id_for_report_slug() helper in server.db."""
+
+    def test_unknown_slug_returns_none(self, db_path: Path) -> None:
+        """Returns None when no job references the slug."""
+        assert get_submission_id_for_report_slug(db_path, "nonexistent-slug") is None
+
+    def test_happy_path_returns_submission_id(self, db_path: Path) -> None:
+        """Returns the submission_id for a known done-job slug."""
+        sid = create_submission(db_path, "d", [], "/ws")
+        jid = create_job(db_path, sid)
+        update_job_status(db_path, jid, "done", report_slug="park-20260320")
+        assert get_submission_id_for_report_slug(db_path, "park-20260320") == sid
+
+    def test_returns_most_recent_when_multiple_match(self, db_path: Path) -> None:
+        """When multiple jobs share the same slug, the highest rowid wins."""
+        sid_a = create_submission(db_path, "a", [], "/ws-a")
+        sid_b = create_submission(db_path, "b", [], "/ws-b")
+        ja = create_job(db_path, sid_a)
+        update_job_status(db_path, ja, "done", report_slug="shared-slug")
+        jb = create_job(db_path, sid_b)
+        update_job_status(db_path, jb, "done", report_slug="shared-slug")
+        # jb was inserted later → higher rowid → returned
+        assert get_submission_id_for_report_slug(db_path, "shared-slug") == sid_b
+
+    def test_ignores_rows_with_null_submission_id(self, db_path: Path) -> None:
+        """Rows where submission_id IS NULL are excluded from the scan."""
+        # Insert a job row with NULL submission_id directly to bypass FK enforcement
+        sid = create_submission(db_path, "d", [], "/ws")
+        # Real done job for the slug
+        jid = create_job(db_path, sid)
+        update_job_status(db_path, jid, "done", report_slug="orphan-test")
+
+        # Inject a synthetic job row with the same slug but NULL submission_id.
+        # SQLite enforces FK; turning it off lets us simulate orphan rows.
+        conn = _connect(db_path)
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute(
+            "INSERT INTO jobs (id, submission_id, status, report_slug) "
+            "VALUES (?, NULL, 'done', ?)",
+            ("synthetic-orphan", "orphan-test"),
+        )
+        conn.commit()
+        conn.close()
+
+        # The orphan row has a higher rowid but should be filtered out
+        assert get_submission_id_for_report_slug(db_path, "orphan-test") == sid
+
+    def test_ignores_rows_with_empty_submission_id(self, db_path: Path) -> None:
+        """Rows where submission_id is an empty string are filtered out."""
+        sid = create_submission(db_path, "d", [], "/ws")
+        jid = create_job(db_path, sid)
+        update_job_status(db_path, jid, "done", report_slug="empty-test")
+
+        # Inject a row with empty-string submission_id
+        conn = _connect(db_path)
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute(
+            "INSERT INTO jobs (id, submission_id, status, report_slug) "
+            "VALUES (?, '', 'done', ?)",
+            ("synthetic-empty", "empty-test"),
+        )
+        conn.commit()
+        conn.close()
+
+        assert get_submission_id_for_report_slug(db_path, "empty-test") == sid
+
+    def test_isolates_across_slugs(self, db_path: Path) -> None:
+        """A slug query never returns a submission linked only to a different slug."""
+        sid_a = create_submission(db_path, "a", [], "/ws")
+        sid_b = create_submission(db_path, "b", [], "/ws")
+        ja = create_job(db_path, sid_a)
+        update_job_status(db_path, ja, "done", report_slug="slug-a")
+        jb = create_job(db_path, sid_b)
+        update_job_status(db_path, jb, "done", report_slug="slug-b")
+        assert get_submission_id_for_report_slug(db_path, "slug-a") == sid_a
+        assert get_submission_id_for_report_slug(db_path, "slug-b") == sid_b

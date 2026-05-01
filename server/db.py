@@ -741,6 +741,25 @@ def get_job_by_submission(
     return dict(row)
 
 
+def get_submission_id_for_report_slug(
+    db_path: Path,
+    report_slug: str,
+) -> str | None:
+    """Return the most recent submission_id linked to a report_slug via jobs."""
+    conn = _connect(db_path)
+    row = conn.execute(
+        """SELECT submission_id FROM jobs
+           WHERE report_slug = ?
+             AND submission_id IS NOT NULL
+             AND submission_id != ''
+           ORDER BY rowid DESC
+           LIMIT 1""",
+        (report_slug,),
+    ).fetchone()
+    conn.close()
+    return row["submission_id"] if row else None
+
+
 def get_prior_report_slug(
     db_path: Path,
     submission_id: str,

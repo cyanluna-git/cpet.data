@@ -40,6 +40,7 @@ from server.db import (
     get_fitness_trends,
     summarize_fitness_trends,
     get_report_user_links,
+    get_submission_id_for_report_slug,
     get_subject,
     get_subject_feature_set,
     get_dashboard_subject_analytics,
@@ -262,6 +263,48 @@ def _can_edit_report_metadata(
     return False
 
 
+def _can_reanalyze_submission(
+    db_path: Path,
+    session_user: dict,
+    submission: dict,
+) -> bool:
+    """Return whether the current user may trigger reanalyze on this submission.
+
+    Allowed: researcher, admin, or the submission owner. Different from
+    `_can_edit_report_metadata` (which also grants subject-link users).
+    """
+    role = session_user.get("role", "user")
+    if role in ("researcher", "admin"):
+        return True
+    user_id = str(session_user.get("id") or "")
+    if not user_id:
+        return False
+    return str(submission.get("user_id") or "") == user_id
+
+
+def _build_reanalyze_button_html(submission_id: str) -> str:
+    """Render a small floating 재분석 form for the report HTML."""
+    sid = submission_id.replace('"', "&quot;")
+    return (
+        '<form id="cpet-reanalyze-form" method="post" '
+        f'action="/api/submit?reanalyze={sid}" enctype="multipart/form-data" '
+        'style="position:fixed;top:16px;right:16px;z-index:9999;margin:0;">'
+        '<button type="submit" '
+        'style="padding:8px 14px;border-radius:6px;border:1px solid #2563eb;'
+        'background:#2563eb;color:#fff;font-size:14px;font-weight:600;'
+        'cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.1);">'
+        '재분석</button></form>'
+    )
+
+
+def _inject_reanalyze_button(html: str, submission_id: str) -> str:
+    """Insert the reanalyze button before </body>; no-op if tag absent."""
+    button = _build_reanalyze_button_html(submission_id)
+    if "</body>" in html:
+        return html.replace("</body>", button + "</body>", 1)
+    return html
+
+
 # ── Page routes ──────────────────────────────────────────────────────
 
 
@@ -462,16 +505,33 @@ async def replace_note(
 # Report serving — DB-primary, file fallback
 # ---------------------------------------------------------------------------
 
-def _serve_report_slug(db_path: Path, published_dir: Path, slug: str) -> HTMLResponse:
-    """Serve a report from DB, falling back to the published file."""
+def _serve_report_slug(
+    request: Request,
+    db_path: Path,
+    published_dir: Path,
+    slug: str,
+) -> HTMLResponse:
+    """Serve a report from DB, falling back to the published file.
+
+    Injects a 재분석 button when the current session user is authorized.
+    """
     html = get_report_html(db_path, slug)
-    if html:
-        return HTMLResponse(html)
-    # File fallback (for reports not yet migrated)
-    index = published_dir / slug / "index.html"
-    if index.is_file():
-        return HTMLResponse(index.read_text(encoding="utf-8"))
-    raise HTTPException(status_code=404, detail="report not found")
+    if not html:
+        # File fallback (for reports not yet migrated)
+        index = published_dir / slug / "index.html"
+        if not index.is_file():
+            raise HTTPException(status_code=404, detail="report not found")
+        html = index.read_text(encoding="utf-8")
+
+    session_user = _get_session_user(request)
+    if session_user:
+        submission_id = get_submission_id_for_report_slug(db_path, slug)
+        if submission_id:
+            submission = get_submission(db_path, submission_id)
+            if submission and _can_reanalyze_submission(db_path, session_user, submission):
+                html = _inject_reanalyze_button(html, submission_id)
+
+    return HTMLResponse(html)
 
 
 @app.get("/report/{slug}", response_class=HTMLResponse)
@@ -483,7 +543,7 @@ async def report_redirect(slug: str) -> RedirectResponse:
 async def report_page(request: Request, slug: str) -> HTMLResponse:
     db_path = request.app.state.db_path
     published_dir = request.app.state.published_dir
-    return _serve_report_slug(db_path, published_dir, slug)
+    return _serve_report_slug(request, db_path, published_dir, slug)
 
 
 @app.get("/reports/{slug}", response_class=HTMLResponse)
