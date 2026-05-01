@@ -51,6 +51,7 @@ from server.db import (
     delete_report_derived_metrics,
     delete_report_metadata,
     init_db,
+    delete_subject,
     link_report_to_user,
     link_submission_user,
     link_submission_subject,
@@ -2375,6 +2376,30 @@ async def manage_unlink_user_from_subject(request: Request, subject_id: str) -> 
             target_user_id,
             subject_id,
         )
+
+    subjects = list_subjects(db_path)
+    users = list_users(db_path)
+    return templates.TemplateResponse(
+        request,
+        "partials/manage_subjects.html",
+        {"subjects": subjects, "users": users, "session_user": session_user, "current_user": session_user},
+    )
+
+
+@app.delete("/api/manage/subjects/{subject_id}", response_class=HTMLResponse)
+async def manage_delete_subject(request: Request, subject_id: str) -> HTMLResponse:
+    """Delete a subject. Admin only."""
+    from fastapi.responses import JSONResponse
+
+    auth_result = _require_manage_access(request)
+    if isinstance(auth_result, (RedirectResponse, HTMLResponse)):
+        return auth_result
+    session_user = auth_result
+    if session_user.get("role") != "admin":
+        return JSONResponse(status_code=403, content={"error": "admin only"})
+
+    db_path = request.app.state.db_path
+    delete_subject(db_path, subject_id)
 
     subjects = list_subjects(db_path)
     users = list_users(db_path)

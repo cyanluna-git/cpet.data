@@ -468,6 +468,16 @@ def update_subject(
     return dict(row)
 
 
+def delete_subject(db_path: Path, subject_id: str) -> bool:
+    """Delete a subject. Returns True if found and deleted."""
+    conn = _connect(db_path)
+    cursor = conn.execute("DELETE FROM subjects WHERE id = ?", (subject_id,))
+    conn.commit()
+    deleted = cursor.rowcount > 0
+    conn.close()
+    return deleted
+
+
 def link_user_to_subject(
     db_path: Path, user_id: str, subject_id: str,
 ) -> dict | None:
