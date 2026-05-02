@@ -1779,6 +1779,37 @@ def update_report_catalog_test_date(
     conn.close()
 
 
+def update_report_catalog_analysis_method(
+    db_path: Path, report_slug: str, analysis_method: str,
+) -> None:
+    """Update a published report catalog row's analysis_method if it exists.
+
+    Empty/whitespace-only values are normalized to '알 수 없음' to match the
+    INSERT default in `upsert_report_catalog_entry`.
+    """
+    conn = _connect(db_path)
+    conn.execute(
+        "UPDATE report_catalog SET analysis_method = ?, updated_at = datetime('now') WHERE report_slug = ?",
+        (analysis_method.strip() or "알 수 없음", report_slug),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_report_catalog_entry(db_path: Path, report_slug: str) -> dict | None:
+    """Fetch a single report_catalog row by slug. Returns None if missing."""
+    conn = _connect(db_path)
+    row = conn.execute(
+        """SELECT report_slug, subject_name, test_date, analysis_method,
+                  report_version, report_url, completed_at, updated_at
+           FROM report_catalog
+           WHERE report_slug = ?""",
+        (report_slug,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row is not None else None
+
+
 def link_submission_user(
     db_path: Path, submission_id: str, user_id: str,
 ) -> dict | None:

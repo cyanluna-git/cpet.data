@@ -75,6 +75,8 @@ from server.db import (
     update_submission_subject_name,
     update_submission_test_date,
     update_report_catalog_test_date,
+    update_report_catalog_analysis_method,
+    get_report_catalog_entry,
     list_submissions_with_users,
     list_users,
     unlink_report_from_user,
@@ -2121,6 +2123,9 @@ async def manage_update_report_metadata(request: Request) -> HTMLResponse:
     note = str(form.get("note", "")).strip()
     submission_id = str(form.get("submission_id", "")).strip()
     report_slug = str(form.get("report_slug", "")).strip()
+    analysis_method_raw = form.get("analysis_method")
+    analysis_method_present = analysis_method_raw is not None
+    analysis_method = str(analysis_method_raw or "").strip()
 
     if not submission_id and not report_slug:
         return JSONResponse(status_code=400, content={"error": "submission_id or report_slug is required"})
@@ -2156,6 +2161,29 @@ async def manage_update_report_metadata(request: Request) -> HTMLResponse:
     if report_slug:
         set_report_note(db_path, report_slug, note)
 
+    saved_analysis_method = ""
+    is_admin = session_user.get("role") == "admin"
+    # Non-admin: silently skip when value is empty/missing (legacy clients).
+    # Non-admin: 403 when explicitly trying to set a non-empty value.
+    # Admin: empty value triggers fallback compose; non-empty saves as-is.
+    if analysis_method and not is_admin:
+        return JSONResponse(status_code=403, content={"error": "admin only for analysis method edit"})
+    if is_admin and analysis_method_present and report_slug:
+        if analysis_method:
+            value = analysis_method
+        else:
+            catalog = get_report_catalog_entry(db_path, report_slug)
+            if catalog is None:
+                return JSONResponse(status_code=400, content={"error": "report not in catalog yet"})
+            subject_part = (catalog.get("subject_name") or "").strip() or "이름없음"
+            date_part = (catalog.get("test_date") or "").strip() or "0000-00-00"
+            method_part = (catalog.get("analysis_method") or "").strip() or "알 수 없음"
+            value = f"{subject_part}-{date_part}-{method_part}"
+        if len(value) > 200:
+            return JSONResponse(status_code=400, content={"error": "analysis_method too long (max 200)"})
+        update_report_catalog_analysis_method(db_path, report_slug, value)
+        saved_analysis_method = value
+
     return JSONResponse(
         content={
             "ok": True,
@@ -2163,6 +2191,7 @@ async def manage_update_report_metadata(request: Request) -> HTMLResponse:
             "subject_name": canonical_name,
             "test_date": test_date,
             "note": note,
+            "analysis_method": saved_analysis_method,
             "report_slug": report_slug,
             "submission_id": submission_id,
         }

@@ -22,6 +22,7 @@ from server.db import (
     get_job_by_submission,
     get_pending_jobs,
     get_prior_report_slug,
+    get_report_catalog_entry,
     get_submission,
     get_submission_id_for_report_slug,
     init_db,
@@ -29,7 +30,9 @@ from server.db import (
     restore_submission_files,
     save_submission_files,
     update_job_status,
+    update_report_catalog_analysis_method,
     update_submission_subject,
+    upsert_report_catalog_entry,
 )
 from server.workspace import create_workspace, get_workspace, list_files
 from server.schemas import JobStatus, ReportSummary, SubmissionCreate
@@ -1337,3 +1340,51 @@ class TestUpdateSubmissionSubject:
         assert result is not None
         assert result["subject_id"] == subj["id"]
         assert result["subject_name"] == "Linked Subject"
+
+
+class TestUpdateReportCatalogAnalysisMethod:
+    def _seed_catalog(self, db_path: Path, slug: str = "test-slug-001") -> str:
+        upsert_report_catalog_entry(
+            db_path,
+            report_slug=slug,
+            subject_name="Subject A",
+            test_date="2026-01-15",
+            analysis_method="기본 CPET",
+            report_version="기본 리포트",
+            report_url=f"/report/{slug}/",
+            completed_at=None,
+        )
+        return slug
+
+    def test_updates_analysis_method(self, db_path: Path) -> None:
+        """Helper rewrites analysis_method on the matching row."""
+        slug = self._seed_catalog(db_path)
+        update_report_catalog_analysis_method(db_path, slug, "Custom Name")
+        row = get_report_catalog_entry(db_path, slug)
+        assert row is not None
+        assert row["analysis_method"] == "Custom Name"
+
+    def test_strips_whitespace(self, db_path: Path) -> None:
+        """Leading/trailing whitespace gets trimmed."""
+        slug = self._seed_catalog(db_path)
+        update_report_catalog_analysis_method(db_path, slug, "  trimmed  ")
+        row = get_report_catalog_entry(db_path, slug)
+        assert row is not None
+        assert row["analysis_method"] == "trimmed"
+
+    def test_empty_falls_back_to_default(self, db_path: Path) -> None:
+        """Empty/whitespace-only value normalizes to '알 수 없음'."""
+        slug = self._seed_catalog(db_path)
+        update_report_catalog_analysis_method(db_path, slug, "   ")
+        row = get_report_catalog_entry(db_path, slug)
+        assert row is not None
+        assert row["analysis_method"] == "알 수 없음"
+
+    def test_no_op_for_unknown_slug(self, db_path: Path) -> None:
+        """Updating a non-existent slug silently succeeds and does not insert a row."""
+        slug = self._seed_catalog(db_path)
+        update_report_catalog_analysis_method(db_path, "no-such-slug", "x")
+        row = get_report_catalog_entry(db_path, slug)
+        assert row is not None
+        assert row["analysis_method"] == "기본 CPET"
+        assert get_report_catalog_entry(db_path, "no-such-slug") is None

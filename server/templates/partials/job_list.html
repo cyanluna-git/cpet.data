@@ -113,6 +113,7 @@
           data-subject-id="{{ job.subject_id or '' }}"
           data-test-date="{{ job.test_date or '' }}"
           data-note="{{ job.note or '' }}"
+          data-analysis-method="{{ job.analysis_method or '' }}"
           data-can-rename="{{ '1' if current_user_role == 'admin' else '0' }}"
           onclick="openReportMetaModalFromButton(this)"
         >편집</button>

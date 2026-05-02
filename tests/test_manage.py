@@ -632,6 +632,173 @@ class TestManageSubjectsAPI:
 
         assert resp.status_code == 400
 
+    def test_admin_can_set_custom_analysis_method(self, client: TestClient) -> None:
+        """Admin saves a non-empty analysis_method as-is to report_catalog."""
+        from server.db import get_report_catalog_entry
+        _login_as(client, role="admin", google_id="meta-am-admin-1", email="meta-am-admin-1@test.com")
+        db_path = app.state.db_path
+        submission_id = _create_test_submission(db_path, subject_name="AM Subject", test_date="2026-02-10")
+        job_id = create_job(db_path, submission_id)
+        slug = "am-subject-20260210"
+        conn = _connect(db_path)
+        conn.execute(
+            "UPDATE jobs SET status = ?, report_slug = ?, report_url = ? WHERE id = ?",
+            ("done", slug, f"/report/{slug}/", job_id),
+        )
+        conn.commit()
+        conn.close()
+        upsert_report_catalog_entry(
+            db_path,
+            report_slug=slug,
+            subject_name="AM Subject",
+            test_date="2026-02-10",
+            analysis_method="기본 CPET",
+            report_version="기본 리포트",
+            report_url=f"/report/{slug}/",
+            completed_at=None,
+        )
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": slug,
+                "analysis_method": "Custom Report Name",
+            },
+        )
+
+        assert resp.status_code == 200
+        catalog = get_report_catalog_entry(db_path, slug)
+        assert catalog is not None
+        assert catalog["analysis_method"] == "Custom Report Name"
+
+    def test_admin_empty_analysis_method_composes_fallback(self, client: TestClient) -> None:
+        """Empty analysis_method input composes {subject}-{date}-{current} fallback."""
+        from server.db import get_report_catalog_entry
+        _login_as(client, role="admin", google_id="meta-am-admin-2", email="meta-am-admin-2@test.com")
+        db_path = app.state.db_path
+        submission_id = _create_test_submission(db_path, subject_name="고종석", test_date="2026-01-16")
+        job_id = create_job(db_path, submission_id)
+        slug = "gjs-20260116"
+        conn = _connect(db_path)
+        conn.execute(
+            "UPDATE jobs SET status = ?, report_slug = ?, report_url = ? WHERE id = ?",
+            ("done", slug, f"/report/{slug}/", job_id),
+        )
+        conn.commit()
+        conn.close()
+        upsert_report_catalog_entry(
+            db_path,
+            report_slug=slug,
+            subject_name="고종석",
+            test_date="2026-01-16",
+            analysis_method="기본 CPET",
+            report_version="기본 리포트",
+            report_url=f"/report/{slug}/",
+            completed_at=None,
+        )
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": slug,
+                "analysis_method": "   ",
+            },
+        )
+
+        assert resp.status_code == 200
+        catalog = get_report_catalog_entry(db_path, slug)
+        assert catalog is not None
+        assert catalog["analysis_method"] == "고종석-2026-01-16-기본 CPET"
+
+    def test_non_admin_analysis_method_returns_403(self, client: TestClient) -> None:
+        """Non-admin posting analysis_method gets 403, even as report owner."""
+        from server.db import get_report_catalog_entry
+        owner = _login_as(client, role="user", google_id="meta-am-user-1", email="meta-am-user-1@test.com")
+        db_path = app.state.db_path
+        submission_id = _create_test_submission(db_path, subject_name="Owner Subject", user_id=owner["id"])
+        job_id = create_job(db_path, submission_id)
+        slug = "owner-subject-20260115"
+        conn = _connect(db_path)
+        conn.execute(
+            "UPDATE jobs SET status = ?, report_slug = ?, report_url = ? WHERE id = ?",
+            ("done", slug, f"/report/{slug}/", job_id),
+        )
+        conn.commit()
+        conn.close()
+        upsert_report_catalog_entry(
+            db_path,
+            report_slug=slug,
+            subject_name="Owner Subject",
+            test_date="2025-01-15",
+            analysis_method="원래 이름",
+            report_version="기본 리포트",
+            report_url=f"/report/{slug}/",
+            completed_at=None,
+        )
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": slug,
+                "analysis_method": "User attempted rename",
+            },
+        )
+
+        assert resp.status_code == 403
+        catalog = get_report_catalog_entry(db_path, slug)
+        assert catalog is not None
+        assert catalog["analysis_method"] == "원래 이름"
+
+    def test_admin_analysis_method_length_cap_400(self, client: TestClient) -> None:
+        """analysis_method exceeding 200 chars returns 400."""
+        _login_as(client, role="admin", google_id="meta-am-admin-3", email="meta-am-admin-3@test.com")
+        db_path = app.state.db_path
+        submission_id = _create_test_submission(db_path, subject_name="Long Subject")
+        job_id = create_job(db_path, submission_id)
+        slug = "long-subject-20260115"
+        conn = _connect(db_path)
+        conn.execute(
+            "UPDATE jobs SET status = ?, report_slug = ?, report_url = ? WHERE id = ?",
+            ("done", slug, f"/report/{slug}/", job_id),
+        )
+        conn.commit()
+        conn.close()
+        upsert_report_catalog_entry(
+            db_path,
+            report_slug=slug,
+            subject_name="Long Subject",
+            test_date="2025-01-15",
+            analysis_method="원래",
+            report_version="기본 리포트",
+            report_url=f"/report/{slug}/",
+            completed_at=None,
+        )
+
+        too_long = "x" * 201
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": slug,
+                "analysis_method": too_long,
+            },
+        )
+        assert resp.status_code == 400
+
+        within = "y" * 200
+        ok = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": slug,
+                "analysis_method": within,
+            },
+        )
+        assert ok.status_code == 200
+
     def test_jobs_partial_renders_edit_button_and_note_badge(self, client: TestClient) -> None:
         """Reports list shows one edit button and note badge instead of inline note editor."""
         _login_as(client, role="admin", google_id="report-partial-admin-gid", email="report-partial-admin@test.com")
@@ -1319,3 +1486,317 @@ class TestNonAdminSubjectIdForbidden:
         sub = get_submission(db_path, submission_id)
         assert sub is not None
         assert sub["subject_name"] == "Original"
+
+
+class TestAnalysisMethodFallback:
+    """Shield: gap-filling coverage for analysis_method fallback compose & gate semantics."""
+
+    def _seed_done_job_with_catalog(
+        self,
+        db_path: Path,
+        slug: str,
+        subject_name: str = "Sub",
+        test_date: str = "2026-03-01",
+        analysis_method: str = "기본 CPET",
+        user_id: str | None = None,
+    ) -> str:
+        submission_id = _create_test_submission(
+            db_path,
+            subject_name=subject_name or "Sub",
+            test_date=test_date or "2026-03-01",
+            user_id=user_id,
+        )
+        job_id = create_job(db_path, submission_id)
+        conn = _connect(db_path)
+        conn.execute(
+            "UPDATE jobs SET status = ?, report_slug = ?, report_url = ? WHERE id = ?",
+            ("done", slug, f"/report/{slug}/", job_id),
+        )
+        conn.commit()
+        conn.close()
+        upsert_report_catalog_entry(
+            db_path,
+            report_slug=slug,
+            subject_name=subject_name,
+            test_date=test_date,
+            analysis_method=analysis_method,
+            report_version="기본 리포트",
+            report_url=f"/report/{slug}/",
+            completed_at=None,
+        )
+        return submission_id
+
+    def test_empty_fallback_with_blank_subject_uses_default_literal(self, client: TestClient) -> None:
+        """Empty analysis_method + blank catalog subject_name composes with '이름없음'."""
+        from server.db import get_report_catalog_entry
+        _login_as(client, role="admin", google_id="am-blank-subj-gid", email="am-blank-subj@test.com")
+        db_path = app.state.db_path
+        slug = "blank-subj-20260301"
+        submission_id = self._seed_done_job_with_catalog(
+            db_path,
+            slug=slug,
+            subject_name="",
+            test_date="2026-03-01",
+            analysis_method="원본",
+        )
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": slug,
+                "analysis_method": "",
+            },
+        )
+
+        assert resp.status_code == 200
+        catalog = get_report_catalog_entry(db_path, slug)
+        assert catalog is not None
+        assert catalog["analysis_method"] == "이름없음-2026-03-01-원본"
+
+    def test_empty_fallback_with_blank_test_date_uses_zero_date(self, client: TestClient) -> None:
+        """Empty analysis_method + blank catalog test_date composes with '0000-00-00'."""
+        from server.db import get_report_catalog_entry
+        _login_as(client, role="admin", google_id="am-blank-date-gid", email="am-blank-date@test.com")
+        db_path = app.state.db_path
+        slug = "blank-date-test-001"
+        submission_id = self._seed_done_job_with_catalog(
+            db_path,
+            slug=slug,
+            subject_name="홍길동",
+            test_date="",
+            analysis_method="원본",
+        )
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": slug,
+                "analysis_method": "",
+            },
+        )
+
+        assert resp.status_code == 200
+        catalog = get_report_catalog_entry(db_path, slug)
+        assert catalog is not None
+        assert catalog["analysis_method"] == "홍길동-0000-00-00-원본"
+
+    def test_empty_fallback_with_all_blanks_uses_all_defaults(self, client: TestClient) -> None:
+        """All blank fields collapse to default literals on every part."""
+        from server.db import get_report_catalog_entry
+        _login_as(client, role="admin", google_id="am-all-blank-gid", email="am-all-blank@test.com")
+        db_path = app.state.db_path
+        slug = "all-blank-001"
+        # upsert_report_catalog_entry coerces empty analysis_method to '알 수 없음'.
+        submission_id = self._seed_done_job_with_catalog(
+            db_path,
+            slug=slug,
+            subject_name="",
+            test_date="",
+            analysis_method="",
+        )
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": slug,
+                "analysis_method": "",
+            },
+        )
+
+        assert resp.status_code == 200
+        catalog = get_report_catalog_entry(db_path, slug)
+        assert catalog is not None
+        assert catalog["analysis_method"] == "이름없음-0000-00-00-알 수 없음"
+
+    def test_idempotent_save_preserves_value(self, client: TestClient) -> None:
+        """Saving the same analysis_method twice keeps DB value unchanged."""
+        from server.db import get_report_catalog_entry
+        _login_as(client, role="admin", google_id="am-idem-gid", email="am-idem@test.com")
+        db_path = app.state.db_path
+        slug = "idem-20260301"
+        submission_id = self._seed_done_job_with_catalog(db_path, slug=slug)
+
+        payload = {
+            "submission_id": submission_id,
+            "report_slug": slug,
+            "analysis_method": "Same Name",
+        }
+        first = client.patch("/api/manage/report-metadata", data=payload)
+        assert first.status_code == 200
+        catalog_first = get_report_catalog_entry(db_path, slug)
+        assert catalog_first is not None
+        assert catalog_first["analysis_method"] == "Same Name"
+
+        second = client.patch("/api/manage/report-metadata", data=payload)
+        assert second.status_code == 200
+        catalog_second = get_report_catalog_entry(db_path, slug)
+        assert catalog_second is not None
+        assert catalog_second["analysis_method"] == "Same Name"
+
+    def test_admin_save_persists_exact_value_to_db(self, client: TestClient) -> None:
+        """End-to-end: admin save then SELECT returns exactly the input string."""
+        _login_as(client, role="admin", google_id="am-e2e-gid", email="am-e2e@test.com")
+        db_path = app.state.db_path
+        slug = "e2e-select-001"
+        submission_id = self._seed_done_job_with_catalog(db_path, slug=slug)
+
+        custom = "정밀 분석 v2 / 2026 봄"
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": slug,
+                "analysis_method": custom,
+            },
+        )
+        assert resp.status_code == 200
+
+        # Direct SQL SELECT bypasses the helper, verifying the persisted value.
+        conn = _connect(db_path)
+        row = conn.execute(
+            "SELECT analysis_method FROM report_catalog WHERE report_slug = ?",
+            (slug,),
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row["analysis_method"] == custom
+
+    def test_admin_length_cap_201_rejected(self, client: TestClient) -> None:
+        """Boundary: 201 chars rejected with 400 and DB unchanged."""
+        from server.db import get_report_catalog_entry
+        _login_as(client, role="admin", google_id="am-201-gid", email="am-201@test.com")
+        db_path = app.state.db_path
+        slug = "len-201-001"
+        submission_id = self._seed_done_job_with_catalog(
+            db_path, slug=slug, analysis_method="전",
+        )
+
+        too_long = "a" * 201
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": slug,
+                "analysis_method": too_long,
+            },
+        )
+        assert resp.status_code == 400
+        catalog = get_report_catalog_entry(db_path, slug)
+        assert catalog is not None
+        assert catalog["analysis_method"] == "전"
+
+    def test_non_admin_empty_analysis_method_is_no_op(self, client: TestClient) -> None:
+        """Non-admin sending an empty analysis_method is silently skipped (no 403, no change).
+
+        The 403 gate only fires when a non-admin attempts to actually set a non-empty
+        value. Empty/missing payloads from non-admins must not break unrelated note
+        edits or trigger admin-only errors.
+        """
+        from server.db import get_report_catalog_entry
+        owner = _login_as(client, role="user", google_id="am-user-empty-gid", email="am-user-empty@test.com")
+        db_path = app.state.db_path
+        slug = "user-empty-001"
+        submission_id = self._seed_done_job_with_catalog(
+            db_path,
+            slug=slug,
+            subject_name="Owner",
+            user_id=owner["id"],
+            analysis_method="기존",
+        )
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": slug,
+                "analysis_method": "",
+            },
+        )
+        assert resp.status_code == 200
+        catalog = get_report_catalog_entry(db_path, slug)
+        assert catalog is not None
+        assert catalog["analysis_method"] == "기존"
+
+    def test_non_admin_nonempty_analysis_method_is_blocked(self, client: TestClient) -> None:
+        """Non-admin sending a non-empty analysis_method is rejected with 403."""
+        from server.db import get_report_catalog_entry
+        owner = _login_as(client, role="user", google_id="am-user-set-gid", email="am-user-set@test.com")
+        db_path = app.state.db_path
+        slug = "user-set-001"
+        submission_id = self._seed_done_job_with_catalog(
+            db_path,
+            slug=slug,
+            subject_name="Owner",
+            user_id=owner["id"],
+            analysis_method="기존",
+        )
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": slug,
+                "analysis_method": "내가 마음대로 바꿔",
+            },
+        )
+        assert resp.status_code == 403
+        catalog = get_report_catalog_entry(db_path, slug)
+        assert catalog is not None
+        assert catalog["analysis_method"] == "기존"
+
+    def test_non_admin_omitted_analysis_method_unaffected(self, client: TestClient) -> None:
+        """Non-admin who never sends the analysis_method field is unaffected by the gate."""
+        from server.db import get_report_catalog_entry
+        owner = _login_as(client, role="user", google_id="am-user-omit-gid", email="am-user-omit@test.com")
+        db_path = app.state.db_path
+        slug = "user-omit-001"
+        submission_id = self._seed_done_job_with_catalog(
+            db_path,
+            slug=slug,
+            subject_name="Owner",
+            user_id=owner["id"],
+            analysis_method="기존",
+        )
+
+        # Sends note only, no analysis_method key.
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": slug,
+                "note": "사용자 메모",
+            },
+        )
+        assert resp.status_code == 200
+        catalog = get_report_catalog_entry(db_path, slug)
+        assert catalog is not None
+        assert catalog["analysis_method"] == "기존"
+
+    def test_admin_empty_with_no_catalog_entry_returns_400(self, client: TestClient) -> None:
+        """Empty fallback path with missing catalog entry returns 400 'report not in catalog yet'."""
+        _login_as(client, role="admin", google_id="am-no-cat-gid", email="am-no-cat@test.com")
+        db_path = app.state.db_path
+        # Create a submission + done job but DO NOT upsert into report_catalog.
+        submission_id = _create_test_submission(db_path, subject_name="Ghost", test_date="2026-04-01")
+        job_id = create_job(db_path, submission_id)
+        slug = "ghost-no-catalog-001"
+        conn = _connect(db_path)
+        conn.execute(
+            "UPDATE jobs SET status = ?, report_slug = ?, report_url = ? WHERE id = ?",
+            ("done", slug, f"/report/{slug}/", job_id),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": slug,
+                "analysis_method": "",
+            },
+        )
+        assert resp.status_code == 400

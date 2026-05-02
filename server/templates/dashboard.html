@@ -225,6 +225,15 @@
         class="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
       />
     </div>
+    <div id="report-meta-method-wrap" class="mt-4">
+      <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">리포트 이름</label>
+      <input
+        id="report-meta-analysis-method"
+        type="text"
+        maxlength="200"
+        class="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+      />
+    </div>
     <div class="mt-4">
       <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">테스트 메모</label>
       <textarea
@@ -314,8 +323,27 @@ function openReportMetaModalFromButton(button) {
     subjectName: button.dataset.subjectName || '',
     testDate: button.dataset.testDate || '',
     note: button.dataset.note || '',
+    analysisMethod: button.dataset.analysisMethod || '',
     canRename: button.dataset.canRename === '1'
   });
+}
+
+function _composeReportMetaPlaceholder() {
+  var subjectSelect = document.getElementById('report-meta-subject-id');
+  var subjectLabel = '';
+  if (subjectSelect && subjectSelect.selectedIndex >= 0) {
+    var opt = subjectSelect.options[subjectSelect.selectedIndex];
+    if (opt && opt.value) {
+      subjectLabel = (opt.textContent || '').replace(/\s*\(.*\)\s*$/, '').trim();
+    }
+  }
+  if (!subjectLabel) subjectLabel = '이름없음';
+  var dateVal = (document.getElementById('report-meta-test-date').value || '').trim() || '0000-00-00';
+  var currentMethod = (document.getElementById('report-meta-analysis-method').dataset.currentMethod || '').trim() || '알 수 없음';
+  var input = document.getElementById('report-meta-analysis-method');
+  if (input) {
+    input.placeholder = "비워두면 '" + subjectLabel + '-' + dateVal + '-' + currentMethod + "' 으로 저장";
+  }
 }
 
 async function openReportMetaModal(payload) {
@@ -325,21 +353,42 @@ async function openReportMetaModal(payload) {
   document.getElementById('report-meta-test-date').value = payload.testDate || '';
   document.getElementById('report-meta-note').value = payload.note || '';
   document.getElementById('report-meta-can-rename').value = canRename ? '1' : '0';
+  var methodInput = document.getElementById('report-meta-analysis-method');
+  if (methodInput) {
+    methodInput.value = payload.analysisMethod || '';
+    methodInput.dataset.currentMethod = payload.analysisMethod || '';
+  }
   setReportMetaStatus('', '');
   var nameWrap = document.getElementById('report-meta-name-wrap');
   var subjectSelect = document.getElementById('report-meta-subject-id');
   var dateWrap = document.getElementById('report-meta-date-wrap');
   var dateInput = document.getElementById('report-meta-test-date');
+  var methodWrap = document.getElementById('report-meta-method-wrap');
   nameWrap.style.display = canRename ? '' : 'none';
   subjectSelect.disabled = !canRename;
   dateWrap.style.display = canRename ? '' : 'none';
   dateInput.disabled = !canRename;
+  if (methodWrap) {
+    methodWrap.style.display = canRename ? '' : 'none';
+  }
+  if (methodInput) {
+    methodInput.disabled = !canRename;
+  }
   const modal = document.getElementById('report-meta-modal');
   modal.classList.remove('hidden');
   modal.classList.add('flex');
   (canRename ? subjectSelect : document.getElementById('report-meta-note')).focus();
   if (canRename) {
     await populateSubjectOptions(payload.subjectId || '', payload.subjectName || '');
+    _composeReportMetaPlaceholder();
+    if (subjectSelect && !subjectSelect.dataset.metaPlaceholderBound) {
+      subjectSelect.addEventListener('change', _composeReportMetaPlaceholder);
+      subjectSelect.dataset.metaPlaceholderBound = '1';
+    }
+    if (dateInput && !dateInput.dataset.metaPlaceholderBound) {
+      dateInput.addEventListener('input', _composeReportMetaPlaceholder);
+      dateInput.dataset.metaPlaceholderBound = '1';
+    }
   }
 }
 
@@ -375,6 +424,8 @@ async function submitReportMeta() {
   const subjectId = document.getElementById('report-meta-subject-id').value;
   const testDate = document.getElementById('report-meta-test-date').value.trim();
   const note = document.getElementById('report-meta-note').value.trim();
+  const canRename = document.getElementById('report-meta-can-rename').value === '1';
+  const methodInput = document.getElementById('report-meta-analysis-method');
   const saveBtn = document.getElementById('report-meta-save-btn');
   if (!slug && !subId) return;
   const body = new URLSearchParams({
@@ -384,6 +435,9 @@ async function submitReportMeta() {
     submission_id: subId,
     report_slug: slug
   });
+  if (canRename && methodInput) {
+    body.append('analysis_method', methodInput.value.trim());
+  }
   if (saveBtn) {
     saveBtn.disabled = true;
     saveBtn.textContent = '저장 중...';
