@@ -1225,10 +1225,20 @@ async def submit(
     if reanalyze:
         existing_sub = get_submission(db_path, reanalyze)
         if existing_sub and existing_sub.get("workspace_path"):
-            # Ownership check: only the submission owner, researcher, or admin
-            # may trigger reanalyze on someone else's submission.
-            owner_id = str(existing_sub.get("user_id") or "")
-            if owner_id != str(user_id) and session_role not in ("researcher", "admin"):
+            # Ownership check: researcher/admin, legacy user_id owner, or a
+            # user whose subject_id matches the submission's subject_id.
+            allowed = session_role in ("researcher", "admin")
+            if not allowed:
+                owner_id = str(existing_sub.get("user_id") or "")
+                if owner_id and owner_id == str(user_id):
+                    allowed = True
+            if not allowed:
+                actor = get_user(db_path, user_id) or {}
+                actor_subject_id = str(actor.get("subject_id") or "")
+                sub_subject_id = str(existing_sub.get("subject_id") or "")
+                if actor_subject_id and actor_subject_id == sub_subject_id:
+                    allowed = True
+            if not allowed:
                 return JSONResponse(
                     status_code=403,
                     content={"error": "권한이 없습니다"},

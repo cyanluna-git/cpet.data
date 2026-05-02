@@ -270,8 +270,9 @@ def _can_reanalyze_submission(
 ) -> bool:
     """Return whether the current user may trigger reanalyze on this submission.
 
-    Allowed: researcher, admin, or the submission owner. Different from
-    `_can_edit_report_metadata` (which also grants subject-link users).
+    Allowed: researcher, admin, the submission owner (legacy user_id), or a
+    user whose subject_id matches the submission's subject_id (current model
+    after submissions were re-linked from users to subjects).
     """
     role = session_user.get("role", "user")
     if role in ("researcher", "admin"):
@@ -279,7 +280,12 @@ def _can_reanalyze_submission(
     user_id = str(session_user.get("id") or "")
     if not user_id:
         return False
-    return str(submission.get("user_id") or "") == user_id
+    if str(submission.get("user_id") or "") == user_id:
+        return True
+    actor = get_user(db_path, user_id) or {}
+    actor_subject_id = str(actor.get("subject_id") or "")
+    sub_subject_id = str(submission.get("subject_id") or "")
+    return bool(actor_subject_id) and actor_subject_id == sub_subject_id
 
 
 def _build_reanalyze_button_html(submission_id: str) -> str:

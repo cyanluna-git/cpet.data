@@ -88,9 +88,41 @@ class TestCanReanalyzeSubmission:
     def test_submission_with_null_user_id_denies_regular_user(
         self, db_path: Path
     ) -> None:
-        """A submission with no owner cannot be reanalyzed by a regular user."""
+        """A submission with no owner cannot be reanalyzed by an unrelated user."""
         session_user = {"id": "user-123", "role": "user"}
-        submission = {"id": "sub-1", "user_id": None}
+        submission = {"id": "sub-1", "user_id": None, "subject_id": None}
+        assert _can_reanalyze_submission(db_path, session_user, submission) is False
+
+    def test_subject_link_grants_reanalyze(self, db_path: Path) -> None:
+        """A user whose subject_id matches the submission's subject_id is authorized.
+
+        This is the post-refactor ownership model where submissions are linked
+        to subjects rather than users directly (commit 08d8623).
+        """
+        with _connect(db_path) as conn:
+            conn.execute("PRAGMA foreign_keys=OFF")
+            conn.execute(
+                "INSERT INTO users (id, google_id, email, role, subject_id) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ("user-789", "g-789", "user789@example.com", "user", "subj-42"),
+            )
+            conn.commit()
+        session_user = {"id": "user-789", "role": "user"}
+        submission = {"id": "sub-1", "user_id": None, "subject_id": "subj-42"}
+        assert _can_reanalyze_submission(db_path, session_user, submission) is True
+
+    def test_subject_mismatch_denies_reanalyze(self, db_path: Path) -> None:
+        """A user with a different subject_id cannot reanalyze the submission."""
+        with _connect(db_path) as conn:
+            conn.execute("PRAGMA foreign_keys=OFF")
+            conn.execute(
+                "INSERT INTO users (id, google_id, email, role, subject_id) "
+                "VALUES (?, ?, ?, ?, ?)",
+                ("user-other", "g-other", "other@example.com", "user", "subj-99"),
+            )
+            conn.commit()
+        session_user = {"id": "user-other", "role": "user"}
+        submission = {"id": "sub-1", "user_id": None, "subject_id": "subj-42"}
         assert _can_reanalyze_submission(db_path, session_user, submission) is False
 
 
