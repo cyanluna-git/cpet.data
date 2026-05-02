@@ -83,6 +83,16 @@
           href="/upload?reanalyze={{ job.submission_id }}"
           class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition"
         >추가 분석</a>
+        {% if current_user_role in ['admin', 'researcher'] or job.is_mine %}
+        <button
+          type="button"
+          hx-post="/api/submit?reanalyze={{ job.submission_id }}"
+          hx-encoding="multipart/form-data"
+          hx-confirm="기존 데이터로 분석만 다시 실행합니다. 계속할까요?"
+          hx-on::after-request="if (event.detail.successful) { location.reload(); }"
+          class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 transition"
+        >재분석</button>
+        {% endif %}
         {% else %}
         <a
           href="/upload"
