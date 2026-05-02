@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from server.db import (
     _connect,
     create_job,
+    create_subject,
     create_submission,
     get_job,
     get_job_by_submission,
@@ -28,6 +29,7 @@ from server.db import (
     restore_submission_files,
     save_submission_files,
     update_job_status,
+    update_submission_subject,
 )
 from server.workspace import create_workspace, get_workspace, list_files
 from server.schemas import JobStatus, ReportSummary, SubmissionCreate
@@ -1267,3 +1269,71 @@ class TestGetSubmissionIdForReportSlug:
         update_job_status(db_path, jb, "done", report_slug="slug-b")
         assert get_submission_id_for_report_slug(db_path, "slug-a") == sid_a
         assert get_submission_id_for_report_slug(db_path, "slug-b") == sid_b
+
+
+class TestUpdateSubmissionSubject:
+    def test_updates_fk_and_canonical_name(self, db_path: Path) -> None:
+        """Setting a new subject_id rewrites both subject_id and subject_name."""
+        subj_a = create_subject(db_path, name="Subject A")
+        subj_b = create_subject(db_path, name="Subject B")
+        sid = create_submission(
+            db_path, "desc", [], "/ws",
+            subject_name="Subject A", subject_id=subj_a["id"],
+        )
+
+        result = update_submission_subject(db_path, sid, subj_b["id"])
+
+        assert result is not None
+        assert result["subject_id"] == subj_b["id"]
+        assert result["subject_name"] == "Subject B"
+        # Persisted in DB
+        persisted = get_submission(db_path, sid)
+        assert persisted is not None
+        assert persisted["subject_id"] == subj_b["id"]
+        assert persisted["subject_name"] == "Subject B"
+
+    def test_returns_none_for_unknown_subject(self, db_path: Path) -> None:
+        """An unresolved subject_id leaves the submission untouched and returns None."""
+        subj = create_subject(db_path, name="Subject A")
+        sid = create_submission(
+            db_path, "desc", [], "/ws",
+            subject_name="Subject A", subject_id=subj["id"],
+        )
+
+        result = update_submission_subject(db_path, sid, "no-such-subject")
+
+        assert result is None
+        persisted = get_submission(db_path, sid)
+        assert persisted is not None
+        assert persisted["subject_id"] == subj["id"]
+        assert persisted["subject_name"] == "Subject A"
+
+    def test_empty_subject_id_returns_none(self, db_path: Path) -> None:
+        """Empty/whitespace subject_id is rejected (returns None) without mutation."""
+        subj = create_subject(db_path, name="Subject A")
+        sid = create_submission(
+            db_path, "desc", [], "/ws",
+            subject_name="Subject A", subject_id=subj["id"],
+        )
+
+        assert update_submission_subject(db_path, sid, "") is None
+        assert update_submission_subject(db_path, sid, "   ") is None
+
+        persisted = get_submission(db_path, sid)
+        assert persisted is not None
+        assert persisted["subject_id"] == subj["id"]
+        assert persisted["subject_name"] == "Subject A"
+
+    def test_updates_when_starting_from_null_fk(self, db_path: Path) -> None:
+        """Legacy submission with subject_id=NULL gets a clean FK assignment."""
+        subj = create_subject(db_path, name="Linked Subject")
+        sid = create_submission(
+            db_path, "desc", [], "/ws",
+            subject_name="Legacy Name",  # subject_id defaults to None
+        )
+
+        result = update_submission_subject(db_path, sid, subj["id"])
+
+        assert result is not None
+        assert result["subject_id"] == subj["id"]
+        assert result["subject_name"] == "Linked Subject"

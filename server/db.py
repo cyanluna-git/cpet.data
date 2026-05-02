@@ -1708,6 +1708,43 @@ def update_submission_subject_name(
     return result
 
 
+def update_submission_subject(
+    db_path: Path, submission_id: str, subject_id: str,
+) -> dict | None:
+    """Set a submission's subject FK and sync the denormalized subject_name.
+
+    Looks up the canonical name from the subjects table and writes both
+    submissions.subject_id and submissions.subject_name in a single transaction.
+    Returns the updated submission dict, or None when either the subject_id
+    does not resolve or the submission row does not exist.
+    """
+    subject_id_clean = (subject_id or "").strip()
+    if not subject_id_clean:
+        return None
+    conn = _connect(db_path)
+    subject_row = conn.execute(
+        "SELECT id, name FROM subjects WHERE id = ?", (subject_id_clean,)
+    ).fetchone()
+    if subject_row is None:
+        conn.close()
+        return None
+    canonical_name = str(subject_row["name"] or "").strip()
+    conn.execute(
+        "UPDATE submissions SET subject_id = ?, subject_name = ? WHERE id = ?",
+        (subject_id_clean, canonical_name, submission_id),
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT * FROM submissions WHERE id = ?", (submission_id,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    result = dict(row)
+    result["file_manifest"] = json.loads(result["file_manifest"])
+    return result
+
+
 def update_submission_test_date(
     db_path: Path, submission_id: str, test_date: str,
 ) -> dict | None:

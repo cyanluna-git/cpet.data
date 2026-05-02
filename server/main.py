@@ -71,6 +71,7 @@ from server.db import (
     summarize_dashboard_feature_analytics,
     summarize_subject_feature_sets,
     update_subject,
+    update_submission_subject,
     update_submission_subject_name,
     update_submission_test_date,
     update_report_catalog_test_date,
@@ -2106,7 +2107,7 @@ async def manage_update_report_metadata(request: Request) -> HTMLResponse:
     """Update report display metadata from the dashboard reports list.
 
     Any logged-in user can update note text.
-    Only admins can update subject_name.
+    Only admins can update subject (FK) or test_date.
     """
     from fastapi.responses import JSONResponse
 
@@ -2115,7 +2116,7 @@ async def manage_update_report_metadata(request: Request) -> HTMLResponse:
         return JSONResponse(status_code=401, content={"error": "login required"})
 
     form = await request.form()
-    new_name = str(form.get("subject_name", "")).strip()
+    subject_id = str(form.get("subject_id", "")).strip()
     test_date = str(form.get("test_date", "")).strip()
     note = str(form.get("note", "")).strip()
     submission_id = str(form.get("submission_id", "")).strip()
@@ -2131,13 +2132,18 @@ async def manage_update_report_metadata(request: Request) -> HTMLResponse:
     if test_date and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", test_date):
         return JSONResponse(status_code=400, content={"error": "test_date must be YYYY-MM-DD"})
 
-    if new_name:
+    canonical_name = ""
+    if subject_id:
         if session_user.get("role") != "admin":
-            return JSONResponse(status_code=403, content={"error": "admin only for subject rename"})
+            return JSONResponse(status_code=403, content={"error": "admin only for subject change"})
+        subject = get_subject(db_path, subject_id)
+        if subject is None:
+            return JSONResponse(status_code=400, content={"error": "subject not found"})
+        canonical_name = str(subject.get("name") or "").strip()
         if submission_id:
-            update_submission_subject_name(db_path, submission_id, new_name)
-        if report_slug:
-            set_report_name_override(db_path, report_slug, new_name)
+            update_submission_subject(db_path, submission_id, subject_id)
+        if report_slug and canonical_name:
+            set_report_name_override(db_path, report_slug, canonical_name)
 
     if test_date:
         if session_user.get("role") != "admin":
@@ -2153,7 +2159,8 @@ async def manage_update_report_metadata(request: Request) -> HTMLResponse:
     return JSONResponse(
         content={
             "ok": True,
-            "subject_name": new_name,
+            "subject_id": subject_id,
+            "subject_name": canonical_name,
             "test_date": test_date,
             "note": note,
             "report_slug": report_slug,

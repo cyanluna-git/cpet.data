@@ -465,9 +465,10 @@ class TestManageSubjectsAPI:
         assert submission["subject_name"] == "Before Subject"
 
     def test_admin_can_update_report_metadata_from_dashboard(self, client: TestClient) -> None:
-        """Admin can update both subject label and test note from report modal."""
+        """Admin can change linked subject (FK + canonical name) and edit note/date from report modal."""
         _login_as(client, role="admin", google_id="report-meta-admin-gid", email="report-meta-admin@test.com")
         db_path = app.state.db_path
+        target_subject = create_subject(db_path, name="After Subject")
         submission_id = _create_test_submission(db_path, subject_name="Before Subject")
         job_id = create_job(db_path, submission_id)
         conn = _connect(db_path)
@@ -483,7 +484,7 @@ class TestManageSubjectsAPI:
             data={
                 "submission_id": submission_id,
                 "report_slug": "before-subject-20260115",
-                "subject_name": "After Subject",
+                "subject_id": target_subject["id"],
                 "test_date": "2026-01-20",
                 "note": "2블럭 램프, 존2 후반",
             },
@@ -493,6 +494,7 @@ class TestManageSubjectsAPI:
         from server.db import get_submission
         submission = get_submission(db_path, submission_id)
         assert submission is not None
+        assert submission["subject_id"] == target_subject["id"]
         assert submission["subject_name"] == "After Subject"
         assert submission["test_date"] == "2026-01-20"
         assert get_report_name_overrides(db_path)["before-subject-20260115"] == "After Subject"
@@ -502,6 +504,7 @@ class TestManageSubjectsAPI:
         """Non-admin users cannot edit report metadata for unrelated reports."""
         _login_as(client, role="user", google_id="report-meta-user-gid", email="report-meta-user@test.com")
         db_path = app.state.db_path
+        target_subject = create_subject(db_path, name="After Subject")
         owner = upsert_user(db_path, google_id="report-meta-owner-gid", email="report-meta-owner@test.com", display_name="Owner User")
         submission_id = _create_test_submission(db_path, subject_name="Before Subject", user_id=owner["id"])
 
@@ -510,7 +513,7 @@ class TestManageSubjectsAPI:
             data={
                 "submission_id": submission_id,
                 "report_slug": "before-subject-20260115",
-                "subject_name": "After Subject",
+                "subject_id": target_subject["id"],
                 "test_date": "2026-01-20",
                 "note": "이 메모는 저장되면 안됨",
             },
@@ -527,10 +530,11 @@ class TestManageSubjectsAPI:
         )
         assert note_resp.status_code == 403
 
-    def test_non_admin_owner_can_update_note_but_not_subject_name(self, client: TestClient) -> None:
-        """Owner can save note text but cannot rename subject labels."""
+    def test_non_admin_owner_can_update_note_but_not_subject_id(self, client: TestClient) -> None:
+        """Owner can save note text but cannot reassign subject FK."""
         owner = _login_as(client, role="user", google_id="report-meta-owner2-gid", email="report-meta-owner2@test.com")
         db_path = app.state.db_path
+        target_subject = create_subject(db_path, name="After Subject")
         submission_id = _create_test_submission(db_path, subject_name="Before Subject", user_id=owner["id"])
 
         forbidden = client.patch(
@@ -538,7 +542,7 @@ class TestManageSubjectsAPI:
             data={
                 "submission_id": submission_id,
                 "report_slug": "before-subject-20260115",
-                "subject_name": "After Subject",
+                "subject_id": target_subject["id"],
                 "test_date": "2026-01-20",
                 "note": "이 메모는 저장되면 안됨",
             },
@@ -561,6 +565,55 @@ class TestManageSubjectsAPI:
         assert submission is not None
         assert submission["subject_name"] == "Before Subject"
         assert get_report_notes(db_path)["before-subject-20260115"] == "식별 메모"
+
+    def test_admin_empty_subject_id_leaves_subject_untouched(self, client: TestClient) -> None:
+        """When subject_id is empty, subject FK and name must not change even on admin save."""
+        _login_as(client, role="admin", google_id="report-meta-empty-admin-gid", email="report-meta-empty-admin@test.com")
+        db_path = app.state.db_path
+        original = create_subject(db_path, name="Original Subject")
+        submission_id = _create_test_submission(db_path, subject_name="Original Subject")
+        # Manually set FK so we can verify it stays unchanged.
+        conn = _connect(db_path)
+        conn.execute(
+            "UPDATE submissions SET subject_id = ? WHERE id = ?",
+            (original["id"], submission_id),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": "original-subject-20260115",
+                "subject_id": "",
+                "note": "메모만 변경",
+            },
+        )
+
+        assert resp.status_code == 200
+        from server.db import get_submission
+        submission = get_submission(db_path, submission_id)
+        assert submission is not None
+        assert submission["subject_id"] == original["id"]
+        assert submission["subject_name"] == "Original Subject"
+
+    def test_admin_unknown_subject_id_returns_400(self, client: TestClient) -> None:
+        """Sending a subject_id that doesn't resolve returns 400."""
+        _login_as(client, role="admin", google_id="report-meta-bad-admin-gid", email="report-meta-bad-admin@test.com")
+        db_path = app.state.db_path
+        submission_id = _create_test_submission(db_path, subject_name="Before Subject")
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": "before-subject-20260115",
+                "subject_id": "non-existent-subject-id",
+            },
+        )
+
+        assert resp.status_code == 400
 
     def test_admin_report_metadata_rejects_invalid_test_date(self, client: TestClient) -> None:
         """Admin test date edit requires YYYY-MM-DD."""
@@ -978,3 +1031,291 @@ class TestManageNavigation:
         resp = client.get("/")
         assert resp.status_code == 200
         assert "관리</a>" not in resp.text
+
+
+# ── Subject Dropdown Edit (Shield additions) ─────────────────────────
+
+
+class TestRegroupOnSubjectChange:
+    """When admin changes a submission's subject_id, the dashboard partial
+    regroups the row under the new subject's canonical name."""
+
+    def test_dashboard_partial_regroups_under_new_subject(self, client: TestClient) -> None:
+        """After a subject_id swap, the row appears under group B's header (not A's)."""
+        _login_as(client, role="admin", google_id="regroup-admin-gid", email="regroup-admin@test.com")
+        db_path = app.state.db_path
+        subj_a = create_subject(db_path, name="Group Alpha")
+        subj_b = create_subject(db_path, name="Group Beta")
+
+        submission_id = _create_test_submission(
+            db_path, subject_name="Group Alpha", test_date="2026-04-01"
+        )
+        # Bind submission to subject A initially.
+        conn = _connect(db_path)
+        conn.execute(
+            "UPDATE submissions SET subject_id = ? WHERE id = ?",
+            (subj_a["id"], submission_id),
+        )
+        conn.commit()
+        conn.close()
+        job_id = create_job(db_path, submission_id)
+        update_job_status(
+            db_path,
+            job_id,
+            "done",
+            report_slug="group-alpha-20260401",
+            report_url="/report/group-alpha-20260401/",
+        )
+
+        # Sanity: before change, group header is "Group Alpha".
+        before = client.get("/api/jobs/partial?group_by=subject")
+        assert before.status_code == 200
+        assert "Group Alpha" in before.text
+
+        # Admin reassigns to subject B.
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": "group-alpha-20260401",
+                "subject_id": subj_b["id"],
+            },
+        )
+        assert resp.status_code == 200
+
+        # After change, partial groups under "Group Beta" — header precedes the row's slug.
+        after = client.get("/api/jobs/partial?group_by=subject")
+        assert after.status_code == 200
+        assert "Group Beta" in after.text
+        beta_idx = after.text.index("Group Beta")
+        slug_idx = after.text.index("group-alpha-20260401")
+        # Group header must precede its row.
+        assert beta_idx < slug_idx, "Group Beta header should appear above the row"
+
+    def test_published_only_report_name_override_drives_dashboard_label(self, client: TestClient) -> None:
+        """For published-only entries, set_report_name_override changes the rendered subject label."""
+        admin = _login_as(client, role="admin", google_id="regroup-pub-admin-gid", email="regroup-pub-admin@test.com")
+        db_path = app.state.db_path
+        subj = create_subject(db_path, name="Canonical Charlie")
+
+        upsert_report_catalog_entry(
+            db_path,
+            report_slug="standalone-charlie-20260415",
+            subject_name="Old Charlie",
+            test_date="2026-04-15",
+            analysis_method="기본 CPET",
+            report_version="v1",
+            report_url="/report/standalone-charlie-20260415/",
+            completed_at="2026-04-15T00:00:00Z",
+            file_tags=["CPET"],
+        )
+        link_report_to_user(db_path, "standalone-charlie-20260415", admin["id"])
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": "",
+                "report_slug": "standalone-charlie-20260415",
+                "subject_id": subj["id"],
+            },
+        )
+        assert resp.status_code == 200
+        # Override stored.
+        assert get_report_name_overrides(db_path)["standalone-charlie-20260415"] == "Canonical Charlie"
+
+
+class TestPublishedOnlySubjectEdit:
+    """Admin can edit subject for published-only entries (no submission row)."""
+
+    def test_published_only_endpoint_accepts_subject_id(self, client: TestClient) -> None:
+        """POST with submission_id='' + report_slug + subject_id → 200, override set."""
+        admin = _login_as(client, role="admin", google_id="pub-only-admin-gid", email="pub-only-admin@test.com")
+        db_path = app.state.db_path
+        subj = create_subject(db_path, name="Published Subject")
+
+        upsert_report_catalog_entry(
+            db_path,
+            report_slug="pub-only-20260420",
+            subject_name="Stale Name",
+            test_date="2026-04-20",
+            analysis_method="기본 CPET",
+            report_version="v1",
+            report_url="/report/pub-only-20260420/",
+            completed_at="2026-04-20T00:00:00Z",
+            file_tags=["CPET"],
+        )
+        link_report_to_user(db_path, "pub-only-20260420", admin["id"])
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": "",
+                "report_slug": "pub-only-20260420",
+                "subject_id": subj["id"],
+                "note": "published-only flow",
+            },
+        )
+
+        assert resp.status_code == 200
+        # Override applied.
+        assert get_report_name_overrides(db_path)["pub-only-20260420"] == "Published Subject"
+        # Note saved.
+        assert get_report_notes(db_path)["pub-only-20260420"] == "published-only flow"
+
+    def test_published_only_does_not_create_submission(self, client: TestClient) -> None:
+        """When no submission_id given, no submission row is created or mutated."""
+        admin = _login_as(client, role="admin", google_id="pub-only-admin2-gid", email="pub-only-admin2@test.com")
+        db_path = app.state.db_path
+        subj = create_subject(db_path, name="Solo Subject")
+
+        upsert_report_catalog_entry(
+            db_path,
+            report_slug="pub-only-20260421",
+            subject_name="Stale Name",
+            test_date="2026-04-21",
+            analysis_method="기본 CPET",
+            report_version="v1",
+            report_url="/report/pub-only-20260421/",
+            completed_at="2026-04-21T00:00:00Z",
+            file_tags=["CPET"],
+        )
+        link_report_to_user(db_path, "pub-only-20260421", admin["id"])
+
+        # Snapshot submission count before.
+        conn = _connect(db_path)
+        before_count = conn.execute("SELECT COUNT(*) FROM submissions").fetchone()[0]
+        conn.close()
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": "",
+                "report_slug": "pub-only-20260421",
+                "subject_id": subj["id"],
+            },
+        )
+        assert resp.status_code == 200
+
+        conn = _connect(db_path)
+        after_count = conn.execute("SELECT COUNT(*) FROM submissions").fetchone()[0]
+        conn.close()
+        assert after_count == before_count, "No submission row should be created/modified"
+
+    def test_published_only_missing_both_ids_returns_400(self, client: TestClient) -> None:
+        """Endpoint requires either submission_id or report_slug — 400 otherwise."""
+        _login_as(client, role="admin", google_id="pub-only-empty-gid", email="pub-only-empty@test.com")
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": "",
+                "report_slug": "",
+                "subject_id": "anything",
+            },
+        )
+        assert resp.status_code == 400
+
+
+class TestSubjectIdSameValueNoChange:
+    """Submitting the current subject_id again should succeed and remain canonical."""
+
+    def test_same_subject_id_succeeds_idempotent(self, client: TestClient) -> None:
+        """Re-PATCH the same subject_id → 200, FK + canonical name preserved."""
+        _login_as(client, role="admin", google_id="same-subj-admin-gid", email="same-subj-admin@test.com")
+        db_path = app.state.db_path
+        subj = create_subject(db_path, name="Stable Subject")
+        submission_id = _create_test_submission(
+            db_path, subject_name="Stable Subject", test_date="2026-04-25"
+        )
+        conn = _connect(db_path)
+        conn.execute(
+            "UPDATE submissions SET subject_id = ? WHERE id = ?",
+            (subj["id"], submission_id),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": "stable-subject-20260425",
+                "subject_id": subj["id"],
+                "note": "no-op test",
+            },
+        )
+
+        assert resp.status_code == 200
+        from server.db import get_submission
+        submission = get_submission(db_path, submission_id)
+        assert submission is not None
+        assert submission["subject_id"] == subj["id"]
+        assert submission["subject_name"] == "Stable Subject"
+
+
+class TestSubjectIdCanonicalNameDenorm:
+    """Verify the denormalized subject_name column reflects the subject's canonical name
+    (not whatever string was supplied earlier on the submission)."""
+
+    def test_subject_name_overrides_stale_denorm_via_direct_sql(self, client: TestClient) -> None:
+        """Submission with a stale subject_name gets the canonical name written verbatim."""
+        _login_as(client, role="admin", google_id="canonical-admin-gid", email="canonical-admin@test.com")
+        db_path = app.state.db_path
+        subj = create_subject(db_path, name="Canonical Name")
+        # Submission created with a clearly-different denormalized subject_name.
+        submission_id = _create_test_submission(
+            db_path, subject_name="Stale Typo Name", test_date="2026-04-30"
+        )
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": "stale-typo-name-20260430",
+                "subject_id": subj["id"],
+            },
+        )
+        assert resp.status_code == 200
+
+        # Direct SQL: subject_id and subject_name both reflect the chosen subject.
+        conn = _connect(db_path)
+        row = conn.execute(
+            "SELECT subject_id, subject_name FROM submissions WHERE id = ?",
+            (submission_id,),
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row[0] == subj["id"]
+        assert row[1] == "Canonical Name"
+
+
+class TestNonAdminSubjectIdForbidden:
+    """Explicit non-admin guard for subject_id field on report-metadata endpoint.
+
+    The owner-can-edit case for `subject_id` is already covered by
+    `test_non_admin_owner_can_update_note_but_not_subject_id`, but this test
+    pins the role-only check (anonymous, plain user) as a regression guard."""
+
+    def test_logged_in_user_role_cannot_change_subject_id(self, client: TestClient) -> None:
+        """A user-role caller (even submission owner) gets 403 when subject_id is supplied."""
+        owner = _login_as(client, role="user", google_id="user-subj-gid", email="user-subj@test.com")
+        db_path = app.state.db_path
+        target_subject = create_subject(db_path, name="Forbidden Target")
+        submission_id = _create_test_submission(
+            db_path, subject_name="Original", user_id=owner["id"]
+        )
+
+        resp = client.patch(
+            "/api/manage/report-metadata",
+            data={
+                "submission_id": submission_id,
+                "report_slug": "original-20260301",
+                "subject_id": target_subject["id"],
+            },
+        )
+        assert resp.status_code == 403
+        # Subject untouched.
+        from server.db import get_submission
+        sub = get_submission(db_path, submission_id)
+        assert sub is not None
+        assert sub["subject_name"] == "Original"

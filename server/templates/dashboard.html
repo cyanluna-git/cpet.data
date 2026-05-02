@@ -209,13 +209,13 @@
   <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md mx-4" onclick="event.stopPropagation()">
     <h3 class="text-lg font-semibold text-gray-900 mb-4">리포트 정보 편집</h3>
     <div id="report-meta-name-wrap">
-      <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">피험자 이름</label>
-      <input
-        id="report-meta-subject-name"
-        type="text"
+      <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">피험자</label>
+      <select
+        id="report-meta-subject-id"
         class="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
-        placeholder="피험자 이름"
-      />
+      >
+        <option value="">— 선택 안 함 —</option>
+      </select>
     </div>
     <div id="report-meta-date-wrap" class="mt-4">
       <label class="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">검사일</label>
@@ -257,10 +257,60 @@
 </div>
 
 <script>
+let _subjectsCache = null;
+
+async function _fetchSubjectsCached() {
+  if (_subjectsCache) return _subjectsCache;
+  try {
+    const resp = await fetch('/api/subjects', {credentials: 'same-origin'});
+    if (!resp.ok) return [];
+    const payload = await resp.json();
+    _subjectsCache = Array.isArray(payload?.data) ? payload.data : [];
+  } catch (_err) {
+    _subjectsCache = [];
+  }
+  return _subjectsCache;
+}
+
+function _makeOption(value, label, selected) {
+  const opt = document.createElement('option');
+  opt.value = value;
+  opt.textContent = label;
+  if (selected) opt.selected = true;
+  return opt;
+}
+
+async function populateSubjectOptions(currentId, currentName) {
+  const select = document.getElementById('report-meta-subject-id');
+  if (!select) return;
+  const subjects = (await _fetchSubjectsCached()).slice();
+  subjects.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ko'));
+  select.replaceChildren();
+  select.appendChild(_makeOption('', '— 선택 안 함 —', false));
+  let foundCurrent = false;
+  for (const subj of subjects) {
+    const id = String(subj.id || '');
+    const name = String(subj.name || '');
+    const meta = [];
+    if (subj.birth_year) meta.push(String(subj.birth_year));
+    if (subj.gender) meta.push(String(subj.gender));
+    const label = meta.length ? `${name} (${meta.join(', ')})` : name;
+    const isSelected = !!(id && id === currentId);
+    if (isSelected) foundCurrent = true;
+    select.appendChild(_makeOption(id, label, isSelected));
+  }
+  if (currentId && !foundCurrent) {
+    const stubLabel = `<삭제된 피험자> ${currentName || currentId}`;
+    const stub = _makeOption(currentId, stubLabel, true);
+    select.insertBefore(stub, select.children[1] || null);
+  }
+}
+
 function openReportMetaModalFromButton(button) {
   openReportMetaModal({
     submissionId: button.dataset.submissionId || '',
     reportSlug: button.dataset.reportSlug || '',
+    subjectId: button.dataset.subjectId || '',
     subjectName: button.dataset.subjectName || '',
     testDate: button.dataset.testDate || '',
     note: button.dataset.note || '',
@@ -268,27 +318,29 @@ function openReportMetaModalFromButton(button) {
   });
 }
 
-function openReportMetaModal(payload) {
+async function openReportMetaModal(payload) {
   var canRename = !!payload.canRename;
   document.getElementById('report-meta-submission-id').value = payload.submissionId || '';
   document.getElementById('report-meta-report-slug').value = payload.reportSlug || '';
-  document.getElementById('report-meta-subject-name').value = payload.subjectName || '';
   document.getElementById('report-meta-test-date').value = payload.testDate || '';
   document.getElementById('report-meta-note').value = payload.note || '';
   document.getElementById('report-meta-can-rename').value = canRename ? '1' : '0';
   setReportMetaStatus('', '');
   var nameWrap = document.getElementById('report-meta-name-wrap');
-  var nameInput = document.getElementById('report-meta-subject-name');
+  var subjectSelect = document.getElementById('report-meta-subject-id');
   var dateWrap = document.getElementById('report-meta-date-wrap');
   var dateInput = document.getElementById('report-meta-test-date');
   nameWrap.style.display = canRename ? '' : 'none';
-  nameInput.disabled = !canRename;
+  subjectSelect.disabled = !canRename;
   dateWrap.style.display = canRename ? '' : 'none';
   dateInput.disabled = !canRename;
   const modal = document.getElementById('report-meta-modal');
   modal.classList.remove('hidden');
   modal.classList.add('flex');
-  (canRename ? nameInput : document.getElementById('report-meta-note')).focus();
+  (canRename ? subjectSelect : document.getElementById('report-meta-note')).focus();
+  if (canRename) {
+    await populateSubjectOptions(payload.subjectId || '', payload.subjectName || '');
+  }
 }
 
 function closeReportMetaModal() {
@@ -320,18 +372,13 @@ function setReportMetaStatus(kind, message) {
 async function submitReportMeta() {
   const subId = document.getElementById('report-meta-submission-id').value;
   const slug = document.getElementById('report-meta-report-slug').value;
-  const canRename = document.getElementById('report-meta-can-rename').value === '1';
-  const name = document.getElementById('report-meta-subject-name').value.trim();
+  const subjectId = document.getElementById('report-meta-subject-id').value;
   const testDate = document.getElementById('report-meta-test-date').value.trim();
   const note = document.getElementById('report-meta-note').value.trim();
   const saveBtn = document.getElementById('report-meta-save-btn');
   if (!slug && !subId) return;
-  if (canRename && !name) {
-    setReportMetaStatus('error', '피험자 이름을 입력하세요.');
-    return;
-  }
   const body = new URLSearchParams({
-    subject_name: name,
+    subject_id: subjectId,
     test_date: testDate,
     note: note,
     submission_id: subId,

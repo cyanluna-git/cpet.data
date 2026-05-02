@@ -928,6 +928,7 @@ def _list_dashboard_entries(
             "processing_seconds": processing_seconds,
             "submission_user_id": sub.get("user_id") if sub else None,
             "submission_subject_id": sub.get("subject_id") if sub else None,
+            "subject_id": sub.get("subject_id") if sub else None,
             "source_signature": sub.get("source_signature") if sub else "",
             "submission_fingerprint": sub.get("submission_fingerprint") if sub else "",
             "duplicate_confidence": sub.get("duplicate_confidence") if sub else "",
