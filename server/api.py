@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-ALLOWED_EXTENSIONS = {".fit", ".zwo", ".xlsx", ".md", ".csv", ".pdf"}
+ALLOWED_EXTENSIONS = {".fit", ".zwo", ".xlsx", ".md", ".csv", ".pdf", ".jpg", ".jpeg", ".png"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 REPORT_DATA_RE = re.compile(

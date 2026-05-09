@@ -318,36 +318,14 @@ class TestOcrEndpointSuccess:
 # ── ALLOWED_EXTENSIONS regression ────────────────────────────────────
 
 
-class TestAllowedExtensionsUnchanged:
-    def test_jpg_direct_submit_is_rejected(self, logged_in_client: TestClient) -> None:
-        """.jpg files sent to /api/submit must still be rejected (ALLOWED_EXTENSIONS unchanged).
-
-        Adding image support to /api/lactate/ocr must not accidentally
-        change the global ALLOWED_EXTENSIONS set used by /api/submit.
-        """
+class TestImageExtensionsAllowed:
+    def test_jpg_jpeg_png_in_allowed_extensions(self) -> None:
+        """.jpg / .jpeg / .png are accepted by /api/submit (bug #2788)."""
         from server.api import ALLOWED_EXTENSIONS
 
-        assert ".jpg" not in ALLOWED_EXTENSIONS, (
-            ".jpg was added to ALLOWED_EXTENSIONS — this breaks the /api/submit contract"
-        )
-        assert ".jpeg" not in ALLOWED_EXTENSIONS, (
-            ".jpeg was added to ALLOWED_EXTENSIONS"
-        )
-        assert ".png" not in ALLOWED_EXTENSIONS, (
-            ".png was added to ALLOWED_EXTENSIONS"
-        )
-
-        img_bytes = _make_minimal_png()
-        resp = logged_in_client.post(
-            "/api/submit",
-            data={"subject_name": "Test", "test_date": "2024-01-01"},
-            files={"files": ("photo.jpg", io.BytesIO(img_bytes), "image/jpeg")},
-        )
-        assert resp.status_code == 400, (
-            f"Expected 400 for .jpg upload to /api/submit, got {resp.status_code}"
-        )
-        body = resp.json()
-        assert "error" in body
+        assert ".jpg" in ALLOWED_EXTENSIONS
+        assert ".jpeg" in ALLOWED_EXTENSIONS
+        assert ".png" in ALLOWED_EXTENSIONS
 
 
 # ── Page route ────────────────────────────────────────────────────────
