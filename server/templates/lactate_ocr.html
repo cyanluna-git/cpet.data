@@ -1,0 +1,373 @@
+{% extends "base.html" %}
+{% block title %}젖산 측정지 사진 입력 — CPET Platform{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  <h1 class="text-2xl font-bold mb-2">젖산 측정지 사진으로 입력</h1>
+  <p class="text-sm text-gray-500 mb-6">
+    손으로 작성된 젖산 측정 기록지 사진을 업로드하면 AI가 테이블을 파싱합니다.
+    파싱 결과를 확인·수정한 후 <code class="bg-gray-100 px-1 rounded">lactate_data.md</code>를
+    다운로드하여 업로드 페이지에서 COSMED 파일과 함께 제출하세요.
+  </p>
+
+  <!-- Step 1: Image upload -->
+  <div id="ocr-upload-section" class="bg-white rounded-lg shadow p-6 mb-6">
+    <h2 class="text-base font-semibold text-gray-800 mb-4">1단계 — 사진 업로드</h2>
+    <div
+      id="dropzone"
+      class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center
+             cursor-pointer hover:border-gray-400 transition-colors"
+    >
+      <p class="text-gray-500 text-sm">사진을 드래그하거나 클릭하여 선택</p>
+      <p class="text-gray-400 text-xs mt-1">JPG, JPEG, PNG (최대 10 MB)</p>
+      <input
+        type="file"
+        id="ocr-file-input"
+        accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+        class="hidden"
+      />
+    </div>
+    <div id="image-preview-wrapper" class="mt-4 hidden">
+      <img id="image-preview" src="" alt="미리보기" class="max-h-64 rounded border border-gray-200 mx-auto" />
+    </div>
+
+    <div id="ocr-error" class="mt-3 text-sm text-red-600 hidden"></div>
+
+    <button
+      id="ocr-btn"
+      type="button"
+      disabled
+      class="mt-4 w-full bg-gray-900 text-white py-2.5 rounded-md text-sm font-medium
+             hover:bg-gray-800 transition-colors flex items-center justify-center gap-2
+             disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      <span id="ocr-btn-label">AI 파싱 시작</span>
+      <svg
+        id="ocr-spinner"
+        class="hidden animate-spin h-4 w-4 text-white"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle class="opacity-25" cx="12" cy="12" r="10"
+                stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Step 2: Editable table (hidden until OCR result arrives) -->
+  <div id="ocr-result-section" class="hidden bg-white rounded-lg shadow p-6 mb-6">
+    <h2 class="text-base font-semibold text-gray-800 mb-1">2단계 — 결과 확인 및 수정</h2>
+    <p class="text-xs text-gray-500 mb-4">
+      빈 칸은 읽지 못한 값입니다. 직접 수정하거나 비워두세요.
+      스텝 번호(Step 열)로 블록이 자동 구분됩니다:
+      <code class="bg-gray-100 px-0.5 rounded">0</code>→ Rest,
+      <code class="bg-gray-100 px-0.5 rounded">1-x</code>→ Block 1 (LT1),
+      <code class="bg-gray-100 px-0.5 rounded">2-x</code>→ Block 2 (VO2max),
+      <code class="bg-gray-100 px-0.5 rounded">3-x</code>→ Block 3 (Clearance).
+    </p>
+
+    <div class="overflow-x-auto">
+      <table id="ocr-table" class="min-w-full text-xs border-collapse">
+        <thead>
+          <tr class="bg-gray-50">
+            <th class="border border-gray-200 px-2 py-1 text-left font-medium text-gray-600">Step</th>
+            <th class="border border-gray-200 px-2 py-1 text-left font-medium text-gray-600">Load (W)</th>
+            <th class="border border-gray-200 px-2 py-1 text-left font-medium text-gray-600">Duration (min)</th>
+            <th class="border border-gray-200 px-2 py-1 text-left font-medium text-gray-600">KST</th>
+            <th class="border border-gray-200 px-2 py-1 text-left font-medium text-gray-600">HR (bpm)</th>
+            <th class="border border-gray-200 px-2 py-1 text-left font-medium text-gray-600">Lactate (mmol/L)</th>
+            <th class="border border-gray-200 px-2 py-1 text-left font-medium text-gray-600">Glucose (mmol/L)</th>
+            <th class="border border-gray-200 px-2 py-1 text-left font-medium text-gray-600"></th>
+          </tr>
+        </thead>
+        <tbody id="ocr-table-body">
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mt-3 flex gap-2">
+      <button
+        type="button"
+        id="add-row-btn"
+        class="px-3 py-1.5 text-xs border border-gray-300 rounded-md hover:bg-gray-50 text-gray-600"
+      >+ 행 추가</button>
+    </div>
+
+    <div class="mt-6 flex gap-3">
+      <button
+        type="button"
+        id="download-md-btn"
+        class="flex-1 bg-gray-900 text-white py-2.5 rounded-md text-sm font-medium
+               hover:bg-gray-800 transition-colors"
+      >lactate_data.md 다운로드</button>
+      <a
+        href="/upload"
+        class="flex-1 text-center border border-gray-300 text-gray-700 py-2.5 rounded-md text-sm font-medium
+               hover:bg-gray-50 transition-colors"
+      >업로드 페이지로 이동</a>
+    </div>
+    <p class="mt-2 text-xs text-gray-400 text-center">
+      다운로드한 <code class="bg-gray-100 px-0.5 rounded">lactate_data.md</code>를
+      업로드 페이지에서 COSMED .xlsx와 함께 제출하세요.
+    </p>
+  </div>
+</div>
+
+<script>
+(function () {
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('ocr-file-input');
+  const ocrBtn = document.getElementById('ocr-btn');
+  const ocrBtnLabel = document.getElementById('ocr-btn-label');
+  const ocrSpinner = document.getElementById('ocr-spinner');
+  const ocrError = document.getElementById('ocr-error');
+  const resultSection = document.getElementById('ocr-result-section');
+  const tableBody = document.getElementById('ocr-table-body');
+  const imagePreviewWrapper = document.getElementById('image-preview-wrapper');
+  const imagePreview = document.getElementById('image-preview');
+
+  let selectedFile = null;
+
+  // Dropzone interactions
+  dropzone.addEventListener('click', function () { fileInput.click(); });
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(function (evt) {
+    dropzone.addEventListener(evt, function (e) { e.preventDefault(); e.stopPropagation(); });
+  });
+  ['dragenter', 'dragover'].forEach(function (evt) {
+    dropzone.addEventListener(evt, function () { dropzone.classList.add('border-gray-500', 'bg-gray-50'); });
+  });
+  ['dragleave', 'drop'].forEach(function (evt) {
+    dropzone.addEventListener(evt, function () { dropzone.classList.remove('border-gray-500', 'bg-gray-50'); });
+  });
+  dropzone.addEventListener('drop', function (e) {
+    if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', function () {
+    if (fileInput.files.length) setFile(fileInput.files[0]);
+  });
+
+  function setFile(file) {
+    const MAX_SIZE = 10 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      showError('파일이 너무 큽니다 (최대 10 MB).');
+      return;
+    }
+    const allowed = ['image/jpeg', 'image/png'];
+    if (!allowed.includes(file.type)) {
+      showError('JPG 또는 PNG 파일만 지원합니다.');
+      return;
+    }
+    hideError();
+    selectedFile = file;
+    ocrBtn.disabled = false;
+
+    // Show image preview
+    const reader = new FileReader();
+    reader.onload = function (ev) {
+      imagePreview.src = ev.target.result;
+      imagePreviewWrapper.classList.remove('hidden');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // OCR button
+  ocrBtn.addEventListener('click', async function () {
+    if (!selectedFile) return;
+    ocrBtn.disabled = true;
+    ocrBtnLabel.textContent = '파싱 중...';
+    ocrSpinner.classList.remove('hidden');
+    hideError();
+
+    try {
+      const fd = new FormData();
+      fd.append('image', selectedFile, selectedFile.name);
+      const resp = await fetch('/api/lactate/ocr', { method: 'POST', body: fd });
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        showError(data.error || 'OCR 요청 실패 (' + resp.status + ')');
+        return;
+      }
+
+      renderTable(data.rows || []);
+      resultSection.classList.remove('hidden');
+      resultSection.scrollIntoView({ behavior: 'smooth' });
+    } catch (err) {
+      showError('네트워크 오류: ' + err.message);
+    } finally {
+      ocrBtn.disabled = false;
+      ocrBtnLabel.textContent = 'AI 파싱 다시 시작';
+      ocrSpinner.classList.add('hidden');
+    }
+  });
+
+  // Table rendering
+  function renderTable(rows) {
+    tableBody.innerHTML = '';
+    rows.forEach(function (row) { appendRow(row); });
+  }
+
+  function appendRow(row) {
+    row = row || {};
+    const tr = document.createElement('tr');
+    tr.className = 'hover:bg-gray-50';
+
+    const fields = ['step', 'load_w', 'duration_min', 'kst_time', 'hr_bpm', 'lactate_mmol', 'glucose_mmol'];
+    fields.forEach(function (field) {
+      const td = document.createElement('td');
+      td.className = 'border border-gray-200 p-0';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.dataset.field = field;
+      input.value = (row[field] !== null && row[field] !== undefined) ? String(row[field]) : '';
+      input.placeholder = '—';
+      input.className = 'w-full px-2 py-1 text-xs bg-transparent focus:bg-white focus:outline-none focus:ring-1 focus:ring-gray-400 rounded-sm';
+      td.appendChild(input);
+      tr.appendChild(td);
+    });
+
+    // Delete row button
+    const tdDel = document.createElement('td');
+    tdDel.className = 'border border-gray-200 px-1 py-1 text-center';
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.textContent = '×';
+    delBtn.className = 'text-gray-400 hover:text-red-500 text-sm font-bold leading-none';
+    delBtn.addEventListener('click', function () { tr.remove(); });
+    tdDel.appendChild(delBtn);
+    tr.appendChild(tdDel);
+
+    tableBody.appendChild(tr);
+  }
+
+  // Add row button
+  document.getElementById('add-row-btn').addEventListener('click', function () {
+    appendRow({});
+  });
+
+  // Download MD
+  document.getElementById('download-md-btn').addEventListener('click', function () {
+    const rows = collectRows();
+    if (rows.length === 0) {
+      showError('다운로드할 데이터가 없습니다.');
+      return;
+    }
+    const md = serializeToMarkdown(rows);
+    const blob = new Blob([md], { type: 'text/markdown; charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'lactate_data.md';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  function collectRows() {
+    const rows = [];
+    tableBody.querySelectorAll('tr').forEach(function (tr) {
+      const inputs = tr.querySelectorAll('input[data-field]');
+      const row = {};
+      inputs.forEach(function (inp) {
+        const v = inp.value.trim();
+        row[inp.dataset.field] = v === '' ? null : v;
+      });
+      rows.push(row);
+    });
+    return rows;
+  }
+
+  // Serialize rows to lactate_data.md matching parser column expectations.
+  // Blocks:  0      → Block 0 (Rest)
+  //          1-x    → Block 1 (LT1)
+  //          2-x    → Block 2 (VO2max)
+  //          3-x    → Block 3 (Clearance)  — 9-column format with %FTP column
+  function serializeToMarkdown(rows) {
+    const BLOCKS = {
+      rest:    { label: 'Block 0 — Rest (baseline)', is_block3: false },
+      block_1: { label: 'Block 1 — LT1 (4min per step)', is_block3: false },
+      block_2: { label: 'Block 2 — VO2max (30s ramp, sampled at end)', is_block3: false },
+      block_3: { label: 'Block 3 — Clearance (3min per step, %FTP sheet label)', is_block3: true },
+    };
+    const ORDER = ['rest', 'block_1', 'block_2', 'block_3'];
+
+    function detectBlock(step) {
+      if (!step) return 'rest';
+      const s = String(step).trim();
+      if (s === '0') return 'rest';
+      if (s.startsWith('1-')) return 'block_1';
+      if (s.startsWith('2-')) return 'block_2';
+      if (s.startsWith('3-')) return 'block_3';
+      return 'rest';
+    }
+
+    function cell(v) { return (v === null || v === undefined || String(v).trim() === '') ? '—' : String(v).trim(); }
+
+    // Group rows by block
+    const grouped = { rest: [], block_1: [], block_2: [], block_3: [] };
+    rows.forEach(function (row) {
+      const block = detectBlock(row.step);
+      grouped[block].push(row);
+    });
+
+    let md = '# Lactate & Glucose Manual Recording Data\n\n';
+    md += '> AI OCR로 파싱된 데이터입니다. 사용 전 반드시 원본과 대조하세요.\n\n';
+
+    ORDER.forEach(function (blockKey) {
+      const info = BLOCKS[blockKey];
+      const blockRows = grouped[blockKey];
+      if (blockRows.length === 0) return;
+
+      md += '## ' + info.label + '\n\n';
+
+      if (info.is_block3) {
+        // 9-column format: Step | %FTP | Load(W) | Duration(min) | KST | HR(bpm) | Lactate(mmol/L) | Glucose(mmol/L) | Notes
+        md += '| Step | %FTP | Load(W) | Duration(min) | KST | HR(bpm) | Lactate(mmol/L) | Glucose(mmol/L) | Notes |\n';
+        md += '|------|------|---------|---------------|------|---------|-----------------|-----------------|-------|\n';
+        blockRows.forEach(function (row) {
+          md += '| ' + cell(row.step) +
+                ' | — ' +
+                ' | ' + cell(row.load_w) +
+                ' | ' + cell(row.duration_min) +
+                ' | ' + cell(row.kst_time) +
+                ' | ' + cell(row.hr_bpm) +
+                ' | ' + cell(row.lactate_mmol) +
+                ' | ' + cell(row.glucose_mmol) +
+                ' | |\n';
+        });
+      } else {
+        // 7-column format (8 with Notes): Step | Load(W) | Duration(min) | KST | HR(bpm) | Lactate(mmol/L) | Glucose(mmol/L) | Notes
+        md += '| Step | Load(W) | Duration(min) | KST | HR(bpm) | Lactate(mmol/L) | Glucose(mmol/L) | Notes |\n';
+        md += '|------|---------|---------------|------|---------|-----------------|-----------------|-------|\n';
+        blockRows.forEach(function (row) {
+          md += '| ' + cell(row.step) +
+                ' | ' + cell(row.load_w) +
+                ' | ' + cell(row.duration_min) +
+                ' | ' + cell(row.kst_time) +
+                ' | ' + cell(row.hr_bpm) +
+                ' | ' + cell(row.lactate_mmol) +
+                ' | ' + cell(row.glucose_mmol) +
+                ' | |\n';
+        });
+      }
+
+      md += '\n';
+    });
+
+    return md;
+  }
+
+  function showError(msg) {
+    ocrError.textContent = msg;
+    ocrError.classList.remove('hidden');
+  }
+
+  function hideError() {
+    ocrError.classList.add('hidden');
+    ocrError.textContent = '';
+  }
+})();
+</script>
+{% endblock %}

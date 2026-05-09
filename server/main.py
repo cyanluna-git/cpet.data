@@ -378,6 +378,18 @@ async def upload_page(request: Request, reanalyze: str = "") -> HTMLResponse:
     })
 
 
+@app.get("/lactate-ocr", response_class=HTMLResponse)
+async def lactate_ocr_page(request: Request) -> HTMLResponse:
+    """Render the lactate OCR image-upload page. Login required."""
+    user = _get_session_user(request)
+    if not user:
+        return RedirectResponse(url="/auth/google/login", status_code=302)
+    guard = _check_onboarding(request)
+    if guard:
+        return guard
+    return _template_response(request, "lactate_ocr.html")
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request) -> HTMLResponse:
     """Render the dashboard page."""

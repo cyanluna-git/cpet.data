@@ -1694,3 +1694,70 @@ async def list_subjects_endpoint(
     db_path = get_db_path(request)
     subjects = list_subjects(db_path)
     return JSONResponse(content={"data": subjects})
+
+
+# ── POST /api/lactate/ocr ────────────────────────────────────────────
+
+_LACTATE_OCR_ALLOWED_MIME = {"image/jpeg", "image/png"}
+_LACTATE_OCR_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+@router.post("/api/lactate/ocr")
+async def lactate_ocr(
+    request: Request,
+    image: UploadFile = File(...),
+) -> JSONResponse:
+    """Accept an image of a handwritten lactate sheet, return parsed rows via Claude Vision.
+
+    Returns:
+        200 {"rows": [...]}
+        400 for unsupported MIME / oversized file
+        401 if not logged in
+        502 for Claude API errors or timeout
+        503 if ANTHROPIC_API_KEY is not configured
+    """
+    user_id = request.session.get("user_id") if hasattr(request, "session") else None
+    if not user_id:
+        return JSONResponse(status_code=401, content={"error": "로그인이 필요합니다"})
+
+    mime = image.content_type or ""
+    if mime not in _LACTATE_OCR_ALLOWED_MIME:
+        ext = Path(image.filename or "").suffix.lower()
+        if ext in {".jpg", ".jpeg"}:
+            mime = "image/jpeg"
+        elif ext == ".png":
+            mime = "image/png"
+        else:
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"지원하지 않는 이미지 형식입니다: {mime or ext}. JPG 또는 PNG만 허용됩니다."},
+            )
+
+    content = await image.read()
+    if len(content) > _LACTATE_OCR_MAX_BYTES:
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"이미지 파일이 너무 큽니다 ({len(content) // 1024 // 1024} MB). 최대 10 MB."},
+        )
+
+    from server.lactate_ocr import LactateOcrError, extract_lactate_table  # noqa: PLC0415
+
+    import os  # noqa: PLC0415
+    if not os.environ.get("ANTHROPIC_API_KEY", "").strip():
+        return JSONResponse(
+            status_code=503,
+            content={"error": "ANTHROPIC_API_KEY가 설정되지 않았습니다. 서버 관리자에게 문의하세요."},
+        )
+
+    try:
+        rows = extract_lactate_table(content, mime)
+    except LactateOcrError as exc:
+        msg = str(exc)
+        if "API key" in msg or "ANTHROPIC_API_KEY" in msg:
+            return JSONResponse(status_code=503, content={"error": msg})
+        return JSONResponse(status_code=502, content={"error": msg})
+    except Exception as exc:
+        logger.exception("Unexpected error in lactate OCR")
+        return JSONResponse(status_code=502, content={"error": f"OCR 처리 중 오류가 발생했습니다: {exc}"})
+
+    return JSONResponse(content={"rows": rows})

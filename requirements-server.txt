@@ -10,3 +10,4 @@ python-dotenv>=1.0.0
 pandas>=2.0
 pypdf>=5.0
 fitparse>=1.2
+anthropic>=0.40

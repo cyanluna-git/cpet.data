@@ -5,6 +5,15 @@
 <div class="max-w-lg mx-auto">
   <h1 class="text-2xl font-bold mb-6">{% if prefill %}추가 분석 요청{% else %}파일 업로드{% endif %}</h1>
 
+  {% if not prefill %}
+  <div class="mb-4 text-sm text-gray-500">
+    손으로 기록한 젖산 측정지가 있으신가요?
+    <a href="/lactate-ocr" class="text-blue-600 hover:underline font-medium">
+      사진으로 입력하기 →
+    </a>
+  </div>
+  {% endif %}
+
   {% if prefill %}
   <!-- 기존 제출 정보 -->
   <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
