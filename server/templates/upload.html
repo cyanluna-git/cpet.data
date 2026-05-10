@@ -57,14 +57,14 @@
           파일을 드래그하거나 클릭하여 선택하세요
         </p>
         <p class="text-gray-400 text-xs mt-1">
-          .xlsx, .fit, .zwo, .csv, .md, .pdf (최대 50 MB)
+          .xlsx, .fit, .zwo, .csv, .md, .pdf, .jpg, .jpeg, .png (최대 50 MB)
         </p>
         <input
           type="file"
           name="files"
           id="file-input"
           multiple
-          accept=".xlsx,.fit,.zwo,.csv,.md,.pdf"
+          accept=".xlsx,.fit,.zwo,.csv,.md,.pdf,.jpg,.jpeg,.png"
           class="hidden"
         />
       </div>
@@ -582,6 +582,241 @@ document.addEventListener('keydown', function(e) {
   });
 
   window.closeDuplicatePreflightModal = closeDuplicatePreflightModal;
+
+  // ── OCR Modal ──────────────────────────────────────────────────────────────
+  let ocrConfirmed = false;
+  let pendingOcrSubmit = false;
+
+  const IMAGE_EXTS = /\.(jpe?g|png)$/i;
+
+  function isImageFile(f) { return IMAGE_EXTS.test(f.name); }
+
+  function buildOcrModal() {
+    const modal = document.createElement('div');
+    modal.id = 'ocr-modal';
+    modal.className = 'fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4';
+    modal.innerHTML = `
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        <div class="px-6 py-4 border-b flex items-center justify-between">
+          <div>
+            <h2 class="text-lg font-semibold text-gray-900">젖산 측정지 OCR 결과 보정</h2>
+            <p class="text-xs text-gray-500 mt-0.5">AI가 읽은 값을 확인하고 틀린 숫자를 직접 수정하세요.</p>
+          </div>
+          <button id="ocr-modal-close" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+        <div id="ocr-modal-body" class="flex-1 overflow-auto px-6 py-4">
+          <div id="ocr-loading" class="text-center py-12 text-gray-500">
+            <svg class="animate-spin h-8 w-8 mx-auto mb-3 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4z"></path>
+            </svg>
+            OCR 처리 중…
+          </div>
+          <div id="ocr-error" class="hidden text-red-600 text-sm py-4"></div>
+          <div id="ocr-table-area" class="hidden">
+            <div class="flex gap-2 mb-3">
+              <button id="ocr-add-row" class="text-xs px-3 py-1 rounded border border-gray-300 hover:bg-gray-50">+ 행 추가</button>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm border-collapse" id="ocr-table">
+                <thead>
+                  <tr class="bg-gray-50 text-gray-700 text-xs">
+                    <th class="border px-2 py-1 text-left">Step</th>
+                    <th class="border px-2 py-1 text-left">Load(W)</th>
+                    <th class="border px-2 py-1 text-left">Dur(min)</th>
+                    <th class="border px-2 py-1 text-left">KST</th>
+                    <th class="border px-2 py-1 text-left">HR(bpm)</th>
+                    <th class="border px-2 py-1 text-left">Lactate</th>
+                    <th class="border px-2 py-1 text-left">Glucose</th>
+                    <th class="border px-2 py-1"></th>
+                  </tr>
+                </thead>
+                <tbody id="ocr-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="px-6 py-4 border-t flex justify-end gap-3">
+          <button id="ocr-cancel" class="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-gray-50">취소</button>
+          <button id="ocr-confirm" class="px-4 py-2 text-sm rounded-lg bg-gray-900 text-white hover:bg-gray-700 hidden">확정 후 제출</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    return modal;
+  }
+
+  function getOcrModal() {
+    return document.getElementById('ocr-modal') || buildOcrModal();
+  }
+
+  function showOcrModal() {
+    const m = getOcrModal();
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+  }
+
+  function hideOcrModal() {
+    const m = document.getElementById('ocr-modal');
+    if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
+  }
+
+  function addOcrRow(tbody, row) {
+    const tr = document.createElement('tr');
+    tr.className = 'hover:bg-gray-50';
+    const KEYS = ['step','load_w','duration_min','kst_time','hr_bpm','lactate_mmol','glucose_mmol'];
+    KEYS.forEach(function(k) {
+      const td = document.createElement('td');
+      td.className = 'border px-1 py-0.5';
+      const inp = document.createElement('input');
+      inp.className = 'w-full px-1 py-0.5 text-sm rounded focus:outline-none focus:ring-1 focus:ring-blue-400';
+      inp.value = (row && row[k] !== null && row[k] !== undefined) ? String(row[k]) : '';
+      inp.dataset.key = k;
+      td.appendChild(inp);
+      tr.appendChild(td);
+    });
+    const tdDel = document.createElement('td');
+    tdDel.className = 'border px-1 py-0.5 text-center';
+    const btn = document.createElement('button');
+    btn.textContent = '×';
+    btn.className = 'text-red-400 hover:text-red-600 font-bold';
+    btn.type = 'button';
+    btn.addEventListener('click', function() { tr.remove(); });
+    tdDel.appendChild(btn);
+    tr.appendChild(tdDel);
+    tbody.appendChild(tr);
+  }
+
+  function readOcrRows() {
+    const KEYS = ['step','load_w','duration_min','kst_time','hr_bpm','lactate_mmol','glucose_mmol'];
+    const rows = [];
+    document.querySelectorAll('#ocr-tbody tr').forEach(function(tr) {
+      const row = {};
+      KEYS.forEach(function(k) {
+        const inp = tr.querySelector('input[data-key="' + k + '"]');
+        const v = inp ? inp.value.trim() : '';
+        row[k] = v === '' ? null : (isNaN(Number(v)) || k === 'step' || k === 'kst_time' ? v : Number(v));
+      });
+      rows.push(row);
+    });
+    return rows;
+  }
+
+  function serializeToMarkdown(rows) {
+    const BLOCKS = {
+      rest:    { label: 'Block 0 — Rest (baseline)', is_block3: false },
+      block_1: { label: 'Block 1 — LT1 (4min per step)', is_block3: false },
+      block_2: { label: 'Block 2 — VO2max (30s ramp, sampled at end)', is_block3: false },
+      block_3: { label: 'Block 3 — Clearance (3min per step, %FTP sheet label)', is_block3: true },
+    };
+    const ORDER = ['rest', 'block_1', 'block_2', 'block_3'];
+    function detectBlock(step) {
+      if (!step) return 'rest';
+      const s = String(step).trim();
+      if (s === '0') return 'rest';
+      if (s.startsWith('1-')) return 'block_1';
+      if (s.startsWith('2-')) return 'block_2';
+      if (s.startsWith('3-')) return 'block_3';
+      return 'rest';
+    }
+    function cell(v) { return (v === null || v === undefined || String(v).trim() === '') ? '—' : String(v).trim(); }
+    const grouped = { rest: [], block_1: [], block_2: [], block_3: [] };
+    rows.forEach(function(row) { grouped[detectBlock(row.step)].push(row); });
+    let md = '# Lactate & Glucose Manual Recording Data\n\n';
+    md += '> AI OCR로 파싱된 데이터입니다. 사용 전 반드시 원본과 대조하세요.\n\n';
+    ORDER.forEach(function(blockKey) {
+      const info = BLOCKS[blockKey];
+      const blockRows = grouped[blockKey];
+      if (blockRows.length === 0) return;
+      md += '## ' + info.label + '\n\n';
+      if (info.is_block3) {
+        md += '| Step | %FTP | Load(W) | Duration(min) | KST | HR(bpm) | Lactate(mmol/L) | Glucose(mmol/L) | Notes |\n';
+        md += '|------|------|---------|---------------|------|---------|-----------------|-----------------|-------|\n';
+        blockRows.forEach(function(row) {
+          md += '| ' + cell(row.step) + ' | — | ' + cell(row.load_w) + ' | ' + cell(row.duration_min) + ' | ' + cell(row.kst_time) + ' | ' + cell(row.hr_bpm) + ' | ' + cell(row.lactate_mmol) + ' | ' + cell(row.glucose_mmol) + ' | |\n';
+        });
+      } else {
+        md += '| Step | Load(W) | Duration(min) | KST | HR(bpm) | Lactate(mmol/L) | Glucose(mmol/L) | Notes |\n';
+        md += '|------|---------|---------------|------|---------|-----------------|-----------------|-------|\n';
+        blockRows.forEach(function(row) {
+          md += '| ' + cell(row.step) + ' | ' + cell(row.load_w) + ' | ' + cell(row.duration_min) + ' | ' + cell(row.kst_time) + ' | ' + cell(row.hr_bpm) + ' | ' + cell(row.lactate_mmol) + ' | ' + cell(row.glucose_mmol) + ' | |\n';
+        });
+      }
+      md += '\n';
+    });
+    return md;
+  }
+
+  async function runOcrAndShowModal(imageFile) {
+    showOcrModal();
+    const loading = document.getElementById('ocr-loading');
+    const errEl = document.getElementById('ocr-error');
+    const tableArea = document.getElementById('ocr-table-area');
+    const confirmBtn = document.getElementById('ocr-confirm');
+    loading.classList.remove('hidden');
+    errEl.classList.add('hidden');
+    tableArea.classList.add('hidden');
+    confirmBtn.classList.add('hidden');
+
+    const fd = new FormData();
+    fd.append('file', imageFile);
+    try {
+      const resp = await fetch('/api/lactate/ocr', { method: 'POST', body: fd });
+      const data = await resp.json();
+      loading.classList.add('hidden');
+      if (!resp.ok) {
+        errEl.textContent = (data.detail || data.error || 'OCR 처리 실패. 수동으로 입력해주세요.');
+        errEl.classList.remove('hidden');
+        return;
+      }
+      const tbody = document.getElementById('ocr-tbody');
+      tbody.innerHTML = '';
+      (data.rows || []).forEach(function(row) { addOcrRow(tbody, row); });
+      tableArea.classList.remove('hidden');
+      confirmBtn.classList.remove('hidden');
+    } catch (err) {
+      loading.classList.add('hidden');
+      errEl.textContent = '네트워크 오류가 발생했습니다.';
+      errEl.classList.remove('hidden');
+    }
+  }
+
+  // Wire up OCR modal buttons (lazy — modal may not exist yet)
+  document.addEventListener('click', function(e) {
+    if (e.target && e.target.id === 'ocr-modal-close') hideOcrModal();
+    if (e.target && e.target.id === 'ocr-cancel') { hideOcrModal(); ocrConfirmed = false; pendingOcrSubmit = false; }
+    if (e.target && e.target.id === 'ocr-add-row') addOcrRow(document.getElementById('ocr-tbody'), null);
+    if (e.target && e.target.id === 'ocr-confirm') {
+      const rows = readOcrRows();
+      if (rows.length === 0) { alert('최소 1개 행이 필요합니다.'); return; }
+      const md = serializeToMarkdown(rows);
+      const mdBlob = new Blob([md], { type: 'text/markdown' });
+      const mdFile = new File([mdBlob], 'lactate_data.md', { type: 'text/markdown' });
+      // Replace image file(s) with generated md in fileInput
+      const dt = new DataTransfer();
+      Array.from(fileInput.files).forEach(function(f) { if (!isImageFile(f)) dt.items.add(f); });
+      dt.items.add(mdFile);
+      fileInput.files = dt.files;
+      renderFileList(fileInput.files);
+      hideOcrModal();
+      ocrConfirmed = true;
+      pendingOcrSubmit = true;
+      form.requestSubmit();
+    }
+  });
+
+  // Intercept submit: if image files present and not yet OCR-confirmed, run OCR first
+  const _origSubmitHandler = form._ocrInstalled;
+  if (!form._ocrInstalled) {
+    form._ocrInstalled = true;
+    form.addEventListener('submit', async function(e) {
+      if (ocrConfirmed) { ocrConfirmed = false; return; } // already processed
+      const imageFiles = Array.from(fileInput.files).filter(isImageFile);
+      if (imageFiles.length === 0) return; // no images, let normal flow continue
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      await runOcrAndShowModal(imageFiles[0]);
+    }, true); // capture phase — fires before the duplicate-preflight handler
+  }
 })();
 </script>
 {% endblock %}
