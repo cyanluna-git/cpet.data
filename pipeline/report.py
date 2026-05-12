@@ -27,6 +27,15 @@ def _safe_mean(values: list[float]) -> float | None:
     return mean(values)
 
 
+def _coerce_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _substrate_from_row(row: dict[str, Any], key: str) -> float | None:
     """Read stored substrate values or derive them from VO2/VCO2."""
     direct = row.get(key)
@@ -176,12 +185,14 @@ def summarize_bxb_stages(bxb_rows: list[dict[str, Any]]) -> list[dict[str, Any]]
     for bucket in sorted(buckets):
         rows = buckets[bucket]
         vo2_values = [
-            float(r["vo2_ml"]) for r in rows if r.get("vo2_ml") is not None
+            v for v in (_coerce_float(r.get("vo2_ml")) for r in rows) if v is not None
         ]
         hr_values = [
-            float(r["hr_bpm"]) for r in rows if r.get("hr_bpm") is not None
+            v for v in (_coerce_float(r.get("hr_bpm")) for r in rows) if v is not None
         ]
-        rq_values = [float(r["rq"]) for r in rows if r.get("rq") is not None]
+        rq_values = [
+            v for v in (_coerce_float(r.get("rq")) for r in rows) if v is not None
+        ]
         fat_values = [
             value
             for value in (_substrate_from_row(r, "fat_gmin") for r in rows)
