@@ -1799,6 +1799,7 @@ def analyze_cpm_indices(
     substrate_results: dict,
     efficiency_results: dict,
     hr_results: dict,
+    lactate_results: dict | None = None,
 ) -> dict:
     """Compute 15 supported CPM composite indices and 21 unsupported stubs.
 
@@ -1806,6 +1807,10 @@ def analyze_cpm_indices(
       {"supported": True, "value": <float|str|None>, "unit": "...", "note": "..."}
     or
       {"supported": False, "blocker": "<reason>"}
+
+    Args:
+        lactate_results: Optional output of analyze_lactate(); used for
+            delta_la_delta_hr. Pass {} or omit when no blood samples exist.
     """
 
     def _supported(value, unit: str, note: str = "") -> dict:
@@ -1813,6 +1818,9 @@ def analyze_cpm_indices(
 
     def _unsupported(blocker: str) -> dict:
         return {"supported": False, "blocker": blocker}
+
+    if lactate_results is None:
+        lactate_results = {}
 
     results: dict = {}
 
@@ -1838,6 +1846,9 @@ def analyze_cpm_indices(
     vt1_power_w = vt_results.get("vt1_power_w")
     vt1_time_s = vt_results.get("vt1_time_s")
     vt2_vo2_ml = vt_results.get("vt2_vo2_ml")
+    vt2_time_s = vt_results.get("vt2_time_s")
+
+    hrr1_bpm = hr_results.get("hrr1_bpm")
 
     fatmax_power_w = substrate_results.get("fatmax_power_w")
 
@@ -2174,18 +2185,201 @@ def analyze_cpm_indices(
     results["sv_ge"] = _unsupported(_sv_blocker)
     results["cardiac_metabolic_output"] = _unsupported(_sv_blocker)
 
-    # Phase 3 (HRR1 / VD-VT)
-    results["hrr1_ve_vco2_product"] = _unsupported(_phase3_blocker)
-    results["rci"] = _unsupported(_phase3_blocker)
-    results["vd_vt_mean"] = _unsupported(_phase3_blocker)
-    results["vd_vt_at_vt2"] = _unsupported(_phase3_blocker)
-    results["vd_vt_ee"] = _unsupported(_phase3_blocker)
-    results["breathing_pattern_eff"] = _unsupported(_phase3_blocker)
+    # -----------------------------------------------------------------
+    # Phase 3 indices: HRR1-dependent and VD/VT breath-pattern
+    # -----------------------------------------------------------------
+
+    # 16. hrr1_ve_vco2_product
+    if hrr1_bpm is None:
+        results["hrr1_ve_vco2_product"] = _unsupported("hrr1_bpm is None")
+    elif ve_vco2_nadir_val is None:
+        results["hrr1_ve_vco2_product"] = _unsupported(
+            "ve_vco2_nadir_val could not be computed (need ≥30 active BxB rows with ve_vco2)"
+        )
+    else:
+        results["hrr1_ve_vco2_product"] = _supported(
+            round(float(hrr1_bpm) * ve_vco2_nadir_val, 3),
+            "bpm·ratio",
+            "HRR1 × VE/VCO2 nadir: cardiac recovery × ventilatory efficiency product",
+        )
+
+    # 17. rci  (Recovery Cardiac Index)
+    if hrr1_bpm is None:
+        results["rci"] = _unsupported("hrr1_bpm is None")
+    elif vo2max_rel is None or float(vo2max_rel) == 0:
+        results["rci"] = _unsupported("vo2max_rel is None or zero")
+    else:
+        results["rci"] = _supported(
+            round(float(hrr1_bpm) / float(vo2max_rel), 4),
+            "bpm/(mL/kg/min)",
+            "Recovery Cardiac Index: HRR1 / VO2max_rel",
+        )
+
+    # Shared intermediate: vd_vt_mean_val (reused by vd_vt_mean and vd_vt_ee)
+    vd_vt_mean_val: float | None = None
+    _vd_vt_blocker: str = ""
+    if active_bxb.empty or "vd_vt_e" not in active_bxb.columns:
+        _vd_vt_blocker = "vd_vt_e column missing from active BxB"
+    else:
+        _series = active_bxb["vd_vt_e"].dropna()
+        if _series.empty:
+            _vd_vt_blocker = "vd_vt_e column is all NaN in active BxB"
+        else:
+            vd_vt_mean_val = float(_series.mean())
+
+    # 18. vd_vt_mean
+    if vd_vt_mean_val is None:
+        results["vd_vt_mean"] = _unsupported(_vd_vt_blocker)
+    else:
+        results["vd_vt_mean"] = _supported(
+            round(vd_vt_mean_val, 4),
+            "ratio",
+            "Mean dead-space fraction (VD/VT) over active exercise blocks",
+        )
+
+    # 19. vd_vt_at_vt2
+    if vt2_time_s is None:
+        results["vd_vt_at_vt2"] = _unsupported("vt2_time_s is None")
+    elif active_bxb.empty or "vd_vt_e" not in active_bxb.columns or "t_s" not in active_bxb.columns:
+        results["vd_vt_at_vt2"] = _unsupported(
+            "vd_vt_e or t_s column missing from active BxB"
+        )
+    else:
+        _vt2_mask = (active_bxb["t_s"] - float(vt2_time_s)).abs() <= 30
+        _vt2_series = active_bxb.loc[_vt2_mask, "vd_vt_e"].dropna()
+        if _vt2_series.empty:
+            results["vd_vt_at_vt2"] = _unsupported(
+                "No BxB rows within ±30s of vt2_time_s with valid vd_vt_e"
+            )
+        else:
+            results["vd_vt_at_vt2"] = _supported(
+                round(float(_vt2_series.mean()), 4),
+                "ratio",
+                f"VD/VT at VT2 (±30s window around {vt2_time_s:.1f}s)",
+            )
+
+    # 20. breathing_pattern_eff
+    _bpe_cols = {"vt_l", "rf", "vo2_ml"}
+    if active_bxb.empty or not _bpe_cols.issubset(active_bxb.columns):
+        _missing = _bpe_cols - set(active_bxb.columns) if not active_bxb.empty else _bpe_cols
+        results["breathing_pattern_eff"] = _unsupported(
+            f"columns missing from active BxB: {', '.join(sorted(_missing))}"
+        )
+    else:
+        _bpe = (
+            active_bxb["vt_l"] * active_bxb["rf"] / active_bxb["vo2_ml"]
+        ).replace([np.inf, -np.inf], np.nan).dropna()
+        if _bpe.empty:
+            results["breathing_pattern_eff"] = _unsupported(
+                "breathing_pattern_eff series is all NaN/inf after computation"
+            )
+        else:
+            results["breathing_pattern_eff"] = _supported(
+                round(float(_bpe.mean()), 6),
+                "(L·resp/min)/mL O2",
+                "Breathing pattern efficiency: mean(VT × RF / VO2) over active blocks",
+            )
+
+    # 21. delta_la_delta_hr
+    _lac_points = lactate_results.get("lactate_points", [])
+    _baseline_lac = lactate_results.get("baseline_lactate")
+    if not _lac_points or _baseline_lac is None:
+        results["delta_la_delta_hr"] = _unsupported(
+            "no lactate data (lactate_results not available or empty)"
+        )
+    elif actual_max_hr is None or resting_hr_bpm is None:
+        results["delta_la_delta_hr"] = _unsupported(
+            "actual_max_hr or resting_hr_bpm missing"
+        )
+    else:
+        _peak_lac = max(
+            (pt["lactate"] for pt in _lac_points if pt.get("lactate") is not None),
+            default=None,
+        )
+        if _peak_lac is None:
+            results["delta_la_delta_hr"] = _unsupported(
+                "could not determine peak lactate from lactate_points"
+            )
+        else:
+            _delta_hr = float(actual_max_hr) - float(resting_hr_bpm)
+            if abs(_delta_hr) < 1e-6:
+                results["delta_la_delta_hr"] = _unsupported(
+                    "actual_max_hr equals resting_hr_bpm; delta HR is zero"
+                )
+            else:
+                results["delta_la_delta_hr"] = _supported(
+                    round((float(_peak_lac) - float(_baseline_lac)) / _delta_hr, 5),
+                    "mmol/L/bpm",
+                    "Delta lactate / delta HR: (peak_lactate - baseline_lactate) / (max_HR - resting_HR)",
+                )
+
+    # 22. hr_ve_ratio
+    if active_bxb.empty or "hr_bpm" not in active_bxb.columns or "ve_lmin" not in active_bxb.columns:
+        results["hr_ve_ratio"] = _unsupported(
+            "hr_bpm or ve_lmin column missing from active BxB"
+        )
+    else:
+        _hr_ve = (
+            active_bxb["hr_bpm"] / active_bxb["ve_lmin"]
+        ).replace([np.inf, -np.inf], np.nan).dropna()
+        if _hr_ve.empty:
+            results["hr_ve_ratio"] = _unsupported(
+                "hr_ve_ratio series is all NaN/inf after computation"
+            )
+        else:
+            results["hr_ve_ratio"] = _supported(
+                round(float(_hr_ve.mean()), 4),
+                "bpm/(L/min)",
+                "HR / VE ratio: cardiac demand relative to ventilatory load",
+            )
+
+    # 23. vt_hr_ve_ratio
+    _vt_hr_ve_cols = {"vt_l", "hr_bpm", "ve_lmin"}
+    if active_bxb.empty or not _vt_hr_ve_cols.issubset(active_bxb.columns):
+        _missing_v = _vt_hr_ve_cols - set(active_bxb.columns) if not active_bxb.empty else _vt_hr_ve_cols
+        results["vt_hr_ve_ratio"] = _unsupported(
+            f"columns missing from active BxB: {', '.join(sorted(_missing_v))}"
+        )
+    else:
+        _vt_hr_ve = (
+            active_bxb["vt_l"] * active_bxb["hr_bpm"] / active_bxb["ve_lmin"]
+        ).replace([np.inf, -np.inf], np.nan).dropna()
+        if _vt_hr_ve.empty:
+            results["vt_hr_ve_ratio"] = _unsupported(
+                "vt_hr_ve_ratio series is all NaN/inf after computation"
+            )
+        else:
+            results["vt_hr_ve_ratio"] = _supported(
+                round(float(_vt_hr_ve.mean()), 5),
+                "L·bpm/(L/min)",
+                "VT × HR / VE: tidal volume scaled cardiac-ventilatory ratio",
+            )
+
+    # 24. vd_vt_ee
+    if vd_vt_mean_val is None:
+        results["vd_vt_ee"] = _unsupported(
+            f"vd_vt_mean unavailable: {_vd_vt_blocker}"
+        )
+    elif active_bxb.empty or "ee_kcal" not in active_bxb.columns:
+        results["vd_vt_ee"] = _unsupported(
+            "ee_kcal column missing from active BxB"
+        )
+    else:
+        _ee_total = active_bxb["ee_kcal"].dropna().sum()
+        if _ee_total == 0:
+            results["vd_vt_ee"] = _unsupported(
+                "ee_kcal sum is zero in active BxB"
+            )
+        else:
+            results["vd_vt_ee"] = _supported(
+                round(vd_vt_mean_val * float(_ee_total), 4),
+                "kcal·ratio",
+                "VD/VT mean × total energy expenditure: dead-space-weighted energy cost",
+            )
+
+    # Remaining phase_3 stubs (out of task scope)
     results["lactate_hr_slope"] = _unsupported(_phase3_blocker)
-    results["hr_ve_ratio"] = _unsupported(_phase3_blocker)
-    results["vt_hr_ve_ratio"] = _unsupported(_phase3_blocker)
     results["breathing_reserve"] = _unsupported(_phase3_blocker)
-    results["delta_la_delta_hr"] = _unsupported(_phase3_blocker)
 
     # Phase 4 (kinetics)
     results["tau_hr_slope"] = _unsupported(_phase4_blocker)
@@ -2390,7 +2584,8 @@ def run_analysis(db_path: Path) -> dict[str, Any]:
     bxb_aligned = data["breath_by_breath"]
     cpm_results = _safe_run("cpm_indices", analyze_cpm_indices,
         bxb_aligned, vo2max_results, vt_results,
-        substrate_results, efficiency_results, hr_results)
+        substrate_results, efficiency_results, hr_results,
+        lactate_results)
     supported_count = sum(1 for v in cpm_results.values() if isinstance(v, dict) and v.get("supported"))
     print(f"   {supported_count} supported indices computed out of {len(cpm_results)} total")
 
