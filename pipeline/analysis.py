@@ -1787,6 +1787,420 @@ def analyze_energy_system(
     return result
 
 
+# ========================================================================
+# 10. CPM Composite Indices
+# ========================================================================
+
+
+def analyze_cpm_indices(
+    bxb: pd.DataFrame,
+    vo2max_results: dict,
+    vt_results: dict,
+    substrate_results: dict,
+    efficiency_results: dict,
+    hr_results: dict,
+) -> dict:
+    """Compute 15 supported CPM composite indices and 21 unsupported stubs.
+
+    Each key maps to either:
+      {"supported": True, "value": <float|str|None>, "unit": "...", "note": "..."}
+    or
+      {"supported": False, "blocker": "<reason>"}
+    """
+
+    def _supported(value, unit: str, note: str = "") -> dict:
+        return {"supported": True, "value": value, "unit": unit, "note": note}
+
+    def _unsupported(blocker: str) -> dict:
+        return {"supported": False, "blocker": blocker}
+
+    results: dict = {}
+
+    # Active BxB window: block_1, block_2, block_3
+    active_bxb: pd.DataFrame = pd.DataFrame()
+    if not bxb.empty and "block" in bxb.columns:
+        active_bxb = bxb[bxb["block"].isin(["block_1", "block_2", "block_3"])].copy()
+
+    # -----------------------------------------------------------------
+    # Pre-extract primitives needed by multiple indices
+    # -----------------------------------------------------------------
+    vo2max_ml = vo2max_results.get("vo2max_ml")
+    vo2max_rel = vo2max_results.get("vo2max_rel")
+    rer_max = vo2max_results.get("rer_max")
+    peak_power_achieved_w = vo2max_results.get("peak_power_achieved_w")
+
+    actual_max_hr = hr_results.get("actual_max_hr")
+    predicted_max_hr = hr_results.get("predicted_max_hr")
+    resting_hr_bpm = hr_results.get("resting_hr_bpm")
+
+    vt1_hr = vt_results.get("vt1_hr")
+    vt1_vo2_ml = vt_results.get("vt1_vo2_ml")
+    vt1_power_w = vt_results.get("vt1_power_w")
+    vt1_time_s = vt_results.get("vt1_time_s")
+    vt2_vo2_ml = vt_results.get("vt2_vo2_ml")
+
+    fatmax_power_w = substrate_results.get("fatmax_power_w")
+
+    # -----------------------------------------------------------------
+    # Cascade primitives computed from active_bxb
+    # -----------------------------------------------------------------
+
+    # ve_vco2_slope
+    ve_vco2_slope_val = None
+    try:
+        if not active_bxb.empty and "ve_lmin" in active_bxb.columns and "vco2_ml" in active_bxb.columns:
+            ab = active_bxb[["ve_lmin", "vco2_ml"]].dropna()
+            if len(ab) >= 2:
+                ve_vco2_slope_val = float(
+                    np.polyfit(ab["ve_lmin"].to_numpy(dtype=float),
+                               ab["vco2_ml"].to_numpy(dtype=float), 1)[0]
+                )
+    except Exception:
+        ve_vco2_slope_val = None
+
+    # o2_pulse
+    o2_pulse_val = None
+    if vo2max_ml is not None and actual_max_hr is not None and actual_max_hr > 0:
+        o2_pulse_val = float(vo2max_ml) / float(actual_max_hr)
+
+    # -----------------------------------------------------------------
+    # 1. ve_vco2_slope  (Cardiac × Pulmonary)
+    # -----------------------------------------------------------------
+    if ve_vco2_slope_val is not None:
+        slope = round(ve_vco2_slope_val, 2)
+        if slope < 30:
+            interp = "Normal (<30)"
+        elif slope < 36:
+            interp = "Borderline (30-35)"
+        else:
+            interp = "Inefficient (≥36)"
+        results["ve_vco2_slope"] = _supported(
+            slope, "mL VCO2 / L/min VE",
+            f"VE-VCO2 slope: {interp}"
+        )
+    else:
+        results["ve_vco2_slope"] = _unsupported(
+            "Insufficient active BxB data or missing ve_lmin/vco2_ml columns"
+        )
+
+    # -----------------------------------------------------------------
+    # 2. chronotropic_index  (Cardiac × Pulmonary)
+    # -----------------------------------------------------------------
+    if resting_hr_bpm is None:
+        results["chronotropic_index"] = _unsupported("resting_hr_bpm is None")
+    elif actual_max_hr is None or predicted_max_hr is None:
+        results["chronotropic_index"] = _unsupported(
+            "actual_max_hr or predicted_max_hr missing"
+        )
+    else:
+        denom = float(predicted_max_hr) - float(resting_hr_bpm)
+        if abs(denom) < 1e-6:
+            results["chronotropic_index"] = _unsupported(
+                "predicted_max_hr equals resting_hr_bpm; division undefined"
+            )
+        else:
+            ci = (float(actual_max_hr) - float(resting_hr_bpm)) / denom
+            results["chronotropic_index"] = _supported(
+                round(ci, 3), "ratio",
+                "Chronotropic index: (actual_max_hr - resting_hr) / (predicted_max_hr - resting_hr)"
+            )
+
+    # -----------------------------------------------------------------
+    # 3. o2_pulse_ml_beat  (Cardiac × Metabolic)
+    # -----------------------------------------------------------------
+    if o2_pulse_val is not None:
+        results["o2_pulse_ml_beat"] = _supported(
+            round(o2_pulse_val, 2), "mL/beat",
+            "VO2max / actual_max_hr"
+        )
+    else:
+        results["o2_pulse_ml_beat"] = _unsupported(
+            "vo2max_ml or actual_max_hr missing/zero"
+        )
+
+    # -----------------------------------------------------------------
+    # 4. vo2_w_slope  (Cardiac × Metabolic)
+    # -----------------------------------------------------------------
+    vo2_slope = efficiency_results.get("vo2_power_slope_ml_per_w")
+    if vo2_slope is not None:
+        results["vo2_w_slope"] = _supported(
+            float(vo2_slope), "mL/W",
+            "VO2-power slope from submax ramp (already computed in efficiency)"
+        )
+    else:
+        results["vo2_w_slope"] = _unsupported(
+            "vo2_power_slope_ml_per_w not computed (insufficient submax stages)"
+        )
+
+    # -----------------------------------------------------------------
+    # 5. mce  (Cardiac × Metabolic)
+    # -----------------------------------------------------------------
+    if rer_max is None:
+        results["mce"] = _unsupported("rer_max is None")
+    elif o2_pulse_val is None:
+        results["mce"] = _unsupported("o2_pulse_ml_beat could not be computed")
+    elif abs(float(rer_max)) < 1e-6:
+        results["mce"] = _unsupported("rer_max is zero; division undefined")
+    else:
+        mce_val = o2_pulse_val / float(rer_max)
+        results["mce"] = _supported(
+            round(mce_val, 3), "mL/beat/RER",
+            "Myocardial contractility estimate: O2 pulse / RER_max"
+        )
+
+    # -----------------------------------------------------------------
+    # 6. fatmax_hr_at_ratio  (Cardiac × Metabolic)
+    # -----------------------------------------------------------------
+    if vt1_hr is None or vt1_hr == 0:
+        results["fatmax_hr_at_ratio"] = _unsupported(
+            "vt1_hr is None or zero"
+        )
+    elif fatmax_power_w is None:
+        results["fatmax_hr_at_ratio"] = _unsupported(
+            "fatmax_power_w missing from substrate results"
+        )
+    else:
+        ratio = float(fatmax_power_w) / float(vt1_hr)
+        results["fatmax_hr_at_ratio"] = _supported(
+            round(ratio, 3), "W/bpm",
+            "FatMax power / VT1 HR ratio"
+        )
+
+    # -----------------------------------------------------------------
+    # 7. weber_class  (Cardiac × Metabolic)
+    # -----------------------------------------------------------------
+    if vo2max_rel is None:
+        results["weber_class"] = _unsupported("vo2max_rel missing")
+    else:
+        rel = float(vo2max_rel)
+        if rel >= 20:
+            wc = "A"
+        elif rel >= 16:
+            wc = "B"
+        elif rel >= 10:
+            wc = "C"
+        else:
+            wc = "D"
+        results["weber_class"] = _supported(
+            wc, "class",
+            f"Weber class based on VO2max {rel:.1f} mL/kg/min"
+        )
+
+    # -----------------------------------------------------------------
+    # 8. oues  (Pulmonary × Metabolic)
+    # -----------------------------------------------------------------
+    oues_val = None
+    try:
+        if not active_bxb.empty and "ve_lmin" in active_bxb.columns and "vo2_ml" in active_bxb.columns:
+            ab_oues = active_bxb[["ve_lmin", "vo2_ml"]].dropna()
+            if len(ab_oues) >= 2:
+                log_ve = np.log10(
+                    ab_oues["ve_lmin"].to_numpy(dtype=float) + 1e-9
+                )
+                oues_val = float(
+                    np.polyfit(log_ve, ab_oues["vo2_ml"].to_numpy(dtype=float), 1)[0]
+                )
+    except Exception:
+        oues_val = None
+
+    if oues_val is not None:
+        results["oues"] = _supported(
+            round(oues_val, 1), "mL/log(L/min)",
+            "Oxygen Uptake Efficiency Slope: polyfit of VO2 vs log10(VE)"
+        )
+    else:
+        results["oues"] = _unsupported(
+            "Insufficient active BxB data or missing ve_lmin/vo2_ml"
+        )
+
+    # -----------------------------------------------------------------
+    # 9. ve_vo2_nadir  (Pulmonary × Metabolic)
+    # -----------------------------------------------------------------
+    if active_bxb.empty or "ve_vo2" not in active_bxb.columns or len(active_bxb) < 30:
+        results["ve_vo2_nadir"] = _unsupported(
+            "Need ≥30 rows in active BxB with ve_vo2 column"
+        )
+    else:
+        nadir = float(
+            active_bxb["ve_vo2"].rolling(30, min_periods=1).mean().min()
+        )
+        results["ve_vo2_nadir"] = _supported(
+            round(nadir, 2), "L/L",
+            "Rolling-30 minimum of VE/VO2 (nadir)"
+        )
+
+    # -----------------------------------------------------------------
+    # 10. foi  (Pulmonary × Metabolic)
+    # -----------------------------------------------------------------
+    if fatmax_power_w is None:
+        results["foi"] = _unsupported("fatmax_power_w missing")
+    elif peak_power_achieved_w is None or peak_power_achieved_w == 0:
+        results["foi"] = _unsupported("peak_power_achieved_w missing or zero")
+    else:
+        foi_val = float(fatmax_power_w) / float(peak_power_achieved_w)
+        results["foi"] = _supported(
+            round(foi_val, 4), "ratio",
+            "Fat Oxidation Index: FatMax power / peak power"
+        )
+
+    # -----------------------------------------------------------------
+    # 11. vmsi  (Pulmonary × Metabolic) — depends on ve_vco2 nadir + rer_max
+    # -----------------------------------------------------------------
+    ve_vco2_nadir_val = None
+    if not active_bxb.empty and "ve_vco2" in active_bxb.columns and len(active_bxb) >= 30:
+        try:
+            ve_vco2_nadir_val = float(
+                active_bxb["ve_vco2"].rolling(30, min_periods=1).mean().min()
+            )
+        except Exception:
+            ve_vco2_nadir_val = None
+
+    if ve_vco2_nadir_val is None:
+        results["vmsi"] = _unsupported(
+            "Could not compute VE/VCO2 nadir (need ≥30 active BxB rows with ve_vco2)"
+        )
+    elif rer_max is None:
+        results["vmsi"] = _unsupported("rer_max is None")
+    else:
+        vmsi_val = ve_vco2_nadir_val * float(rer_max)
+        results["vmsi"] = _supported(
+            round(vmsi_val, 3), "ratio",
+            "VE/VCO2 nadir × RER_max"
+        )
+
+    # -----------------------------------------------------------------
+    # 12. abr  (Pulmonary × Metabolic)
+    # -----------------------------------------------------------------
+    if vt1_vo2_ml is None:
+        results["abr"] = _unsupported("vt1_vo2_ml missing")
+    elif vo2max_ml is None or float(vo2max_ml) == 0:
+        results["abr"] = _unsupported("vo2max_ml missing or zero")
+    else:
+        abr_val = float(vt1_vo2_ml) / float(vo2max_ml)
+        results["abr"] = _supported(
+            round(abr_val, 4), "ratio",
+            "Aerobic Base Ratio: VT1_VO2 / VO2max"
+        )
+
+    # -----------------------------------------------------------------
+    # 13. bcr  (Pulmonary × Metabolic)
+    # -----------------------------------------------------------------
+    if vt1_vo2_ml is None or vt2_vo2_ml is None:
+        results["bcr"] = _unsupported("vt1_vo2_ml or vt2_vo2_ml missing")
+    elif vo2max_ml is None or float(vo2max_ml) == 0:
+        results["bcr"] = _unsupported("vo2max_ml missing or zero")
+    else:
+        bcr_val = (float(vt2_vo2_ml) - float(vt1_vo2_ml)) / float(vo2max_ml)
+        results["bcr"] = _supported(
+            round(bcr_val, 4), "ratio",
+            "Buffer Capacity Ratio: (VT2_VO2 - VT1_VO2) / VO2max"
+        )
+
+    # -----------------------------------------------------------------
+    # 14. aer  (3-domain) — cascade from ve_vco2_slope and o2_pulse
+    # -----------------------------------------------------------------
+    if not results["ve_vco2_slope"]["supported"]:
+        results["aer"] = _unsupported(
+            f"ve_vco2_slope unsupported: {results['ve_vco2_slope']['blocker']}"
+        )
+    elif not results["o2_pulse_ml_beat"]["supported"]:
+        results["aer"] = _unsupported(
+            f"o2_pulse_ml_beat unsupported: {results['o2_pulse_ml_beat']['blocker']}"
+        )
+    else:
+        slope_val = float(results["ve_vco2_slope"]["value"])
+        pulse_val = float(results["o2_pulse_ml_beat"]["value"])
+        denom = slope_val * pulse_val
+        if abs(denom) < 1e-9:
+            results["aer"] = _unsupported(
+                "ve_vco2_slope × o2_pulse is zero; division undefined"
+            )
+        else:
+            aer_val = float(vo2max_ml) / denom
+            results["aer"] = _supported(
+                round(aer_val, 4), "ratio",
+                "Aerobic Efficiency Ratio: VO2max / (VE/VCO2 slope × O2 pulse)"
+            )
+
+    # -----------------------------------------------------------------
+    # 15. sci  (3-domain) — depends on vt1_time_s and ve at VT1 window
+    # -----------------------------------------------------------------
+    if vt1_time_s is None:
+        results["sci"] = _unsupported("vt1_time_s is None")
+    elif vt1_hr is None or vt1_hr == 0:
+        results["sci"] = _unsupported("vt1_hr is None or zero")
+    elif vt1_power_w is None:
+        results["sci"] = _unsupported("vt1_power_w is None")
+    elif bxb.empty or "ve_lmin" not in bxb.columns or "t_s" not in bxb.columns:
+        results["sci"] = _unsupported(
+            "bxb missing or lacks ve_lmin/t_s for VT1 window lookup"
+        )
+    else:
+        window_mask = (bxb["t_s"] - float(vt1_time_s)).abs() <= 30
+        window_rows = bxb.loc[window_mask, "ve_lmin"].dropna()
+        if window_rows.empty:
+            results["sci"] = _unsupported(
+                "No BxB rows within ±30s of vt1_time_s; empty VE window"
+            )
+        else:
+            ve_at_vt1 = float(window_rows.mean())
+            if abs(float(vt1_hr) * ve_at_vt1) < 1e-9:
+                results["sci"] = _unsupported(
+                    "vt1_hr × ve_at_vt1 is zero; division undefined"
+                )
+            else:
+                sci_val = float(vt1_power_w) / (float(vt1_hr) * ve_at_vt1)
+                results["sci"] = _supported(
+                    round(sci_val, 5), "W/(bpm·L/min)",
+                    f"Substrate-Cardiac Index: VT1_power / (VT1_HR × VE_at_VT1). VE@VT1={ve_at_vt1:.1f}"
+                )
+
+    # -----------------------------------------------------------------
+    # 21 UNSUPPORTED stubs
+    # -----------------------------------------------------------------
+    _bp_blocker = "requires blood pressure measurement (not collected)"
+    _sv_blocker = "requires stroke volume measurement (not collected)"
+    _phase3_blocker = "requires Phase 3 recovery/post-exercise data (not in current protocol)"
+    _phase4_blocker = "requires Phase 4 kinetics data (not in current protocol)"
+    _proprietary_blocker = "ZeLiA proprietary algorithm; not implemented"
+
+    # BP-dependent
+    results["rpp"] = _unsupported(_bp_blocker)
+    results["ventilatory_power"] = _unsupported(_bp_blocker)
+    results["rpp_ve_ratio"] = _unsupported(_bp_blocker)
+    results["sv_vd_vt"] = _unsupported(f"{_bp_blocker}; also requires stroke volume")
+
+    # SV-dependent
+    results["sv_ge"] = _unsupported(_sv_blocker)
+    results["cardiac_metabolic_output"] = _unsupported(_sv_blocker)
+
+    # Phase 3 (HRR1 / VD-VT)
+    results["hrr1_ve_vco2_product"] = _unsupported(_phase3_blocker)
+    results["rci"] = _unsupported(_phase3_blocker)
+    results["vd_vt_mean"] = _unsupported(_phase3_blocker)
+    results["vd_vt_at_vt2"] = _unsupported(_phase3_blocker)
+    results["vd_vt_ee"] = _unsupported(_phase3_blocker)
+    results["breathing_pattern_eff"] = _unsupported(_phase3_blocker)
+    results["lactate_hr_slope"] = _unsupported(_phase3_blocker)
+    results["hr_ve_ratio"] = _unsupported(_phase3_blocker)
+    results["vt_hr_ve_ratio"] = _unsupported(_phase3_blocker)
+    results["breathing_reserve"] = _unsupported(_phase3_blocker)
+    results["delta_la_delta_hr"] = _unsupported(_phase3_blocker)
+
+    # Phase 4 (kinetics)
+    results["tau_hr_slope"] = _unsupported(_phase4_blocker)
+    results["epoc_vo2peak"] = _unsupported(_phase4_blocker)
+
+    # ZeLiA proprietary
+    results["fzi_cardiopulmonary"] = _unsupported(_proprietary_blocker)
+    results["mri_composite"] = _unsupported(_proprietary_blocker)
+    results["iee"] = _unsupported(_proprietary_blocker)
+    results["lpi"] = _unsupported(_proprietary_blocker)
+    results["longevity_pi"] = _unsupported(_proprietary_blocker)
+
+    return results
+
+
 def store_results(db_path: Path, all_results: dict[str, Any]) -> None:
     """Store analysis results in SQLite.
 
@@ -1972,6 +2386,14 @@ def run_analysis(db_path: Path) -> dict[str, Any]:
     else:
         print(f"   Skipped ({', '.join(energy_system_results.get('warnings', []))})")
 
+    print("\n10. CPM Composite Indices...")
+    bxb_aligned = data["breath_by_breath"]
+    cpm_results = _safe_run("cpm_indices", analyze_cpm_indices,
+        bxb_aligned, vo2max_results, vt_results,
+        substrate_results, efficiency_results, hr_results)
+    supported_count = sum(1 for v in cpm_results.values() if isinstance(v, dict) and v.get("supported"))
+    print(f"   {supported_count} supported indices computed out of {len(cpm_results)} total")
+
     all_results = {
         "lactate": lactate_results,
         "clearance": clearance_results,
@@ -1982,6 +2404,7 @@ def run_analysis(db_path: Path) -> dict[str, Any]:
         "hr": hr_results,
         "training_zones": zone_results,
         "energy_system": energy_system_results,
+        "cpm_indices": cpm_results,
     }
     protocol_results = _infer_protocol_metadata(data, substrate_results)
     suitability_results = _build_protocol_metric_suitability(
@@ -1990,10 +2413,10 @@ def run_analysis(db_path: Path) -> dict[str, Any]:
     all_results["protocol"] = protocol_results
     all_results["suitability"] = suitability_results
 
-    # Step 10: CP / W' model (FIT-based)
+    # Step 11: CP / W' model (FIT-based)
     fit_paths = list(db_path.parent.glob("*.fit"))
     if fit_paths:
-        print("\n10. Critical Power / W' Model...")
+        print("\n11. Critical Power / W' Model...")
         from pipeline.fit_history import extract_workout_bests, save_fit_history
         from pipeline.cp_model import compute_cp_model
         history = extract_workout_bests(fit_paths)
