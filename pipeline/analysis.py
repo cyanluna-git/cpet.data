@@ -1800,6 +1800,7 @@ def analyze_cpm_indices(
     efficiency_results: dict,
     hr_results: dict,
     lactate_results: dict | None = None,
+    energy_system_results: dict | None = None,
 ) -> dict:
     """Compute 15 supported CPM composite indices and 21 unsupported stubs.
 
@@ -1811,6 +1812,8 @@ def analyze_cpm_indices(
     Args:
         lactate_results: Optional output of analyze_lactate(); used for
             delta_la_delta_hr. Pass {} or omit when no blood samples exist.
+        energy_system_results: Optional output of analyze_energy_system(); used
+            for tau_hr_slope and epoc_vo2peak. Pass {} or omit when unavailable.
     """
 
     def _supported(value, unit: str, note: str = "") -> dict:
@@ -1821,6 +1824,8 @@ def analyze_cpm_indices(
 
     if lactate_results is None:
         lactate_results = {}
+    if energy_system_results is None:
+        energy_system_results = {}
 
     results: dict = {}
 
@@ -2381,9 +2386,46 @@ def analyze_cpm_indices(
     results["lactate_hr_slope"] = _unsupported(_phase3_blocker)
     results["breathing_reserve"] = _unsupported(_phase3_blocker)
 
-    # Phase 4 (kinetics)
-    results["tau_hr_slope"] = _unsupported(_phase4_blocker)
-    results["epoc_vo2peak"] = _unsupported(_phase4_blocker)
+    # Phase 4 (kinetics) — derived from energy_system mono-exp fit
+    _mono_fit = energy_system_results.get("mono_exp_fit")  # None if fit failed/skipped
+    _tau_sec = _mono_fit.get("tau_sec") if _mono_fit else None
+    _amp_l_min = _mono_fit.get("amplitude_l_min") if _mono_fit else None
+    _hr_power_slope = hr_results.get("hr_power_slope")
+
+    # tau_hr_slope = tau_off_sec × hr_power_slope  [sec·bpm/W]
+    if _tau_sec is None:
+        results["tau_hr_slope"] = _unsupported(
+            "mono-exp recovery fit not available (energy_system_results.mono_exp_fit missing)"
+        )
+    elif _hr_power_slope is None:
+        results["tau_hr_slope"] = _unsupported(
+            "hr_power_slope not computed (insufficient staged HR-power data)"
+        )
+    else:
+        results["tau_hr_slope"] = _supported(
+            round(float(_tau_sec) * float(_hr_power_slope), 3),
+            "sec·bpm/W",
+            f"tau_off ({_tau_sec:.1f}s) × HR-power slope ({_hr_power_slope:.3f} bpm/W)",
+        )
+
+    # epoc_vo2peak = EPOC_mL / VO2peak_mL  [dimensionless]
+    # EPOC_mL = amplitude (L/min) × tau (sec) / 60 × 1000 mL/L
+    if _tau_sec is None or _amp_l_min is None:
+        results["epoc_vo2peak"] = _unsupported(
+            "mono-exp recovery fit not available (energy_system_results.mono_exp_fit missing)"
+        )
+    elif vo2max_ml is None or float(vo2max_ml) == 0:
+        results["epoc_vo2peak"] = _unsupported(
+            "vo2max_ml missing or zero; cannot normalise EPOC"
+        )
+    else:
+        epoc_ml = float(_amp_l_min) * float(_tau_sec) / 60.0 * 1000.0
+        results["epoc_vo2peak"] = _supported(
+            round(epoc_ml / float(vo2max_ml), 4),
+            "ratio",
+            f"EPOC ({epoc_ml:.1f} mL O2) / VO2peak ({vo2max_ml:.0f} mL); "
+            f"EPOC = amplitude ({_amp_l_min:.4f} L/min) × tau ({_tau_sec:.1f}s) / 60 × 1000",
+        )
 
     # ZeLiA proprietary
     results["fzi_cardiopulmonary"] = _unsupported(_proprietary_blocker)
@@ -2585,7 +2627,7 @@ def run_analysis(db_path: Path) -> dict[str, Any]:
     cpm_results = _safe_run("cpm_indices", analyze_cpm_indices,
         bxb_aligned, vo2max_results, vt_results,
         substrate_results, efficiency_results, hr_results,
-        lactate_results)
+        lactate_results, energy_system_results)
     supported_count = sum(1 for v in cpm_results.values() if isinstance(v, dict) and v.get("supported"))
     print(f"   {supported_count} supported indices computed out of {len(cpm_results)} total")
 
