@@ -94,6 +94,13 @@ Important variables:
 미커밋 변경사항 커밋 → `git push` → VM `git pull` → uvicorn 재시작 → 헬스체크.
 상세 절차: `.claude/skills/deploy/skill.md`
 
+### `/update-claude` — 서버 Claude Code 버전 업데이트
+
+**자동 트리거:** "webhook 클로드 버전 업데이트", "서버 claude 업데이트", "claude 업그레이드" 패턴 감지 시 자동 실행.
+
+로컬/서버 버전 확인 → `sudo npm update -g @anthropic-ai/claude-code` → 결과 검증.
+상세 절차: `.claude/skills/update-claude/skill.md`
+
 ## Memory & Shared Rules
 
 See `.claude/rules/` for shared coding conventions:
