@@ -767,6 +767,52 @@ def build_report_registry(context: dict[str, Any]) -> dict[str, Any]:
         ]
     )
 
+    # CPM indices: add 4 summary KPI cards when supported
+    cpm = analysis.get("cpm_indices", {})
+    o2_pulse = cpm.get("o2_pulse_ml_beat", {})
+    if o2_pulse.get("supported"):
+        kpis.append(
+            {
+                "label": "O₂ Pulse",
+                "value": format_number(o2_pulse.get("value"), 2),
+                "unit": o2_pulse.get("unit", "mL/beat"),
+                "note": o2_pulse.get("note", "VO2max / actual_max_hr"),
+            }
+        )
+
+    ve_vco2 = cpm.get("ve_vco2_slope", {})
+    if ve_vco2.get("supported"):
+        kpis.append(
+            {
+                "label": "VE/VCO₂ Slope",
+                "value": format_number(ve_vco2.get("value"), 1),
+                "unit": ve_vco2.get("unit", ""),
+                "note": ve_vco2.get("note", ""),
+            }
+        )
+
+    oues = cpm.get("oues", {})
+    if oues.get("supported"):
+        kpis.append(
+            {
+                "label": "OUES",
+                "value": format_number(oues.get("value"), 0),
+                "unit": oues.get("unit", "mL/log(L/min)"),
+                "note": oues.get("note", "Oxygen Uptake Efficiency Slope"),
+            }
+        )
+
+    weber = cpm.get("weber_class", {})
+    if weber.get("supported"):
+        kpis.append(
+            {
+                "label": "Weber Class",
+                "value": str(weber.get("value", "-")),
+                "unit": weber.get("unit", "class"),
+                "note": weber.get("note", ""),
+            }
+        )
+
     return {
         "kpis": kpis,
         "show_clearance": has_blood and clearance.get("status") == "supported",
@@ -789,6 +835,150 @@ def build_report_registry(context: dict[str, Any]) -> dict[str, Any]:
             else "Power 축에서 Fat, CHO, energy를 함께 보고 FatMax band와 FTP 기준 hourly cost를 코칭 관점으로 해석합니다."
         ),
     }
+
+
+def build_cpm_panel(cpm_indices: dict[str, Any]) -> str:
+    """Build the CPM Composite Indices HTML section with 5 subsection panels.
+
+    Returns an empty string when cpm_indices is empty or missing.
+    Supported indices are shown as full cards; unsupported ones as grayed-out stubs.
+    """
+    if not cpm_indices:
+        return ""
+
+    def _cpm_card(key: str, label: str) -> str:
+        entry = cpm_indices.get(key, {})
+        if entry.get("supported"):
+            value = entry.get("value")
+            unit = html_text(entry.get("unit") or "")
+            note = html_text(entry.get("note") or "")
+            if isinstance(value, float):
+                display = format_number(value, 2)
+            else:
+                display = html_text(str(value)) if value is not None else "-"
+            return (
+                f'<article class="kpi-card">'
+                f'<span class="kpi-label">{html_text(label)}</span>'
+                f'<strong class="kpi-value">{display}</strong>'
+                f'<span class="kpi-unit">{unit}</span>'
+                f'<p class="kpi-note">{note}</p>'
+                f"</article>"
+            )
+        else:
+            blocker = html_text(entry.get("blocker") or "데이터 미수집")
+            return (
+                f'<article class="kpi-card" style="opacity:0.45;">'
+                f'<span class="kpi-label">{html_text(label)}</span>'
+                f'<strong class="kpi-value" style="font-size:1rem;color:var(--muted,#60707a);">—</strong>'
+                f'<span class="kpi-unit"></span>'
+                f'<p class="kpi-note" style="font-size:0.75rem;">{blocker}</p>'
+                f"</article>"
+            )
+
+    def _subsection(tag: str, title: str, desc: str, keys_labels: list[tuple[str, str]]) -> str:
+        cards = "".join(_cpm_card(k, lbl) for k, lbl in keys_labels)
+        return f"""
+    <div style="margin-top:24px;">
+      <h3 style="font-size:0.9rem;font-weight:600;color:var(--muted,#60707a);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">{html_text(tag)}</h3>
+      <p style="font-size:0.85rem;color:var(--muted,#60707a);margin-bottom:12px;">{html_text(desc)}</p>
+      <div class="kpi-grid">{cards}</div>
+    </div>"""
+
+    cardiac_pulmonary = _subsection(
+        "Cardiac × Pulmonary",
+        "심장·폐 지표",
+        "심폐 효율성 — 환기 반응, 심박 반응성",
+        [
+            ("ve_vco2_slope", "VE/VCO₂ Slope"),
+            ("chronotropic_index", "Chronotropic Index"),
+            ("hr_ve_ratio", "HR/VE Ratio"),
+            ("vt_hr_ve_ratio", "VT×HR/VE"),
+        ],
+    )
+
+    cardiac_metabolic = _subsection(
+        "Cardiac × Metabolic",
+        "심장·대사 지표",
+        "심박출량과 대사 효율의 통합 지표",
+        [
+            ("o2_pulse_ml_beat", "O₂ Pulse"),
+            ("vo2_w_slope", "VO₂/W Slope"),
+            ("mce", "MCE"),
+            ("fatmax_hr_at_ratio", "FatMax/VT1-HR"),
+            ("weber_class", "Weber Class"),
+            ("rci", "Recovery Cardiac Index"),
+        ],
+    )
+
+    pulmonary_metabolic = _subsection(
+        "Pulmonary × Metabolic",
+        "폐·대사 지표",
+        "환기 효율과 기질 산화 연관 지표",
+        [
+            ("oues", "OUES"),
+            ("ve_vo2_nadir", "VE/VO₂ Nadir"),
+            ("foi", "Fat Oxidation Index"),
+            ("vmsi", "VMSI"),
+            ("abr", "Aerobic Base Ratio"),
+            ("bcr", "Buffer Capacity Ratio"),
+            ("breathing_pattern_eff", "Breathing Pattern Eff"),
+            ("vd_vt_mean", "VD/VT Mean"),
+        ],
+    )
+
+    three_domain = _subsection(
+        "3-Domain Composite",
+        "3-도메인 복합 지표",
+        "심장·폐·대사를 통합한 복합 효율 지표",
+        [
+            ("aer", "Aerobic Efficiency Ratio"),
+            ("sci", "Substrate-Cardiac Index"),
+            ("tau_hr_slope", "τ × HR Slope"),
+            ("epoc_vo2peak", "EPOC/VO₂peak"),
+            ("hrr1_ve_vco2_product", "HRR1 × VE/VCO₂"),
+        ],
+    )
+
+    blocker_keys = [
+        ("rpp", "RPP"),
+        ("ventilatory_power", "Ventilatory Power"),
+        ("rpp_ve_ratio", "RPP/VE Ratio"),
+        ("sv_vd_vt", "SV·VD/VT"),
+        ("sv_ge", "SV GE"),
+        ("cardiac_metabolic_output", "Cardiac Metabolic Output"),
+        ("vd_vt_at_vt2", "VD/VT @ VT2"),
+        ("vd_vt_ee", "VD/VT × EE"),
+        ("delta_la_delta_hr", "ΔLa/ΔHR"),
+        ("lactate_hr_slope", "Lactate-HR Slope"),
+        ("breathing_reserve", "Breathing Reserve"),
+        ("fzi_cardiopulmonary", "FZI Cardiopulmonary"),
+        ("mri_composite", "MRI Composite"),
+        ("iee", "IEE"),
+        ("lpi", "LPI"),
+        ("longevity_pi", "Longevity PI"),
+    ]
+    blocker_section = _subsection(
+        "Blocker Indices",
+        "블로커 지수 (데이터 미수집)",
+        "혈압·스트로크볼륨·Phase3/4·독점 알고리즘 등 현재 프로토콜에서 수집되지 않는 지표",
+        blocker_keys,
+    )
+
+    return f"""
+    <section class="section" id="cpm-indices">
+      <div class="section-header">
+        <div>
+          <span class="section-tag">CPM Composite Indices</span>
+          <h2>CPM 복합 지표</h2>
+          <p>심장(Cardiac) · 폐(Pulmonary) · 대사(Metabolic) 도메인을 교차한 복합 생리지표입니다. 지원되지 않는 지표는 회색으로 표시됩니다.</p>
+        </div>
+      </div>
+      {cardiac_pulmonary}
+      {cardiac_metabolic}
+      {pulmonary_metabolic}
+      {three_domain}
+      {blocker_section}
+    </section>"""
 
 
 def build_report_context(db_path: Path) -> dict[str, Any]:
@@ -1151,6 +1341,8 @@ def render_html(context: dict[str, Any]) -> str:
         {fit_html}{warnings_html}
       </div>
     </section>"""
+
+    cpm_panel_section = build_cpm_panel(analysis.get("cpm_indices", {}))
 
     blood_table = render_table(
         ["Block", "Step", "Load", "%FTP", "Duration", "HR", "Lactate", "Glucose", "Notes"],
@@ -2034,6 +2226,8 @@ def render_html(context: dict[str, Any]) -> str:
     {fuel_contribution_section}
 
     {energy_system_section}
+
+    {cpm_panel_section}
 
     <section class="section" id="tables">
       <div class="section-header">
