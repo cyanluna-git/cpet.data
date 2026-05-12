@@ -1189,7 +1189,17 @@ def analyze_hr(
         }
     results["hr_by_block"] = hr_by_block
 
+    # Resting HR: mean of first 60 s in the rest block
+    rest_bd = workout[workout["block"] == "rest"].dropna(subset=["hr_bpm", "elapsed_s"])
+    if rest_bd.empty:
+        results["resting_hr_bpm"] = None
+    else:
+        t0_rest = float(rest_bd["elapsed_s"].iloc[0])
+        rest_window = rest_bd[rest_bd["elapsed_s"] <= t0_rest + 60]
+        results["resting_hr_bpm"] = round(float(rest_window["hr_bpm"].mean()), 1) if not rest_window.empty else None
+
     recovery_metrics: dict[str, dict[str, Any]] = {}
+    results["hrr1_bpm"] = None
     for block in ["recovery_1", "recovery_2"]:
         bd = workout[workout["block"] == block]
         if bd.empty:
@@ -1201,6 +1211,13 @@ def analyze_hr(
             "end_hr_bpm": round(end_hr, 1),
             "delta_bpm": round(end_hr - start_hr, 1),
         }
+        if block == "recovery_1":
+            rec1 = bd.dropna(subset=["hr_bpm", "elapsed_s"])
+            if not rec1.empty:
+                t0_rec = float(rec1["elapsed_s"].iloc[0])
+                rec1_window = rec1[rec1["elapsed_s"] <= t0_rec + 60]
+                hr_at_60 = float(rec1_window["hr_bpm"].iloc[-1]) if not rec1_window.empty else float(rec1["hr_bpm"].iloc[-1])
+                results["hrr1_bpm"] = round(float(rec1["hr_bpm"].iloc[0]) - hr_at_60, 1)
     results["hr_recovery"] = recovery_metrics
 
     b1 = workout[workout["block"] == "block_1"]
