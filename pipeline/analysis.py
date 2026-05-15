@@ -226,15 +226,25 @@ def _apply_nolte_smoothing(
     return np.interp(t_s, t_grid, smoothed_grid)
 
 
-def _preprocess_bxb(bxb: pd.DataFrame) -> pd.DataFrame:
-    """Apply 5-second smoothing and 30% local-median outlier removal to BxB data.
+def _preprocess_bxb(bxb: pd.DataFrame, method: str = "butterworth") -> pd.DataFrame:
+    """Apply Nolte smoothing and 30% local-median outlier removal to BxB data.
 
-    Step 1: Time-based 5s rolling mean on vo2_ml, vco2_ml, ve_lmin.
-    Step 2: Local median filter (±5 breaths) — values deviating >30% from
+    Step 1: Local median filter (±5 breaths) — values deviating >30% from
             local median are replaced with NaN, then linearly interpolated.
             Gaps >30s in t_s are not interpolated across.
+    Step 2: Nolte smoothing (Butterworth low-pass or moving average) applied
+            to vo2_ml, vco2_ml, ve_lmin on a 1 Hz uniform time grid.
+    Step 3: Recompute derived ratios (rq, ve_vo2, ve_vco2) from smoothed
+            components.
 
-    Returns the preprocessed DataFrame (copy). Skips if <10 breaths.
+    Args:
+        bxb: Raw breath-by-breath DataFrame.
+        method: Smoothing method passed to _apply_nolte_smoothing —
+                "butterworth" (default) or "moving_average".
+
+    Returns:
+        The preprocessed DataFrame (copy). Skips preprocessing if <10 breaths
+        or required columns are missing.
     """
     if bxb.empty or len(bxb) < 10:
         return bxb.copy()
@@ -246,20 +256,7 @@ def _preprocess_bxb(bxb: pd.DataFrame) -> pd.DataFrame:
     df = bxb.copy().sort_values("t_s").reset_index(drop=True)
 
     # ------------------------------------------------------------------
-    # Step 1: 5-second time-based rolling mean
-    # ------------------------------------------------------------------
-    # Create a temporary DatetimeIndex from t_s for time-based rolling
-    df["_dt"] = pd.to_timedelta(df["t_s"], unit="s")
-    df = df.set_index("_dt")
-
-    for col in _BXB_PREPROCESS_COLS:
-        if col in df.columns:
-            df[col] = df[col].rolling("5s", min_periods=1).mean()
-
-    df = df.reset_index(drop=True)
-
-    # ------------------------------------------------------------------
-    # Step 2: 30% local-median outlier removal
+    # Step 1: 30% local-median outlier removal
     # ------------------------------------------------------------------
     for col in _BXB_PREPROCESS_COLS:
         if col not in df.columns:
@@ -290,10 +287,32 @@ def _preprocess_bxb(bxb: pd.DataFrame) -> pd.DataFrame:
                 segment = df[col].iloc[start:end]
                 df[col].iloc[start:end] = segment.interpolate(method="linear")
 
-    # Recalculate RQ after smoothing + outlier removal
+    # ------------------------------------------------------------------
+    # Step 2: Nolte smoothing
+    # ------------------------------------------------------------------
+    t_s_arr = df["t_s"].values
+    for col in _BXB_PREPROCESS_COLS:
+        if col in df.columns:
+            df[col] = _apply_nolte_smoothing(t_s_arr, df[col].values, method=method)
+
+    # ------------------------------------------------------------------
+    # Step 3: Recompute derived ratios from smoothed components
+    # ------------------------------------------------------------------
     if "rq" in df.columns and "vo2_ml" in df.columns and "vco2_ml" in df.columns:
         valid_vo2 = df["vo2_ml"] > 0
         df.loc[valid_vo2, "rq"] = df.loc[valid_vo2, "vco2_ml"] / df.loc[valid_vo2, "vo2_ml"]
+
+    if "ve_vo2" in df.columns and "vo2_ml" in df.columns and "ve_lmin" in df.columns:
+        valid_vo2 = df["vo2_ml"] > 0
+        df.loc[valid_vo2, "ve_vo2"] = df.loc[valid_vo2, "ve_lmin"] / (
+            df.loc[valid_vo2, "vo2_ml"] / 1000.0
+        )
+
+    if "ve_vco2" in df.columns and "vco2_ml" in df.columns and "ve_lmin" in df.columns:
+        valid_vco2 = df["vco2_ml"] > 0
+        df.loc[valid_vco2, "ve_vco2"] = df.loc[valid_vco2, "ve_lmin"] / (
+            df.loc[valid_vco2, "vco2_ml"] / 1000.0
+        )
 
     return df
 

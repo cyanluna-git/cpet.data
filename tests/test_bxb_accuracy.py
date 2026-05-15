@@ -2,7 +2,7 @@
 tests/test_bxb_accuracy.py — E2E accuracy tests for BxB preprocessing algorithm.
 
 Covers:
-  1. Accuracy: hand-calculated 5s smoothing, spike removal + interpolation,
+  1. Accuracy: Nolte smoothing variance reduction, spike removal + interpolation,
      nlargest(3).mean() VO2max within +-1% of manual computation.
   2. Full pipeline integration on park_geunyun and hong_changsun fixtures:
      verify vo2max_method, triplet metadata, physiological range.
@@ -75,23 +75,23 @@ def _assert_within_pct(
 
 
 # ===========================================================================
-# 1. Accuracy Tests — 5s Smoothing
+# 1. Accuracy Tests — Nolte Smoothing
 # ===========================================================================
 
 
 class TestSmoothingAccuracy:
-    """Verify exact 5s rolling mean output on hand-crafted synthetic data."""
+    """Verify Nolte smoothing (Butterworth low-pass) behaviour on hand-crafted data."""
 
-    def test_exact_5s_smoothing_values(self) -> None:
-        """Build a BxB where we know the exact 5s rolling mean result.
+    def test_nolte_smoothing_reduces_variance(self) -> None:
+        """Nolte smoothing should reduce variance on noisy data.
 
-        Layout: 20 breaths at exactly 1s intervals (t=1,2,...,20).
-        vo2_ml = [100, 200, 300, ...] (100*i).
-        5s rolling window at t=10 captures breaths at t=6,7,8,9,10 -> mean(600,700,800,900,1000)=800.
+        Layout: 60 breaths at ~2s intervals over 120s.
+        Heavy noise (std=300) so smoothing effect is clearly visible.
         """
-        n = 20
-        t_s = np.arange(1.0, n + 1.0)  # 1s spacing
-        vo2 = t_s * 100.0  # 100, 200, ..., 2000
+        rng = np.random.RandomState(0)
+        n = 60
+        t_s = np.linspace(1.0, 120.0, n)
+        vo2 = 3000.0 + rng.normal(0, 300.0, size=n)
         vco2 = vo2 * 0.85
         ve = vo2 / 50.0
 
@@ -107,44 +107,23 @@ class TestSmoothingAccuracy:
 
         processed = _preprocess_bxb(df)
 
-        # After 5s rolling mean, the value at t=10 (index 9 after sort)
-        # should be mean of breaths within [10-5, 10] = [5,10] seconds.
-        # That's t=6,7,8,9,10 -> vo2 = 600,700,800,900,1000 -> mean = 800.
-        # But after smoothing, outlier removal follows. With this linear data
-        # no outliers should be flagged, so smoothed values stay.
-
-        # For the first few breaths the window is smaller (min_periods=1).
-        # At t=5 (index 4), window covers t=1..5 -> mean(100..500) = 300
-        # At t=10 (index 9), window covers t=6..10 -> mean(600..1000) = 800
-
-        # The smoothing uses pd.to_timedelta, so the "5s" window captures
-        # all values within 5 seconds before each point.
-        # At t=5.0s: window = [1.0, 5.0] -> indices 0-4 -> mean(100..500) = 300
-        idx_5 = 4   # t=5s
-        idx_10 = 9  # t=10s
-
-        expected_at_5 = np.mean([100, 200, 300, 400, 500])  # 300
-        expected_at_10 = np.mean([600, 700, 800, 900, 1000])  # 800
-
-        # Allow tiny floating point tolerance
-        np.testing.assert_allclose(
-            processed.iloc[idx_5]["vo2_ml"], expected_at_5, rtol=1e-10,
-            err_msg="5s smoothing at t=5s should equal mean of t=1..5"
+        # Nolte Butterworth smoothing must reduce variance
+        assert processed["vo2_ml"].std() < vo2.std(), (
+            "Nolte smoothing should reduce vo2_ml variance"
         )
-        np.testing.assert_allclose(
-            processed.iloc[idx_10]["vo2_ml"], expected_at_10, rtol=1e-10,
-            err_msg="5s smoothing at t=10s should equal mean of t=6..10"
+        # Mean should be approximately preserved (within 5%)
+        assert abs(processed["vo2_ml"].mean() - vo2.mean()) / vo2.mean() < 0.05, (
+            "Nolte smoothing should preserve mean within 5%"
         )
 
     def test_smoothing_with_uneven_breath_spacing(self) -> None:
-        """Uneven breath timing: verify 5s window picks correct breaths."""
-        # Breaths at t = [1, 2, 3, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-        # Gap between t=3 and t=8 means at t=10, window=[6,10] captures only t=8,9,10
-        t_s = np.array([1, 2, 3, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
-                       dtype=float)
-        vo2 = np.array([100, 200, 300, 800, 900, 1000,
-                        1100, 1200, 1300, 1400, 1500, 1600,
-                        1700, 1800, 1900, 2000], dtype=float)
+        """Nolte smoothing on unevenly-spaced breaths should reduce variance."""
+        rng = np.random.RandomState(1)
+        t_s = np.array([1, 2, 3, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+                        21, 22, 23, 24], dtype=float)
+        n = len(t_s)
+        base_vo2 = 3000.0
+        vo2 = base_vo2 + rng.normal(0, 300.0, size=n)
         vco2 = vo2 * 0.85
         ve = vo2 / 50.0
 
@@ -154,20 +133,19 @@ class TestSmoothingAccuracy:
             "vco2_ml": vco2,
             "ve_lmin": ve,
             "rq": vco2 / vo2,
-            "hr_bpm": np.full(len(t_s), 140.0),
-            "bike_power_w": np.full(len(t_s), 200.0),
+            "hr_bpm": np.full(n, 140.0),
+            "bike_power_w": np.full(n, 200.0),
         })
 
         processed = _preprocess_bxb(df)
 
-        # At t=10 (index 5 in sorted df), 5s window = [5,10] -> t=8,9,10
-        # mean(800,900,1000) = 900
-        idx_t10 = 5
-        expected_at_10 = np.mean([800, 900, 1000])
-
-        np.testing.assert_allclose(
-            processed.iloc[idx_t10]["vo2_ml"], expected_at_10, rtol=1e-10,
-            err_msg="Uneven spacing: 5s window at t=10 should include t=8,9,10 only"
+        # Nolte smoothing reduces variance even with uneven spacing
+        assert processed["vo2_ml"].std() < vo2.std(), (
+            "Nolte smoothing should reduce variance on uneven spacing"
+        )
+        # Output length must be preserved
+        assert len(processed) == len(df), (
+            "Preprocessing must not change DataFrame length"
         )
 
 

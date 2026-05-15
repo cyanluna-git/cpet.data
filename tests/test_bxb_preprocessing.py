@@ -2,8 +2,8 @@
 tests/test_bxb_preprocessing.py — Unit tests for BxB preprocessing algorithm.
 
 Covers:
-  - 5-second time-based rolling mean (Step 1)
-  - 30% local-median outlier removal (Step 2)
+  - Nolte smoothing (Step 2: Butterworth low-pass on 1 Hz grid)
+  - 30% local-median outlier removal (Step 1)
   - VO2max triplet peak averaging (Step 3)
   - Edge cases: <10 breaths, all-outlier, >30s gaps
 """
@@ -57,12 +57,12 @@ def _make_subject(weight_kg: float = 74.2) -> pd.DataFrame:
 
 
 # ===========================================================================
-# Step 1: 5-second rolling mean
+# Nolte smoothing (Step 2)
 # ===========================================================================
 
 
-class TestTimeBasedSmoothing:
-    """Verify that 5-second time-based rolling mean is applied."""
+class TestNolteSmoothing:
+    """Verify that Nolte smoothing (Butterworth low-pass) is applied."""
 
     def test_smoothing_reduces_variance(self) -> None:
         raw = _make_bxb(n=100, noise_std=200.0)
@@ -205,6 +205,113 @@ class TestEdgeCases:
         cluster2_mean = processed["vo2_ml"].iloc[n1 + 2:].mean()
         # Clusters should remain distinct
         assert abs(cluster2_mean - cluster1_mean) > 500.0
+
+    def test_moving_average_method_end_to_end(self) -> None:
+        """method='moving_average' must produce a valid, smoothed result in _preprocess_bxb."""
+        raw = _make_bxb(n=100, noise_std=200.0)
+        processed = _preprocess_bxb(raw, method="moving_average")
+
+        # Output must be a DataFrame of the same shape with the same columns
+        assert isinstance(processed, pd.DataFrame)
+        assert len(processed) == len(raw)
+        assert set(processed.columns) == set(raw.columns)
+
+        # Smoothing should reduce variance on VO2
+        raw_sorted = raw.sort_values("t_s").reset_index(drop=True)
+        assert processed["vo2_ml"].std() < raw_sorted["vo2_ml"].std(), (
+            "moving_average smoothing should reduce VO2 variance"
+        )
+
+        # No NaN values should be introduced
+        assert not processed["vo2_ml"].isna().any()
+        assert not processed["vco2_ml"].isna().any()
+        assert not processed["ve_lmin"].isna().any()
+
+    def test_ve_vo2_ve_vco2_absent_no_crash_no_new_columns(self) -> None:
+        """When ve_vo2 and ve_vco2 are not in the fixture, _preprocess_bxb must not
+        crash and must not create those columns (column guard enforced)."""
+        raw = _make_bxb(n=50)
+        # Confirm the helper does not generate ve_vo2 / ve_vco2
+        assert "ve_vo2" not in raw.columns
+        assert "ve_vco2" not in raw.columns
+
+        processed = _preprocess_bxb(raw)
+
+        # No crash and columns must still be absent
+        assert "ve_vo2" not in processed.columns, (
+            "_preprocess_bxb must not create ve_vo2 when it was absent"
+        )
+        assert "ve_vco2" not in processed.columns, (
+            "_preprocess_bxb must not create ve_vco2 when it was absent"
+        )
+
+    def test_gap_step1_respected_step2_bridges(self) -> None:
+        """Document the known gap behavior:
+        - Step 1 (outlier interpolation) respects the >30s gap boundary —
+          segments are interpolated independently.
+        - Step 2 (Nolte/Butterworth) smooths on a continuous 1 Hz grid that
+          bridges the gap, so values adjacent to the gap are pulled toward
+          each other.  This is expected behavior for the current implementation.
+
+        This test locks in the contract so any future change (e.g. gap-aware
+        Butterworth) becomes explicit.
+        """
+        rng = np.random.RandomState(77)
+        n1 = 25
+        n2 = 25
+        t1 = np.cumsum(rng.uniform(1.5, 2.5, size=n1))
+        t2 = t1[-1] + 60.0 + np.cumsum(rng.uniform(1.5, 2.5, size=n2))
+        t_s = np.concatenate([t1, t2])
+
+        # Two well-separated cluster levels
+        vo2 = np.concatenate([np.full(n1, 2500.0), np.full(n2, 4500.0)])
+        vco2 = vo2 * 0.85
+        ve = vo2 / 50.0
+
+        raw = pd.DataFrame({
+            "t_s": t_s,
+            "vo2_ml": vo2,
+            "vco2_ml": vco2,
+            "ve_lmin": ve,
+            "rq": vco2 / vo2,
+            "hr_bpm": np.full(n1 + n2, 150.0),
+            "bike_power_w": np.full(n1 + n2, 200.0),
+        })
+
+        processed = _preprocess_bxb(raw)
+
+        # Interior of each cluster should still be close to its original level
+        cluster1_interior = processed["vo2_ml"].iloc[2:n1 - 2].mean()
+        cluster2_interior = processed["vo2_ml"].iloc[n1 + 2:-2].mean()
+        assert abs(cluster1_interior - 2500.0) < 300.0, (
+            "Cluster 1 interior should remain near 2500 mL/min"
+        )
+        assert abs(cluster2_interior - 4500.0) < 300.0, (
+            "Cluster 2 interior should remain near 4500 mL/min"
+        )
+
+        # Values at the gap boundary are expected to be pulled toward each
+        # other by Step 2 Butterworth smoothing (documented behavior).
+        # Assert that boundary points are NOT at their original cluster level
+        # — they have been influenced by the cross-gap smoothing.
+        gap_pre = processed["vo2_ml"].iloc[n1 - 1]   # last point before gap
+        gap_post = processed["vo2_ml"].iloc[n1]       # first point after gap
+        # Both boundary points are pulled away from their original cluster mean
+        # by at least 30 mL/min (Butterworth blending is measurable here;
+        # empirically ~43 mL/min for this fixture).
+        assert abs(gap_pre - 2500.0) > 30.0 or abs(gap_post - 4500.0) > 30.0, (
+            "Step 2 Butterworth bridges the gap — boundary values should show "
+            "cross-gap smoothing influence (documented behavior)"
+        )
+
+    def test_exactly_9_breaths_returns_unmodified_copy(self) -> None:
+        """Exactly 9 breaths (boundary: < 10) must return an unmodified copy."""
+        raw = _make_bxb(n=9)
+        processed = _preprocess_bxb(raw)
+
+        pd.testing.assert_frame_equal(raw, processed)
+        # Confirm it is a copy, not the same object
+        assert processed is not raw
 
 
 # ===========================================================================
