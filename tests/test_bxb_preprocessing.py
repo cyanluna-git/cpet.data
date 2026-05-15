@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pipeline.analysis import _preprocess_bxb, analyze_vo2max
+from pipeline.analysis import _apply_nolte_smoothing, _preprocess_bxb, analyze_vo2max
 
 
 # ---------------------------------------------------------------------------
@@ -255,3 +255,191 @@ class TestVO2maxTripletPeak:
 
         triplet = results["vo2max_triplet_values"]
         assert triplet == sorted(triplet, reverse=True)
+
+
+# ===========================================================================
+# _apply_nolte_smoothing
+# ===========================================================================
+
+
+class TestApplyNolteSmoothing:
+    """Unit tests for _apply_nolte_smoothing()."""
+
+    # --- helpers ---
+
+    @staticmethod
+    def _make_signal(span_s: float = 120.0, hz: float = 0.5) -> tuple[np.ndarray, np.ndarray]:
+        """Return (t_s, values) for a clean sine-like signal over span_s seconds."""
+        n = max(2, int(span_s * hz))
+        t_s = np.linspace(0.0, span_s, n)
+        rng = np.random.RandomState(7)
+        values = 3000.0 + 200.0 * np.sin(2 * np.pi * t_s / span_s) + rng.normal(0, 50, size=n)
+        return t_s, values
+
+    # --- importable ---
+
+    def test_importable(self) -> None:
+        """_apply_nolte_smoothing must be importable from pipeline.analysis."""
+        from pipeline.analysis import _apply_nolte_smoothing as fn
+        assert callable(fn)
+
+    # --- length preservation ---
+
+    def test_length_preserved_butterworth(self) -> None:
+        t_s, values = self._make_signal(span_s=120.0)
+        out = _apply_nolte_smoothing(t_s, values, method="butterworth")
+        assert len(out) == len(t_s), "Butterworth output length must equal input length"
+
+    def test_length_preserved_moving_average(self) -> None:
+        t_s, values = self._make_signal(span_s=120.0)
+        out = _apply_nolte_smoothing(t_s, values, method="moving_average")
+        assert len(out) == len(t_s), "Moving-average output length must equal input length"
+
+    # --- smoothing actually happens ---
+
+    def test_butterworth_uses_sosfiltfilt(self) -> None:
+        """Butterworth-smoothed output should differ from (noisy) raw input."""
+        rng = np.random.RandomState(42)
+        n = 200
+        t_s = np.linspace(0.0, 400.0, n)
+        # Heavy noise so smoothing is visible
+        values = 3000.0 + rng.normal(0, 300.0, size=n)
+        out = _apply_nolte_smoothing(t_s, values, method="butterworth")
+        # Smoothed std should be lower than raw std
+        assert out.std() < values.std(), "Butterworth smoothing should reduce signal variance"
+
+    # --- NaN handling ---
+
+    def test_all_nan_returns_original(self) -> None:
+        t_s = np.array([0.0, 1.0, 2.0, 3.0])
+        values = np.array([np.nan, np.nan, np.nan, np.nan])
+        out = _apply_nolte_smoothing(t_s, values, method="butterworth")
+        assert len(out) == len(values)
+        assert np.all(np.isnan(out)), "All-NaN input must produce all-NaN output"
+
+    # --- single-point ---
+
+    def test_single_point_returns_original(self) -> None:
+        t_s = np.array([5.0])
+        values = np.array([2500.0])
+        out = _apply_nolte_smoothing(t_s, values, method="butterworth")
+        np.testing.assert_array_equal(out, values)
+
+    # --- short signal fallback ---
+
+    def test_short_signal_falls_back_to_ma_with_warning(self) -> None:
+        """A signal spanning ≤10 s produces a 1 Hz grid of ≤11 samples (≤12),
+        triggering the UserWarning and moving-average fallback."""
+        rng = np.random.RandomState(1)
+        # span = 10 s → n_grid = 11 → triggers fallback
+        t_s = np.linspace(0.0, 10.0, 20)
+        values = 3000.0 + rng.normal(0, 50.0, size=20)
+
+        with pytest.warns(UserWarning, match="too short for Butterworth"):
+            out = _apply_nolte_smoothing(t_s, values, method="butterworth")
+
+        # Output length must still be preserved
+        assert len(out) == len(t_s)
+
+    # --- Edge case 1: duplicate timestamps ---
+
+    def test_duplicate_timestamps_no_crash(self) -> None:
+        """Duplicate t_s values must not crash; output length equals input length."""
+        t_s = np.array([0.0, 1.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0,
+                        9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0])
+        values = np.arange(len(t_s), dtype=float) * 100.0 + 3000.0
+        out = _apply_nolte_smoothing(t_s, values, method="butterworth")
+        assert len(out) == len(t_s), "Duplicate timestamps must not change output length"
+        assert not np.isnan(out).any(), "No NaN expected with duplicate timestamps"
+
+    # --- Edge case 2: span >= 3601 s (grid cap) ---
+
+    def test_long_signal_grid_capped_at_3601(self) -> None:
+        """A signal spanning >3600 s must have its 1 Hz grid capped at 3601 samples.
+        Timestamps beyond t_s[0]+3600 are clamped to the last grid value (np.interp
+        edge behaviour), so the output is constant for the tail of the signal.
+        """
+        rng = np.random.RandomState(5)
+        n = 200
+        t_s = np.linspace(0.0, 5000.0, n)
+        values = 3000.0 + rng.normal(0, 50.0, size=n)
+        out = _apply_nolte_smoothing(t_s, values, method="butterworth")
+
+        assert len(out) == n, "Output length must equal input length even when grid is capped"
+        # All t_s beyond t_s[0]+3600 should clamp to the same end-of-grid value
+        tail_start = np.searchsorted(t_s, t_s[0] + 3601)
+        if tail_start < n:
+            tail = out[tail_start:]
+            assert np.allclose(tail, tail[0]), (
+                "Values beyond the 3601-sample grid cap should all equal the "
+                "last smoothed grid sample (np.interp right-clamp behaviour)"
+            )
+
+    # --- Edge case 3: partial NaN (some values missing) ---
+
+    def test_partial_nan_values_are_filled(self) -> None:
+        """NaN positions in the input must be interpolated from valid neighbours;
+        the output should have no NaN values and the same length as the input.
+        NOTE: this means missing data is *filled*, not preserved as NaN.
+        """
+        rng = np.random.RandomState(9)
+        t_s = np.linspace(0.0, 120.0, 60)
+        values = 3000.0 + rng.normal(0, 50.0, size=60)
+        values[20:25] = np.nan  # inject 5 NaNs in the middle
+
+        out = _apply_nolte_smoothing(t_s, values, method="butterworth")
+
+        assert len(out) == len(t_s), "Partial-NaN input must not change output length"
+        assert not np.isnan(out).any(), (
+            "NaN positions should be filled by grid interpolation — "
+            "output must contain no NaN"
+        )
+        # Filled values should be in a physiologically sane range
+        assert out[20:25].min() > 2000.0
+        assert out[20:25].max() < 4500.0
+
+    # --- Edge case 4: moving_average with short signal (no fallback expected) ---
+
+    def test_moving_average_short_signal_no_warning(self) -> None:
+        """MA path must not raise any UserWarning on a short (≤10 s) signal."""
+        import warnings as _warnings
+        t_s = np.linspace(0.0, 10.0, 20)
+        values = np.full(20, 3000.0)
+
+        with _warnings.catch_warnings():
+            _warnings.simplefilter("error")  # treat any warning as an error
+            out = _apply_nolte_smoothing(t_s, values, method="moving_average")
+
+        assert len(out) == len(t_s), "MA output length must equal input length"
+
+    # --- Edge case 5: non-monotonic t_s ---
+
+    def test_non_monotonic_t_s_same_endpoints_no_crash(self) -> None:
+        """A shuffled t_s array (same endpoints as monotonic) must not crash.
+        np.interp uses only t_s[0]/t_s[-1] for the 1 Hz grid bounds, so
+        a shuffled-but-bounded array still produces output of the correct length.
+        """
+        rng = np.random.RandomState(42)
+        t_s_mono = np.linspace(0.0, 120.0, 60)
+        values = 3000.0 + rng.normal(0, 50.0, size=60)
+
+        t_s_shuffled = t_s_mono.copy()
+        rng.shuffle(t_s_shuffled)
+
+        out = _apply_nolte_smoothing(t_s_shuffled, values, method="butterworth")
+        assert len(out) == len(t_s_shuffled), "Non-monotonic t_s must not change output length"
+
+    def test_strictly_decreasing_t_s_raises_or_returns_original(self) -> None:
+        """Strictly decreasing t_s produces an empty grid (t_s[-1] < t_s[0]);
+        _apply_nolte_smoothing currently raises ValueError from np.interp on an
+        empty sample-points array.  This test documents the current (undefined)
+        behaviour so it becomes visible if the contract changes.
+        """
+        rng = np.random.RandomState(7)
+        t_s = np.linspace(120.0, 0.0, 60)  # strictly decreasing
+        values = 3000.0 + rng.normal(0, 50.0, size=60)
+
+        # Current behaviour: raises ValueError because the grid is empty.
+        # If the function is later hardened to handle this, update this test.
+        with pytest.raises((ValueError, IndexError)):
+            _apply_nolte_smoothing(t_s, values, method="butterworth")

@@ -12,12 +12,14 @@ Canonical source: analysis/analysis.py (identical in both subjects)
 
 import json as _json
 import sqlite3
+import warnings
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 from scipy.interpolate import PchipInterpolator
+from scipy.signal import butter, sosfiltfilt
 
 
 def load_data(db_path: Path) -> dict[str, pd.DataFrame]:
@@ -157,6 +159,71 @@ def _attach_workout_blocks_to_bxb(
 
 # Target columns for BxB preprocessing (HR excluded intentionally)
 _BXB_PREPROCESS_COLS = ["vo2_ml", "vco2_ml", "ve_lmin"]
+
+
+def _apply_nolte_smoothing(
+    t_s: np.ndarray,
+    values: np.ndarray,
+    method: str = "butterworth",
+) -> np.ndarray:
+    """Apply Nolte-style smoothing to a breath-by-breath signal on a uniform time grid.
+
+    Resamples the signal to a 1 Hz uniform grid, applies the chosen filter, then
+    back-interpolates to the original timestamps.
+
+    Args:
+        t_s: 1-D array of timestamps in seconds (monotonically increasing, may have NaN).
+        values: 1-D array of signal values, same length as t_s (may have NaN).
+        method: "butterworth" (3rd-order low-pass at 0.08 Hz via sosfiltfilt) or
+                "moving_average" (31-sample centred rolling mean).
+
+    Returns:
+        Smoothed values at the original timestamps, same length as input.
+        On NaN-only or single-point input the original array is returned unchanged.
+        On short signals (≤ 12 s) the butterworth path issues a UserWarning and
+        falls back to moving_average.
+    """
+    t_s = np.asarray(t_s, dtype=float)
+    values = np.asarray(values, dtype=float)
+
+    # --- guard: trivial input ---
+    if len(t_s) <= 1:
+        return values.copy()
+
+    valid = ~np.isnan(values)
+    if valid.sum() == 0:
+        return values.copy()
+
+    # --- build 1 Hz grid ---
+    n_grid = min(int(t_s[-1] - t_s[0]) + 1, 3601)
+    t_grid = np.arange(int(t_s[0]), int(t_s[0]) + n_grid, dtype=float)
+
+    grid_values = np.interp(t_grid, t_s[valid], values[valid])
+
+    # --- short-signal fallback (butterworth crashes at ≤12 samples) ---
+    if method == "butterworth" and len(t_grid) <= 12:
+        warnings.warn(
+            f"Signal too short for Butterworth filter ({len(t_grid)} s grid); "
+            "falling back to moving_average.",
+            UserWarning,
+            stacklevel=2,
+        )
+        method = "moving_average"
+
+    # --- apply filter ---
+    if method == "butterworth":
+        sos = butter(3, 0.08, output="sos", btype="low")
+        smoothed_grid = sosfiltfilt(sos, grid_values)
+    else:  # moving_average
+        smoothed_grid = (
+            pd.Series(grid_values)
+            .rolling(31, center=True, min_periods=1)
+            .mean()
+            .to_numpy()
+        )
+
+    # --- back-interpolate to original timestamps ---
+    return np.interp(t_s, t_grid, smoothed_grid)
 
 
 def _preprocess_bxb(bxb: pd.DataFrame) -> pd.DataFrame:
