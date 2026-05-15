@@ -2735,6 +2735,91 @@ def analyze_cpm_indices(
             )
 
     # -----------------------------------------------------------------
+    # New composite indices (4): s4ci, rovi, cppi, fce_4d
+    # -----------------------------------------------------------------
+
+    # s4ci — 4-Domain Synchrony Composite Index  [alias of sci]
+    _sci_entry = results.get("sci", {})
+    if _sci_entry.get("supported"):
+        _s4ci_note = (
+            "s4ci: 4-domain alias of sci"
+            " (VT1_W × RER_VT1 / (HR_VT1 × VE@VT1)) when rq present;"
+            " 3-domain fallback otherwise"
+        )
+        results["s4ci"] = _supported(
+            _sci_entry["value"],
+            _sci_entry["unit"],
+            _s4ci_note,
+        )
+    else:
+        results["s4ci"] = dict(_sci_entry) if _sci_entry else _unsupported(
+            "s4ci requires sci to be supported"
+        )
+
+    # rovi — Recovery-Output Ventilatory Index  [bpm·W/ratio]
+    # rovi = hrr1_bpm * peak_power_achieved_w / ve_vco2_slope_val
+    if hrr1_bpm is None:
+        results["rovi"] = _unsupported("hrr1_bpm missing from hr_results")
+    elif peak_power_achieved_w is None:
+        results["rovi"] = _unsupported("peak_power_achieved_w missing from vo2max_results")
+    elif ve_vco2_slope_val is None:
+        results["rovi"] = _unsupported(
+            "ve_vco2_slope could not be computed (insufficient active BxB data)"
+        )
+    elif abs(float(ve_vco2_slope_val)) < 1e-9:
+        results["rovi"] = _unsupported("ve_vco2_slope is effectively zero; division undefined")
+    else:
+        results["rovi"] = _supported(
+            round(float(hrr1_bpm) * float(peak_power_achieved_w) / float(ve_vco2_slope_val), 3),
+            "bpm·W/ratio",
+            "Recovery-Output Ventilatory Index: HRR1 × W_peak / VE/VCO2 slope",
+        )
+
+    # cppi — Cardiopulmonary Power Index  [W/(bpm·ratio)]
+    # cppi = ftp_w / (hr_at_ftp * ve_vco2_nadir_val)
+    # hr_at_ftp: BxB row with bike_power_w closest to ftp_w
+    if ftp_w is None:
+        results["cppi"] = _unsupported("ftp_w missing (vt2_power_w not available)")
+    elif ve_vco2_nadir_val is None:
+        results["cppi"] = _unsupported(
+            "ve_vco2_nadir could not be computed (need ≥30 active BxB rows with ve_vco2)"
+        )
+    else:
+        _cppi_hr_at_ftp = None
+        if (
+            not active_bxb.empty
+            and "bike_power_w" in active_bxb.columns
+            and "hr_bpm" in active_bxb.columns
+        ):
+            _cppi_paired = active_bxb[["bike_power_w", "hr_bpm"]].dropna()
+            if len(_cppi_paired) >= 1:
+                _cppi_idx = (_cppi_paired["bike_power_w"] - float(ftp_w)).abs().idxmin()
+                _cppi_hr_at_ftp = float(_cppi_paired.loc[_cppi_idx, "hr_bpm"])
+
+        if _cppi_hr_at_ftp is None or _cppi_hr_at_ftp <= 0:
+            results["cppi"] = _unsupported(
+                "hr_at_ftp could not be determined"
+                " (need active BxB with bike_power_w and hr_bpm columns)"
+            )
+        elif abs(_cppi_hr_at_ftp * float(ve_vco2_nadir_val)) < 1e-9:
+            results["cppi"] = _unsupported(
+                "hr_at_ftp × ve_vco2_nadir is effectively zero; division undefined"
+            )
+        else:
+            results["cppi"] = _supported(
+                round(float(ftp_w) / (_cppi_hr_at_ftp * float(ve_vco2_nadir_val)), 5),
+                "W/(bpm·ratio)",
+                f"Cardiopulmonary Power Index: FTP ({ftp_w:.1f} W)"
+                f" / (HR@FTP ({_cppi_hr_at_ftp:.1f} bpm) × VE/VCO2 nadir ({ve_vco2_nadir_val:.2f}))",
+            )
+
+    # fce_4d — Full Cardiopulmonary Efficiency (4-Domain)
+    # Requires cardiac output (Q) — not collected in standard CPET
+    results["fce_4d"] = _unsupported(
+        "requires cardiac output (Q) measurement — not collected in standard CPET protocol"
+    )
+
+    # -----------------------------------------------------------------
     # W'-dependent stubs (2) — anaerobic capacity not modeled
     # -----------------------------------------------------------------
     _wprime_blocker = "W prime anaerobic capacity not modeled"

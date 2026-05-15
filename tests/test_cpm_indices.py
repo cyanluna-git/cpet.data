@@ -817,3 +817,335 @@ def test_lpi_computes_with_ftp() -> None:
     assert abs(entry["value"] - round(expected_lpi, 4)) < 1e-3, (
         f"lpi formula mismatch: expected {expected_lpi:.4f}, got {entry['value']}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 19 — rovi computes with hrr1, peak_power, ve_vco2_slope
+# ---------------------------------------------------------------------------
+
+def test_rovi_computes() -> None:
+    """rovi is supported when hrr1_bpm, peak_power_achieved_w, and BxB are present."""
+    bxb = make_bxb(60)
+    hr_results = {
+        "actual_max_hr": 185,
+        "predicted_max_hr": 190,
+        "resting_hr_bpm": 55,
+        "hrr1_bpm": 15,
+        "hr_power_slope": 0.8,
+    }
+    vo2max_results = {
+        "peak_power_achieved_w": 300.0,
+    }
+
+    result = analyze_cpm_indices(
+        bxb=bxb,
+        vo2max_results=vo2max_results,
+        vt_results={},
+        substrate_results={},
+        efficiency_results={},
+        hr_results=hr_results,
+    )
+
+    entry = result["rovi"]
+    assert entry["supported"] is True, (
+        f"Expected rovi supported, got blocker: {entry.get('blocker')}"
+    )
+    assert entry["value"] > 0, f"Expected positive rovi, got {entry['value']}"
+    assert entry["unit"] == "bpm·W/ratio", f"Unexpected rovi unit: {entry['unit']!r}"
+
+
+# ---------------------------------------------------------------------------
+# Test 20 — cppi computes with ftp_w, BxB, and ve_vco2_nadir
+# ---------------------------------------------------------------------------
+
+def test_cppi_computes() -> None:
+    """cppi is supported when ftp_w (vt2_power_w), BxB, and ve_vco2_nadir are available."""
+    bxb = make_bxb(60)  # 60 rows — satisfies ≥30 threshold for ve_vco2_nadir
+    vt_results = {
+        "vt2_power_w": 240.0,
+        "vt1_power_w": 180.0,
+    }
+
+    result = analyze_cpm_indices(
+        bxb=bxb,
+        vo2max_results={},
+        vt_results=vt_results,
+        substrate_results={},
+        efficiency_results={},
+        hr_results={},
+    )
+
+    entry = result["cppi"]
+    assert entry["supported"] is True, (
+        f"Expected cppi supported, got blocker: {entry.get('blocker')}"
+    )
+    assert entry["value"] > 0, f"Expected positive cppi, got {entry['value']}"
+    assert entry["unit"] == "W/(bpm·ratio)", f"Unexpected cppi unit: {entry['unit']!r}"
+
+
+# ---------------------------------------------------------------------------
+# Test 21 — s4ci mirrors sci value
+# ---------------------------------------------------------------------------
+
+def test_s4ci_mirrors_sci() -> None:
+    """s4ci value equals sci value when sci is supported."""
+    n = 20
+    t_s = np.arange(n) * 5.0
+    bxb = pd.DataFrame(
+        {
+            "block": ["block_1"] * n,
+            "t_s": t_s,
+            "ve_lmin": np.full(n, 40.0),
+            "vco2_ml": np.linspace(1000, 3000, n),
+            "vo2_ml": np.linspace(1200, 3500, n),
+            "rq": np.full(n, 0.92),
+            "hr_bpm": np.full(n, 150.0),
+            "bike_power_w": np.linspace(80, 280, n),
+        }
+    )
+    vt_results = {
+        "vt1_time_s": 50.0,
+        "vt1_hr": 150,
+        "vt1_power_w": 180,
+    }
+
+    result = analyze_cpm_indices(
+        bxb=bxb,
+        vo2max_results={},
+        vt_results=vt_results,
+        substrate_results={},
+        efficiency_results={},
+        hr_results={},
+    )
+
+    assert result["sci"]["supported"] is True, (
+        f"sci must be supported for s4ci mirror test; blocker: {result['sci'].get('blocker')}"
+    )
+    assert result["s4ci"]["supported"] is True, (
+        f"s4ci must be supported when sci is supported"
+    )
+    assert result["s4ci"]["value"] == result["sci"]["value"], (
+        f"s4ci value {result['s4ci']['value']} != sci value {result['sci']['value']}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Edge-case tests added by Shield (task #2812)
+# ---------------------------------------------------------------------------
+
+# EC-1: rovi unsupported when hrr1_bpm is None
+def test_rovi_unsupported_without_hrr1() -> None:
+    """rovi is unsupported when hrr1_bpm is None."""
+    bxb = make_bxb(60)
+    hr_results = {
+        "actual_max_hr": 185,
+        "predicted_max_hr": 190,
+        "resting_hr_bpm": 55,
+        "hrr1_bpm": None,  # explicitly None
+        "hr_power_slope": 0.8,
+    }
+
+    result = analyze_cpm_indices(
+        bxb=bxb,
+        vo2max_results={"peak_power_achieved_w": 300.0},
+        vt_results={},
+        substrate_results={},
+        efficiency_results={},
+        hr_results=hr_results,
+    )
+
+    entry = result["rovi"]
+    assert entry["supported"] is False, (
+        f"Expected rovi unsupported when hrr1_bpm=None, got supported=True"
+    )
+    assert "hrr1" in entry["blocker"].lower(), (
+        f"Expected blocker to mention hrr1, got: {entry['blocker']}"
+    )
+
+
+# EC-2: cppi unsupported when ftp_w is None (no vt2_power_w)
+def test_cppi_unsupported_without_ftp_w() -> None:
+    """cppi is unsupported when vt2_power_w is absent (ftp_w=None)."""
+    bxb = make_bxb(60)
+
+    result = analyze_cpm_indices(
+        bxb=bxb,
+        vo2max_results={},
+        vt_results={},   # no vt2_power_w → ftp_w=None
+        substrate_results={},
+        efficiency_results={},
+        hr_results={},
+    )
+
+    entry = result["cppi"]
+    assert entry["supported"] is False, (
+        "Expected cppi unsupported when ftp_w=None"
+    )
+    assert "ftp_w" in entry["blocker"].lower() or "vt2" in entry["blocker"].lower(), (
+        f"Expected blocker to mention ftp_w/vt2, got: {entry['blocker']}"
+    )
+
+
+# EC-3: cppi unsupported when active_bxb lacks bike_power_w/hr_bpm columns
+# (ve_vco2_nadir still computes via ve_vco2 column; hr_at_ftp lookup fails)
+def test_cppi_unsupported_without_hr_bpm_column() -> None:
+    """cppi is unsupported when BxB has ve_vco2 (nadir computes) but lacks hr_bpm column."""
+    n = 60
+    bxb = pd.DataFrame(
+        {
+            "block": ["block_1"] * n,
+            "t_s": np.arange(n) * 5.0,
+            "ve_lmin": np.linspace(30, 80, n),
+            "vco2_ml": np.linspace(1000, 3000, n),
+            "vo2_ml": np.linspace(1200, 3500, n),
+            "ve_vco2": np.linspace(28, 38, n),
+            "bike_power_w": np.linspace(80, 280, n),
+            # NOTE: no "hr_bpm" column — hr_at_ftp lookup will return None
+        }
+    )
+    vt_results = {"vt2_power_w": 240.0}
+
+    result = analyze_cpm_indices(
+        bxb=bxb,
+        vo2max_results={},
+        vt_results=vt_results,
+        substrate_results={},
+        efficiency_results={},
+        hr_results={},
+    )
+
+    entry = result["cppi"]
+    assert entry["supported"] is False, (
+        "Expected cppi unsupported when hr_bpm column is missing from BxB"
+    )
+    assert "hr_at_ftp" in entry["blocker"].lower() or "hr" in entry["blocker"].lower(), (
+        f"Expected blocker to mention hr_at_ftp, got: {entry['blocker']}"
+    )
+
+
+# EC-4: cppi unsupported when ve_vco2_nadir_val is None (fewer than 30 BxB rows)
+def test_cppi_unsupported_when_ve_vco2_nadir_none() -> None:
+    """cppi is unsupported when active BxB has <30 rows so ve_vco2_nadir cannot be computed."""
+    n = 10  # below the ≥30 threshold for ve_vco2_nadir
+    bxb = pd.DataFrame(
+        {
+            "block": ["block_1"] * n,
+            "t_s": np.arange(n) * 5.0,
+            "ve_lmin": np.linspace(30, 80, n),
+            "vco2_ml": np.linspace(1000, 3000, n),
+            "vo2_ml": np.linspace(1200, 3500, n),
+            "ve_vco2": np.linspace(28, 38, n),
+            "hr_bpm": np.linspace(120, 185, n),
+            "bike_power_w": np.linspace(80, 280, n),
+        }
+    )
+    vt_results = {"vt2_power_w": 240.0}
+
+    result = analyze_cpm_indices(
+        bxb=bxb,
+        vo2max_results={},
+        vt_results=vt_results,
+        substrate_results={},
+        efficiency_results={},
+        hr_results={},
+    )
+
+    entry = result["cppi"]
+    assert entry["supported"] is False, (
+        "Expected cppi unsupported when <30 BxB rows prevent ve_vco2_nadir computation"
+    )
+    assert "nadir" in entry["blocker"].lower() or "ve_vco2" in entry["blocker"].lower(), (
+        f"Expected blocker to mention nadir/ve_vco2, got: {entry['blocker']}"
+    )
+
+
+# EC-5: s4ci unsupported when sci is unsupported
+def test_s4ci_unsupported_when_sci_unsupported() -> None:
+    """s4ci is unsupported when sci is unsupported (mirrors sci's blocker)."""
+    # Empty BxB + no vt1 → sci will be unsupported
+    result = analyze_cpm_indices(
+        bxb=pd.DataFrame(),    # no BxB → sci cannot compute ve_at_vt1
+        vo2max_results={},
+        vt_results={},         # no vt1 → sci unsupported
+        substrate_results={},
+        efficiency_results={},
+        hr_results={},
+    )
+
+    assert result["sci"]["supported"] is False, (
+        "sci must be unsupported for this s4ci edge-case test"
+    )
+    entry = result["s4ci"]
+    assert entry["supported"] is False, (
+        "s4ci must be unsupported when sci is unsupported"
+    )
+
+
+# EC-6: rovi unsupported when ve_vco2_slope is effectively zero
+def test_rovi_unsupported_when_ve_vco2_slope_zero() -> None:
+    """rovi is unsupported when ve_vco2_slope_val is effectively zero (constant vco2_ml)."""
+    n = 60
+    bxb = pd.DataFrame(
+        {
+            "block": ["block_1"] * n,
+            "t_s": np.arange(n) * 5.0,
+            "ve_lmin": np.linspace(30, 80, n),
+            "vco2_ml": np.full(n, 2000.0),   # constant → polyfit slope ≈ 0
+            "vo2_ml": np.linspace(1200, 3500, n),
+            "ve_vco2": np.linspace(28, 38, n),
+            "hr_bpm": np.linspace(120, 185, n),
+            "bike_power_w": np.linspace(80, 280, n),
+            "rq": np.linspace(0.85, 1.10, n),
+        }
+    )
+    hr_results = {
+        "actual_max_hr": 185,
+        "predicted_max_hr": 190,
+        "resting_hr_bpm": 55,
+        "hrr1_bpm": 15,
+        "hr_power_slope": 0.8,
+    }
+
+    result = analyze_cpm_indices(
+        bxb=bxb,
+        vo2max_results={"peak_power_achieved_w": 300.0},
+        vt_results={},
+        substrate_results={},
+        efficiency_results={},
+        hr_results=hr_results,
+    )
+
+    # Verify that ve_vco2_slope itself is unsupported or near-zero
+    # (depending on implementation; rovi must be unsupported either way)
+    entry = result["rovi"]
+    assert entry["supported"] is False, (
+        "Expected rovi unsupported when ve_vco2_slope is ~0 (constant vco2_ml)"
+    )
+    blocker = entry["blocker"].lower()
+    assert "zero" in blocker or "slope" in blocker or "insufficient" in blocker, (
+        f"Expected blocker to mention zero/slope/insufficient, got: {entry['blocker']}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 22 — all 61 keys present
+# ---------------------------------------------------------------------------
+
+def test_all_61_keys() -> None:
+    """analyze_cpm_indices returns exactly 61 keys after adding s4ci, rovi, cppi, fce_4d."""
+    result = analyze_cpm_indices(
+        bxb=pd.DataFrame(),
+        vo2max_results={},
+        vt_results={},
+        substrate_results={},
+        efficiency_results={},
+        hr_results={},
+    )
+
+    assert len(result) == 61, (
+        f"Expected exactly 61 keys, got {len(result)}: {sorted(result.keys())}"
+    )
+    for key, entry in result.items():
+        assert "supported" in entry, (
+            f"Key {key!r} is missing 'supported' field: {entry}"
+        )
