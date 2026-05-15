@@ -8,11 +8,43 @@ Covers:
   - Edge cases: <10 breaths, all-outlier, >30s gaps
 """
 
+import json
+import sqlite3
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from pipeline.analysis import _apply_nolte_smoothing, _preprocess_bxb, analyze_vo2max
+
+FIXTURES = Path(__file__).parent / "fixtures"
+PARK_WS = FIXTURES / "park_geunyun"
+HONG_WS = FIXTURES / "hong_changsun"
+
+
+def _run_full_pipeline(workspace: Path) -> dict:
+    from pipeline.parsers import parse_workspace
+    from pipeline.schema import create_database
+    from pipeline.analysis import run_analysis
+
+    parsed = parse_workspace(workspace)
+    db_path = create_database(workspace, parsed)
+    run_analysis(db_path)
+
+    conn = sqlite3.connect(str(db_path))
+    rows = conn.execute("SELECT category, key, value FROM analysis_results").fetchall()
+    conn.close()
+
+    results: dict = {}
+    for cat, key, val in rows:
+        if cat not in results:
+            results[cat] = {}
+        try:
+            results[cat][key] = json.loads(val)
+        except (json.JSONDecodeError, TypeError):
+            results[cat][key] = val
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -550,3 +582,63 @@ class TestApplyNolteSmoothing:
         # If the function is later hardened to handle this, update this test.
         with pytest.raises((ValueError, IndexError)):
             _apply_nolte_smoothing(t_s, values, method="butterworth")
+
+
+# ===========================================================================
+# E2E: Full Nolte 2023 pipeline on real fixtures
+# ===========================================================================
+
+
+class TestE2ENoltePipeline:
+    """E2E smoke tests: full Nolte 2023 Butterworth pipeline on real fixtures."""
+
+    @pytest.fixture(scope="class")
+    def park_results(self):
+        return _run_full_pipeline(PARK_WS)
+
+    @pytest.fixture(scope="class")
+    def hong_results(self):
+        return _run_full_pipeline(HONG_WS)
+
+    def test_nolte_smoothing_reduces_high_freq_noise(self) -> None:
+        """Synthetic signal with high-freq noise: Butterworth removes >50% variance."""
+        rng = np.random.RandomState(0)
+        n = 300
+        t_s = np.linspace(0.0, 600.0, n)
+        clean = 3000.0 + 500.0 * np.sin(2 * np.pi * 0.003 * t_s)
+        noisy = clean + rng.normal(0, 300.0, size=n)
+
+        smoothed = _apply_nolte_smoothing(t_s, noisy, method="butterworth")
+
+        noise_var = float(np.var(noisy - clean))
+        residual_var = float(np.var(smoothed - clean))
+        assert residual_var < noise_var * 0.5, (
+            f"Butterworth should reduce noise variance by >50%; "
+            f"noise_var={noise_var:.1f}, residual_var={residual_var:.1f}"
+        )
+
+    def test_full_pipeline_park_vo2max_in_range(self, park_results) -> None:
+        """Park Geunyun: vo2max_rel in physiologically plausible range after Nolte."""
+        vo2max_rel = park_results["vo2max"]["vo2max_rel"]
+        assert 55.0 <= vo2max_rel <= 70.0, (
+            f"Park vo2max_rel={vo2max_rel} outside expected 55–70 mL/kg/min"
+        )
+
+    def test_full_pipeline_hong_vo2max_in_range(self, hong_results) -> None:
+        """Hong Changsun: vo2max_rel in physiologically plausible range after Nolte."""
+        vo2max_rel = hong_results["vo2max"]["vo2max_rel"]
+        assert 60.0 <= vo2max_rel <= 75.0, (
+            f"Hong vo2max_rel={vo2max_rel} outside expected 60–75 mL/kg/min"
+        )
+
+    def test_vt_detection_not_none_after_nolte(self, park_results) -> None:
+        """Park data: VT1 and VT2 power must be non-None after Nolte smoothing."""
+        vt = park_results.get("ventilatory_thresholds", {})
+        assert vt.get("vt1_power_w") is not None, "vt1_power_w must not be None"
+        assert vt.get("vt2_power_w") is not None, "vt2_power_w must not be None"
+
+    def test_cpm_indices_present_after_nolte(self, park_results) -> None:
+        """CPM indices must be computed for key metrics after Nolte smoothing."""
+        cpm = park_results.get("cpm_indices", {})
+        assert "oues" in cpm, "oues must be present in cpm_indices"
+        assert "o2_pulse_ml_beat" in cpm, "o2_pulse_ml_beat must be present in cpm_indices"
