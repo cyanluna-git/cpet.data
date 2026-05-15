@@ -1025,8 +1025,8 @@ def test_cppi_unsupported_without_hr_bpm_column() -> None:
 
 # EC-4: cppi unsupported when ve_vco2_nadir_val is None (fewer than 30 BxB rows)
 def test_cppi_unsupported_when_ve_vco2_nadir_none() -> None:
-    """cppi is unsupported when active BxB has <30 rows so ve_vco2_nadir cannot be computed."""
-    n = 10  # below the ≥30 threshold for ve_vco2_nadir
+    """cppi is unsupported when active BxB is missing ve_vco2 so ve_vco2_nadir cannot be computed."""
+    n = 10
     bxb = pd.DataFrame(
         {
             "block": ["block_1"] * n,
@@ -1034,7 +1034,7 @@ def test_cppi_unsupported_when_ve_vco2_nadir_none() -> None:
             "ve_lmin": np.linspace(30, 80, n),
             "vco2_ml": np.linspace(1000, 3000, n),
             "vo2_ml": np.linspace(1200, 3500, n),
-            "ve_vco2": np.linspace(28, 38, n),
+            # ve_vco2 column intentionally omitted to prevent nadir computation
             "hr_bpm": np.linspace(120, 185, n),
             "bike_power_w": np.linspace(80, 280, n),
         }
@@ -1052,7 +1052,7 @@ def test_cppi_unsupported_when_ve_vco2_nadir_none() -> None:
 
     entry = result["cppi"]
     assert entry["supported"] is False, (
-        "Expected cppi unsupported when <30 BxB rows prevent ve_vco2_nadir computation"
+        "Expected cppi unsupported when ve_vco2 column absent prevents ve_vco2_nadir computation"
     )
     assert "nadir" in entry["blocker"].lower() or "ve_vco2" in entry["blocker"].lower(), (
         f"Expected blocker to mention nadir/ve_vco2, got: {entry['blocker']}"

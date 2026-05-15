@@ -262,7 +262,12 @@ class TestVO2maxTripletAccuracy:
     """Verify nlargest(3).mean() matches hand calculation within +-1%."""
 
     def test_hand_calculated_vo2max(self) -> None:
-        """Build BxB with known peak values; compute expected VO2max by hand."""
+        """Build BxB with known peak values; compute expected VO2max by hand.
+
+        Since #2823 removed in-function rolling smoothing (preprocessing via
+        _preprocess_bxb already applies Nolte smoothing before analysis),
+        VO2max is now top-3 nlargest on the raw vo2_ml column directly.
+        """
         rng = np.random.RandomState(77)
         n = 100
         t_s = np.cumsum(rng.uniform(1.5, 2.5, size=n))
@@ -271,7 +276,7 @@ class TestVO2maxTripletAccuracy:
         vo2_base = np.linspace(2000, 4000, n)
         vo2 = vo2_base + rng.normal(0, 30, size=n)
 
-        # Force 3 known high values near end (will dominate after rolling)
+        # Force 3 known high values near end — these are the dominant peaks
         vo2[-3] = 4500.0
         vo2[-2] = 4600.0
         vo2[-1] = 4700.0
@@ -292,17 +297,12 @@ class TestVO2maxTripletAccuracy:
         subject = _make_subject(70.0)
         results = analyze_vo2max(df, subject)
 
-        # The result should use top-3 from a 10-breath rolling mean,
-        # so compute manually
+        # Hand-calc: top-3 nlargest of raw vo2_ml (no in-function rolling)
         from pipeline.analysis import _active_bxb_window
 
         valid = _active_bxb_window(df)
-        window = min(10, len(valid))
-        valid = valid.copy()
-        valid["vo2_rolling"] = valid["vo2_ml"].rolling(window, min_periods=1).mean()
-
         n_peaks = min(3, len(valid))
-        top3 = valid["vo2_rolling"].nlargest(n_peaks)
+        top3 = valid["vo2_ml"].nlargest(n_peaks)
         expected_vo2max = round(float(top3.mean()), 1)
 
         assert results["vo2max_ml"] == expected_vo2max, (
@@ -597,4 +597,179 @@ class TestEdgeCaseIntegration:
         _assert_within_pct(
             results["vo2max_ml"], 3500.0, pct=15.0,
             label="vo2max after outlier removal"
+        )
+
+
+# ===========================================================================
+# EC-#2823: Edge cases for rolling-removal refactor
+# ===========================================================================
+
+
+class TestRollingRemovalEdgeCases:
+    """Verify correctness of the #2823 rolling-removal refactor across all
+    analysis sites (analyze_vo2max, analyze_ventilatory_thresholds,
+    analyze_cpm_indices nadir) for critical boundary conditions."""
+
+    # -----------------------------------------------------------------------
+    # EC-1: analyze_vo2max() with ve_vo2 column present must not crash
+    # -----------------------------------------------------------------------
+    def test_vo2max_with_ve_vo2_column_present(self) -> None:
+        """analyze_vo2max() must not crash when BxB includes ve_vo2 column."""
+        from pipeline.analysis import analyze_vo2max
+
+        rng = np.random.RandomState(11)
+        n = 50
+        t_s = np.cumsum(rng.uniform(1.5, 2.5, size=n))
+        vo2 = np.linspace(2000.0, 4000.0, n)
+        vco2 = vo2 * 0.85
+        ve = vo2 / 50.0
+
+        df = pd.DataFrame({
+            "t_s": t_s,
+            "vo2_ml": vo2,
+            "vco2_ml": vco2,
+            "ve_lmin": ve,
+            "rq": vco2 / vo2,
+            "ve_vo2": ve / (vo2 / 1000.0),  # extra column — must not interfere
+            "hr_bpm": np.full(n, 155.0),
+            "bike_power_w": np.linspace(100.0, 300.0, n),
+        })
+
+        subject = _make_subject(70.0)
+        results = analyze_vo2max(df, subject)
+
+        assert "vo2max_ml" in results, "vo2max_ml missing when ve_vo2 column present"
+        assert results["vo2max_ml"] > 0.0
+
+    # -----------------------------------------------------------------------
+    # EC-2: analyze_ventilatory_thresholds() with missing ve_vo2 — KeyError?
+    # -----------------------------------------------------------------------
+    def test_ventilatory_thresholds_missing_ve_vo2_raises(self) -> None:
+        """analyze_ventilatory_thresholds() raises KeyError when ve_vo2 column
+        is absent from BxB data with >= 20 rows.
+
+        This documents the current contract: callers must ensure _preprocess_bxb
+        has been run so that ve_vo2 is present before calling VT analysis.
+        If this test ever starts PASSING without raising, it means a guard was
+        added and the docstring / contract should be updated accordingly.
+        """
+        from pipeline.analysis import analyze_ventilatory_thresholds
+
+        rng = np.random.RandomState(22)
+        n = 30
+        t_s = np.cumsum(rng.uniform(1.5, 2.5, size=n))
+        vo2 = np.linspace(2000.0, 4000.0, n)
+        vco2 = vo2 * 0.85
+        ve = vo2 / 50.0
+
+        # Intentionally omit ve_vo2 and ve_vco2 columns
+        df = pd.DataFrame({
+            "t_s": t_s,
+            "vo2_ml": vo2,
+            "vco2_ml": vco2,
+            "ve_lmin": ve,
+            "rq": vco2 / vo2,
+            "hr_bpm": np.full(n, 155.0),
+            "bike_power_w": np.linspace(100.0, 300.0, n),
+        })
+
+        with pytest.raises(KeyError):
+            analyze_ventilatory_thresholds(df)
+
+    # -----------------------------------------------------------------------
+    # EC-3: CPM nadir with 1-row active BxB (no >=30 guard)
+    # -----------------------------------------------------------------------
+    def test_cpm_nadir_with_single_row_active_bxb(self) -> None:
+        """analyze_cpm_indices() ve_vco2_nadir must compute on 1-row active BxB.
+
+        The >=30 row guard was removed in #2823; Series.min() on length-1 is
+        valid and should return the single value, not be unsupported.
+        """
+        from pipeline.analysis import analyze_cpm_indices
+
+        bxb = pd.DataFrame({
+            "block": ["block_1"],
+            "t_s": [5.0],
+            "ve_lmin": [45.0],
+            "vco2_ml": [2000.0],
+            "vo2_ml": [2500.0],
+            "ve_vo2": [18.0],
+            "ve_vco2": [22.5],
+            "rq": [0.80],
+            "hr_bpm": [145.0],
+            "bike_power_w": [200.0],
+        })
+
+        result = analyze_cpm_indices(
+            bxb=bxb,
+            vo2max_results={"vo2max_ml": 2500.0, "rer_max": 1.1},
+            vt_results={"vt2_power_w": 200.0},
+            substrate_results={},
+            efficiency_results={},
+            hr_results={},
+        )
+
+        # ve_vco2_nadir should be computed (not unsupported) with 1 row
+        vmsi_entry = result.get("vmsi", {})
+        assert vmsi_entry.get("supported") is True, (
+            f"vmsi unsupported on 1-row BxB — nadir guard may have regressed. "
+            f"blocker: {vmsi_entry.get('blocker')}"
+        )
+
+    # -----------------------------------------------------------------------
+    # EC-4: VT detection on a noisy 10-minute ramp — VT1 still detected
+    # -----------------------------------------------------------------------
+    def test_vt_detection_on_noisy_ramp_still_finds_vt1(self) -> None:
+        """analyze_ventilatory_thresholds() should detect VT1 on a realistic
+        noisy 10-min ramp even without in-function rolling smoothing.
+
+        The ramp has a V-shaped VE/VO2 nadir in the first 75% of the data;
+        argmin should find it regardless of noise level that preprocessing
+        (Nolte / Butterworth) would normally remove.
+        """
+        from pipeline.analysis import analyze_ventilatory_thresholds
+
+        rng = np.random.RandomState(99)
+        n = 120  # ~10 min at ~5s per breath
+        t_s = np.cumsum(rng.uniform(4.5, 5.5, size=n))
+
+        # Monotone VO2 ramp
+        vo2 = np.linspace(1500.0, 4500.0, n)
+        vco2 = vo2 * np.where(t_s < t_s[n // 2], 0.78, 0.95)
+        ve = vo2 / 50.0 + rng.normal(0, 0.3, size=n)
+
+        # Build a clear V-shaped VE/VO2: decreasing to ~row 40, then rising
+        ve_vo2_base = np.concatenate([
+            np.linspace(32.0, 24.0, 40),   # descend to nadir
+            np.linspace(24.0, 48.0, n - 40),  # rise post-VT1
+        ])
+        ve_vo2 = ve_vo2_base + rng.normal(0, 0.5, size=n)  # mild noise
+
+        ve_vco2_base = np.concatenate([
+            np.linspace(28.0, 22.0, 60),
+            np.linspace(22.0, 35.0, n - 60),
+        ])
+        ve_vco2 = ve_vco2_base + rng.normal(0, 0.4, size=n)
+
+        df = pd.DataFrame({
+            "t_s": t_s,
+            "vo2_ml": vo2,
+            "vco2_ml": vco2,
+            "ve_lmin": ve,
+            "rq": vco2 / vo2,
+            "ve_vo2": ve_vo2,
+            "ve_vco2": ve_vco2,
+            "hr_bpm": np.linspace(80.0, 185.0, n),
+            "bike_power_w": np.linspace(50.0, 350.0, n),
+        })
+
+        result = analyze_ventilatory_thresholds(df)
+
+        assert "vt1_time_s" in result, (
+            "VT1 not detected on 10-min noisy ramp — smoothing removal may have "
+            "degraded nadir detection"
+        )
+        # VT1 should fall in the first half of the test
+        assert result["vt1_time_s"] < t_s[n // 2], (
+            f"VT1 detected too late: {result['vt1_time_s']:.1f}s vs midpoint {t_s[n // 2]:.1f}s"
         )

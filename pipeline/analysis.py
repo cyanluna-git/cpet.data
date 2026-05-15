@@ -545,19 +545,9 @@ def analyze_vo2max(
     if valid.empty:
         return results
 
-    window = min(10, len(valid))
-    valid = valid.copy()
-    valid["vo2_rolling"] = valid["vo2_ml"].rolling(window, min_periods=1).mean()
-    valid["vco2_rolling"] = (
-        valid["vco2_ml"].rolling(window, min_periods=1).mean()
-    )
-    valid["ve_rolling"] = (
-        valid["ve_lmin"].rolling(window, min_periods=1).mean()
-    )
-
-    # VO2max = mean of top-3 rolling peaks (triplet averaging)
+    # VO2max = mean of top-3 peaks (triplet averaging)
     n_peaks = min(3, len(valid))
-    top3 = valid["vo2_rolling"].nlargest(n_peaks)
+    top3 = valid["vo2_ml"].nlargest(n_peaks)
     vo2max_value = float(top3.mean())
     peak_idx = top3.idxmax()  # index of the single highest for associated metrics
 
@@ -567,9 +557,9 @@ def analyze_vo2max(
     results["vo2max_triplet_values"] = [round(float(v), 1) for v in top3.values]
     results["vo2max_outliers_removed"] = True
     results["vco2max_ml"] = round(
-        float(valid.loc[peak_idx, "vco2_rolling"]), 1
+        float(valid.loc[peak_idx, "vco2_ml"]), 1
     )
-    results["ve_max"] = round(float(valid["ve_rolling"].max()), 1)
+    results["ve_max"] = round(float(valid["ve_lmin"].max()), 1)
     results["rer_max"] = round(float(valid["rq"].max()), 2)
     hr_max = valid["hr_bpm"].max() if "hr_bpm" in valid.columns else float("nan")
     if pd.notna(hr_max):
@@ -589,7 +579,7 @@ def analyze_vo2max(
             results["peak_power_achieved_w"] = int(peak_power_max)
 
     if len(valid) > 20:
-        last_20 = valid.tail(20)["vo2_rolling"]
+        last_20 = valid.tail(20)["vo2_ml"]
         first_half = last_20.head(10).mean()
         second_half = last_20.tail(10).mean()
         plateau_diff = second_half - first_half
@@ -626,16 +616,7 @@ def analyze_ventilatory_thresholds(bxb: pd.DataFrame) -> dict[str, Any]:
     if len(valid) < 20:
         return results
 
-    window = 7
-    valid = valid.copy()
-    valid["ve_vo2_smooth"] = (
-        valid["ve_vo2"].rolling(window, min_periods=1).mean()
-    )
-    valid["ve_vco2_smooth"] = (
-        valid["ve_vco2"].rolling(window, min_periods=1).mean()
-    )
-
-    ve_vo2 = valid["ve_vo2_smooth"].values
+    ve_vo2 = valid["ve_vo2"].values
     t = valid["t_s"].values
 
     min_idx = np.argmin(ve_vo2[: len(ve_vo2) * 3 // 4])
@@ -650,7 +631,7 @@ def analyze_ventilatory_thresholds(bxb: pd.DataFrame) -> dict[str, Any]:
         ):
             results["vt1_power_w"] = int(vt1_row["bike_power_w"])
 
-    ve_vco2 = valid["ve_vco2_smooth"].values
+    ve_vco2 = valid["ve_vco2"].values
     min_idx2 = np.argmin(ve_vco2[: len(ve_vco2) * 3 // 4])
     if min_idx2 > 0:
         vt2_time = t[min_idx2]
@@ -665,8 +646,8 @@ def analyze_ventilatory_thresholds(bxb: pd.DataFrame) -> dict[str, Any]:
 
     results["vt_series"] = {
         "t_s": valid["t_s"].tolist(),
-        "ve_vo2": valid["ve_vo2_smooth"].tolist(),
-        "ve_vco2": valid["ve_vco2_smooth"].tolist(),
+        "ve_vo2": valid["ve_vo2"].tolist(),
+        "ve_vco2": valid["ve_vco2"].tolist(),
     }
 
     return results
@@ -2128,17 +2109,17 @@ def analyze_cpm_indices(
     # -----------------------------------------------------------------
     # 9. ve_vo2_nadir  (Pulmonary × Metabolic)
     # -----------------------------------------------------------------
-    if active_bxb.empty or "ve_vo2" not in active_bxb.columns or len(active_bxb) < 30:
+    if active_bxb.empty or "ve_vo2" not in active_bxb.columns:
         results["ve_vo2_nadir"] = _unsupported(
-            "Need ≥30 rows in active BxB with ve_vo2 column"
+            "Need active BxB with ve_vo2 column"
         )
     else:
         nadir = float(
-            active_bxb["ve_vo2"].rolling(30, min_periods=1).mean().min()
+            active_bxb["ve_vo2"].min()
         )
         results["ve_vo2_nadir"] = _supported(
             round(nadir, 2), "L/L",
-            "Rolling-30 minimum of VE/VO2 (nadir)"
+            "Minimum of VE/VO2 (nadir)"
         )
 
     # -----------------------------------------------------------------
@@ -2159,17 +2140,17 @@ def analyze_cpm_indices(
     # 11. vmsi  (Pulmonary × Metabolic) — depends on ve_vco2 nadir + rer_max
     # -----------------------------------------------------------------
     ve_vco2_nadir_val = None
-    if not active_bxb.empty and "ve_vco2" in active_bxb.columns and len(active_bxb) >= 30:
+    if not active_bxb.empty and "ve_vco2" in active_bxb.columns:
         try:
             ve_vco2_nadir_val = float(
-                active_bxb["ve_vco2"].rolling(30, min_periods=1).mean().min()
+                active_bxb["ve_vco2"].min()
             )
         except Exception:
             ve_vco2_nadir_val = None
 
     if ve_vco2_nadir_val is None:
         results["vmsi"] = _unsupported(
-            "Could not compute VE/VCO2 nadir (need ≥30 active BxB rows with ve_vco2)"
+            "Could not compute VE/VCO2 nadir (need active BxB rows with ve_vco2)"
         )
     elif rer_max is None:
         results["vmsi"] = _unsupported("rer_max is None")
@@ -2466,7 +2447,7 @@ def analyze_cpm_indices(
         results["hrr1_ve_vco2_product"] = _unsupported("hrr1_bpm is None")
     elif ve_vco2_nadir_val is None:
         results["hrr1_ve_vco2_product"] = _unsupported(
-            "ve_vco2_nadir_val could not be computed (need ≥30 active BxB rows with ve_vco2)"
+            "ve_vco2_nadir_val could not be computed (need active BxB rows with ve_vco2)"
         )
     else:
         results["hrr1_ve_vco2_product"] = _supported(
@@ -2868,7 +2849,7 @@ def analyze_cpm_indices(
         results["cppi"] = _unsupported("ftp_w missing (vt2_power_w not available)")
     elif ve_vco2_nadir_val is None:
         results["cppi"] = _unsupported(
-            "ve_vco2_nadir could not be computed (need ≥30 active BxB rows with ve_vco2)"
+            "ve_vco2_nadir could not be computed (need active BxB rows with ve_vco2)"
         )
     else:
         _cppi_hr_at_ftp = None
