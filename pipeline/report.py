@@ -629,6 +629,27 @@ def build_insights(context: dict[str, Any]) -> list[str]:
     return insights
 
 
+def _coach_headline(subject: dict, vo2max: dict, vt: dict, zones: dict, has_blood: bool) -> str:
+    """Generate a data-driven headline for the coach summary section."""
+    name = (subject.get("name") or "").strip()
+    vo2 = vo2max.get("vo2max_rel")
+    lt2_w = zones.get("lt2_power_w")
+    vt2_w = vt.get("vt2_power_w")
+    anchor_w = lt2_w or vt2_w  # prefer LT2 if available
+
+    parts: list[str] = []
+    if name:
+        parts.append(name)
+    if anchor_w:
+        label = "LT2" if lt2_w else "VT2"
+        parts.append(f"{label} {format_number(anchor_w)}W")
+    if vo2:
+        parts.append(f"VO₂max {format_number(vo2, 1)}")
+
+    suffix = " 코칭 요약" if has_blood else " CPET 요약"
+    return " · ".join(parts) + suffix if parts else ("사이클링 코칭 요약" if has_blood else "CPET 코칭 요약")
+
+
 def build_coach_summary(context: dict[str, Any]) -> dict[str, Any]:
     """Build a concise coach-facing summary for the top of the report."""
     analysis = context["analysis"]
@@ -639,6 +660,7 @@ def build_coach_summary(context: dict[str, Any]) -> dict[str, Any]:
     vt = analysis["ventilatory_thresholds"]
     zones = analysis["training_zones"]
     hr = analysis["hr"]
+    subject = context["subject"]
     fatmax_copy = _fatmax_summary_copy(context)
     vo2_suitability = _get_suitability(context, "vo2max")
     if not context["blood_samples"]:
@@ -649,7 +671,7 @@ def build_coach_summary(context: dict[str, Any]) -> dict[str, Any]:
             else "RQ 1.0 이전 연료 기여율은 추가 확인이 필요합니다."
         )
         return {
-            "headline": "2블럭 CPET 코칭 요약",
+            "headline": _coach_headline(subject, vo2max, vt, zones, has_blood=False),
             "subheadline": "혈액 샘플이 없는 CPET이므로 직접 lactate threshold 대신 ventilatory surrogate와 범위형 연료 anchor를 우선 정리한 압축 메모입니다.",
             "bullets": [
                 f"{fatmax_copy['headline']}로 보여 steady endurance는 point보다 해당 band 전후에서 연료 효율을 확인하는 편이 안전합니다.",
@@ -665,7 +687,7 @@ def build_coach_summary(context: dict[str, Any]) -> dict[str, Any]:
     vt2_power = vt.get("vt2_power_w")
 
     return {
-        "headline": "사이클링 코칭 요약",
+        "headline": _coach_headline(subject, vo2max, vt, zones, has_blood=True),
         "subheadline": "훈련 처방과 레이스 준비 관점에서 이번 테스트를 바로 해석한 압축 메모입니다.",
         "bullets": [
             f"LT1는 {format_number(lt1_power, 1)}W 전후로 형성되어 있어 지구력 메인 볼륨은 165~180W 범위에서 가장 안정적으로 쌓는 해석이 적절합니다.",
