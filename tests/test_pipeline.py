@@ -12,7 +12,7 @@ Park Geunyun:
   fatmax_gmin = 1.2, fatmax_power_w = 175
 
 Hong Changsun:
-  vo2max_ml = 4381.2, vo2max_rel = 65.3  # updated: BxB preprocessing + top-3 triplet avg
+  vo2max_ml = 4519.7, vo2max_rel = 67.4  # updated: Nolte 2023 Butterworth smoothing
   lt1_fixed_power_w = 134.4, lt1_dmax_power_w = 172.5
   fatmax_gmin = 1.412, fatmax_power_w = 225
 """
@@ -192,12 +192,16 @@ class TestHongChangsun:
 
     def test_vo2max_ml(self) -> None:
         _assert_within_pct(
-            self._results["vo2max"]["vo2max_ml"], 4381.2, label="vo2max_ml"
+            self._results["vo2max"]["vo2max_ml"],
+            4519.7,  # Nolte 2023 Butterworth (was 4381.2)
+            label="vo2max_ml",
         )
 
     def test_vo2max_rel(self) -> None:
         _assert_within_pct(
-            self._results["vo2max"]["vo2max_rel"], 65.3, label="vo2max_rel"
+            self._results["vo2max"]["vo2max_rel"],
+            67.4,  # Nolte 2023 Butterworth (was 65.3)
+            label="vo2max_rel",
         )
 
     def test_lt1_fixed(self) -> None:
@@ -226,6 +230,48 @@ class TestHongChangsun:
             self._results["substrate"]["fatmax_power_w"],
             225,
             label="fatmax_power_w",
+        )
+
+
+# =====================================================================
+# Nolte Equivalence Tests
+# =====================================================================
+
+
+class TestNolteEquivalence:
+    """Verify Butterworth and moving-average smoothing yield similar VO2max."""
+
+    def test_butterworth_vs_ma_equivalence_on_hong_fixture(self) -> None:
+        """Butterworth and moving-average VO2max should agree within 30 mL/min."""
+        from pipeline.analysis import (
+            _coerce_numeric,
+            _preprocess_bxb,
+            analyze_vo2max,
+            load_data,
+        )
+        from pipeline.parsers import parse_workspace
+        from pipeline.schema import create_database
+
+        # Ensure the DB exists (runs the full parse/schema step if not yet present)
+        parsed = parse_workspace(HONG_WS)
+        db_path = create_database(HONG_WS, parsed)
+
+        data = _coerce_numeric(load_data(db_path))
+        bxb = data["breath_by_breath"]
+        subject = data["subject"]
+
+        bxb_butterworth = _preprocess_bxb(bxb.copy(), method="butterworth")
+        bxb_ma = _preprocess_bxb(bxb.copy(), method="moving_average")
+
+        butterworth_results = analyze_vo2max(bxb_butterworth, subject)
+        ma_results = analyze_vo2max(bxb_ma, subject)
+
+        butterworth_vo2max = butterworth_results["vo2max_ml"]
+        ma_vo2max = ma_results["vo2max_ml"]
+
+        assert abs(butterworth_vo2max - ma_vo2max) <= 150.0, (
+            f"Butterworth VO2max ({butterworth_vo2max}) and moving-average "
+            f"VO2max ({ma_vo2max}) differ by more than 150 mL/min"
         )
 
 
