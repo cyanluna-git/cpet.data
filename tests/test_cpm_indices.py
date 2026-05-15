@@ -553,3 +553,267 @@ def test_tau_w_index_unsupported_without_mono_exp_fit() -> None:
     assert "mono" in entry["blocker"].lower() or "fit" in entry["blocker"].lower(), (
         f"Expected blocker to mention mono-exp fit, got: {entry['blocker']}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 17 — FTP stubs are supported when vt2_power_w is available
+# ---------------------------------------------------------------------------
+
+def test_ftp_stubs_supported_with_vt2_power() -> None:
+    """crpi, prr, fbzf, atpr, vpsi, tzwi are all supported when vt2_power_w is provided."""
+    bxb = make_bxb(60)
+    vt_results = {
+        "vt2_power_w": 240.0,
+        "vt1_power_w": 180.0,
+    }
+    hr_results = {
+        "actual_max_hr": 185,
+        "predicted_max_hr": 190,
+        "resting_hr_bpm": 55,
+        "hrr1_bpm": 12,
+        "hr_power_slope": 0.8,
+    }
+    substrate_results = {
+        "fatmax_power_w": 150.0,
+    }
+
+    result = analyze_cpm_indices(
+        bxb=bxb,
+        vo2max_results={},
+        vt_results=vt_results,
+        substrate_results=substrate_results,
+        efficiency_results={},
+        hr_results=hr_results,
+    )
+
+    # ftp_w = 240 * 0.95 = 228
+    ftp_w = 240.0 * 0.95
+
+    for key in ("crpi", "prr", "fbzf", "atpr", "vpsi", "tzwi"):
+        entry = result[key]
+        assert entry["supported"] is True, (
+            f"Expected {key} supported with vt2_power_w=240, got blocker: {entry.get('blocker')}"
+        )
+
+    # tpdi requires tau (from energy_system_results.mono_exp_fit) — unsupported without it
+    assert result["tpdi"]["supported"] is False, (
+        "tpdi should be unsupported when mono_exp_fit is not provided"
+    )
+
+    # Spot-check values
+    assert abs(result["crpi"]["value"] - 12.0 / ftp_w) < 1e-4, (
+        f"crpi value mismatch: expected {12.0 / ftp_w:.5f}, got {result['crpi']['value']}"
+    )
+    assert abs(result["prr"]["value"] - ftp_w / 12.0) < 1e-3, (
+        f"prr value mismatch: expected {ftp_w / 12.0:.4f}, got {result['prr']['value']}"
+    )
+    assert abs(result["fbzf"]["value"] - 150.0 / ftp_w) < 1e-4, (
+        f"fbzf value mismatch: expected {150.0 / ftp_w:.4f}, got {result['fbzf']['value']}"
+    )
+    assert abs(result["atpr"]["value"] - 180.0 / ftp_w) < 1e-4, (
+        f"atpr value mismatch: expected {180.0 / ftp_w:.4f}, got {result['atpr']['value']}"
+    )
+    assert abs(result["tzwi"]["value"] - (240.0 - 180.0) / ftp_w) < 1e-4, (
+        f"tzwi value mismatch: expected {(240.0 - 180.0) / ftp_w:.4f}, got {result['tzwi']['value']}"
+    )
+
+    # Key count must still be 57
+    assert len(result) >= 57, (
+        f"Expected ≥57 keys after FTP stubs implemented, got {len(result)}: {sorted(result.keys())}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 17b — all 7 FTP stubs unsupported when vt2_power_w is None
+# ---------------------------------------------------------------------------
+
+def test_ftp_stubs_all_unsupported_without_vt2_power() -> None:
+    """All 7 FTP stubs (crpi, prr, fbzf, atpr, vpsi, tpdi, tzwi) are unsupported
+    when vt2_power_w is absent, making ftp_w=None."""
+    result = analyze_cpm_indices(
+        bxb=make_bxb(60),
+        vo2max_results={},
+        vt_results={},          # no vt2_power_w → ftp_w=None
+        substrate_results={},
+        efficiency_results={},
+        hr_results=make_hr(),
+    )
+
+    for key in ("crpi", "prr", "fbzf", "atpr", "vpsi", "tpdi", "tzwi"):
+        entry = result[key]
+        assert entry["supported"] is False, (
+            f"Expected {key} unsupported when vt2_power_w is absent, got supported=True"
+        )
+        assert "ftp_w" in entry["blocker"].lower() or "vt2" in entry["blocker"].lower(), (
+            f"Expected blocker for {key} to mention ftp_w/vt2, got: {entry['blocker']}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test 17c — lpi unsupported when vo2max_rel leads to ftp_ref=0
+# ---------------------------------------------------------------------------
+
+def test_lpi_unsupported_when_vo2max_rel_zero() -> None:
+    """lpi is unsupported when vo2max_rel=0 (ftp_ref would be zero/undefined)."""
+    bxb = make_bxb(60)
+    hr_results = make_hr()
+    vt_results = {"vt2_power_w": 240.0}  # ftp_w present but vo2max_rel=0
+
+    result = analyze_cpm_indices(
+        bxb=bxb,
+        vo2max_results={"vo2max_ml": 3000.0, "vo2max_rel": 0.0},
+        vt_results=vt_results,
+        substrate_results={},
+        efficiency_results={},
+        hr_results=hr_results,
+    )
+
+    entry = result["lpi"]
+    assert entry["supported"] is False, (
+        f"Expected lpi unsupported when vo2max_rel=0, got supported=True"
+    )
+    assert "zero" in entry["blocker"].lower() or "missing" in entry["blocker"].lower(), (
+        f"Expected blocker to mention zero/missing, got: {entry['blocker']}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 17d — vpsi unsupported when BxB data is absent (ve_vco2_slope not computed)
+# ---------------------------------------------------------------------------
+
+def test_vpsi_unsupported_without_bxb_data() -> None:
+    """vpsi is unsupported when bxb is empty so ve_vco2_slope_val cannot be computed,
+    even when ftp_w (vt2_power_w) is available."""
+    result = analyze_cpm_indices(
+        bxb=pd.DataFrame(),    # no BxB → ve_vco2_slope_val = None
+        vo2max_results={},
+        vt_results={"vt2_power_w": 240.0},   # ftp_w = 228
+        substrate_results={},
+        efficiency_results={},
+        hr_results={},
+    )
+
+    entry = result["vpsi"]
+    assert entry["supported"] is False, (
+        "vpsi should be unsupported when BxB is empty (no ve_vco2_slope)"
+    )
+    assert "slope" in entry["blocker"].lower() or "ve_vco2" in entry["blocker"].lower(), (
+        f"Expected blocker to mention slope/ve_vco2, got: {entry['blocker']}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 17e — tzwi unsupported when vt1_power_w is None
+# ---------------------------------------------------------------------------
+
+def test_tzwi_unsupported_without_vt1_power() -> None:
+    """tzwi is unsupported when vt1_power_w is absent, even when vt2_power_w (ftp_w) is present."""
+    result = analyze_cpm_indices(
+        bxb=pd.DataFrame(),
+        vo2max_results={},
+        vt_results={"vt2_power_w": 240.0},  # ftp_w available but vt1 absent
+        substrate_results={},
+        efficiency_results={},
+        hr_results={},
+    )
+
+    entry = result["tzwi"]
+    assert entry["supported"] is False, (
+        "tzwi should be unsupported when vt1_power_w is absent"
+    )
+    assert "vt1" in entry["blocker"].lower(), (
+        f"Expected blocker to mention vt1, got: {entry['blocker']}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 17f — crpi and prr unsupported when hrr1_bpm is None
+# ---------------------------------------------------------------------------
+
+def test_crpi_prr_unsupported_without_hrr1() -> None:
+    """crpi and prr are unsupported when hrr1_bpm is None, even when ftp_w is available."""
+    hr_results = {
+        "actual_max_hr": 185,
+        "predicted_max_hr": 190,
+        "resting_hr_bpm": 55,
+        "hrr1_bpm": None,       # explicitly missing
+        "hr_power_slope": 0.8,
+    }
+
+    result = analyze_cpm_indices(
+        bxb=pd.DataFrame(),
+        vo2max_results={},
+        vt_results={"vt2_power_w": 240.0},  # ftp_w = 228
+        substrate_results={},
+        efficiency_results={},
+        hr_results=hr_results,
+    )
+
+    for key in ("crpi", "prr"):
+        entry = result[key]
+        assert entry["supported"] is False, (
+            f"Expected {key} unsupported when hrr1_bpm=None, got supported=True"
+        )
+        assert "hrr1" in entry["blocker"].lower(), (
+            f"Expected blocker for {key} to mention hrr1, got: {entry['blocker']}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test 18 — lpi computes with 4-factor formula when all inputs available
+# ---------------------------------------------------------------------------
+
+def test_lpi_computes_with_ftp() -> None:
+    """lpi is supported and in reasonable range when all 4 factor inputs are available."""
+    bxb = make_bxb(60)
+    # vo2max_ml / vo2max_rel = body_mass; ftp_ref = 2.5 * body_mass
+    vo2max_results = {
+        "vo2max_ml": 3000.0,
+        "vo2max_rel": 40.0,
+        "rer_max": 1.10,
+        "peak_power_achieved_w": 300.0,
+    }
+    hr_results = {
+        "actual_max_hr": 160,
+        "predicted_max_hr": 170,
+        "resting_hr_bpm": 55,
+        "hrr1_bpm": 15,
+        "hr_power_slope": 0.7,
+    }
+    vt_results = {
+        "vt2_power_w": 200.0,
+        "vt1_power_w": 150.0,
+    }
+
+    result = analyze_cpm_indices(
+        bxb=bxb,
+        vo2max_results=vo2max_results,
+        vt_results=vt_results,
+        substrate_results={},
+        efficiency_results={},
+        hr_results=hr_results,
+    )
+
+    entry = result["lpi"]
+    assert entry["supported"] is True, (
+        f"Expected lpi supported, got blocker: {entry.get('blocker')}"
+    )
+    assert 0 < entry["value"] < 10, (
+        f"Expected lpi in (0, 10) sanity range, got {entry['value']}"
+    )
+    assert entry["unit"] == "ratio^4 (VO2-norm x HRR1-norm x OUES-norm x FTP-norm)", (
+        f"Unexpected lpi unit: {entry['unit']!r}"
+    )
+
+    # Verify formula: (vo2rel/35) * (hrr1/12) * (oues/1500) * (ftp_w/ftp_ref)
+    # ftp_w = 200 * 0.95 = 190; body_mass = 3000/40 = 75; ftp_ref = 2.5 * 75 = 187.5
+    ftp_w_expected = 200.0 * 0.95
+    body_mass = 3000.0 / 40.0
+    ftp_ref = 2.5 * body_mass
+    # oues is computed from bxb — just check it's supported (value varies)
+    assert result["oues"]["supported"] is True, "oues must be supported for this test to be meaningful"
+    oues_val = result["oues"]["value"]
+    expected_lpi = (40.0 / 35.0) * (15.0 / 12.0) * (oues_val / 1500.0) * (ftp_w_expected / ftp_ref)
+    assert abs(entry["value"] - round(expected_lpi, 4)) < 1e-3, (
+        f"lpi formula mismatch: expected {expected_lpi:.4f}, got {entry['value']}"
+    )

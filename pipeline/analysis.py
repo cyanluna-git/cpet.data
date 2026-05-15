@@ -1854,6 +1854,9 @@ def analyze_cpm_indices(
     vt2_time_s = vt_results.get("vt2_time_s")
     vt2_power_w = vt_results.get("vt2_power_w")
 
+    # ftp_w: FTP proxy — VT2 power × 0.95 (Coggan convention)
+    ftp_w: float | None = float(vt2_power_w) * 0.95 if vt2_power_w is not None else None
+
     hrr1_bpm = hr_results.get("hrr1_bpm")
 
     fatmax_power_w = substrate_results.get("fatmax_power_w")
@@ -2606,20 +2609,130 @@ def analyze_cpm_indices(
     results["fzi_cardiopulmonary"] = _unsupported(_proprietary_blocker)
     results["mri_composite"] = _unsupported(_proprietary_blocker)
     results["iee"] = _unsupported(_proprietary_blocker)
-    results["lpi"] = _unsupported(_proprietary_blocker)
+    # lpi — Longevity Performance Index (4-factor composite)
+    # Ref values: VO2max 35 mL/kg/min, HRR1 12 bpm, OUES 1500, FTP 2.5 W/kg
+    if vo2max_rel is None or float(vo2max_rel) <= 0:
+        results["lpi"] = _unsupported("vo2max_rel missing or zero")
+    elif vo2max_ml is None or float(vo2max_ml) <= 0:
+        results["lpi"] = _unsupported("vo2max_ml missing or zero")
+    elif hrr1_bpm is None:
+        results["lpi"] = _unsupported("hrr1_bpm missing")
+    elif oues_val is None:
+        results["lpi"] = _unsupported("oues could not be computed")
+    elif ftp_w is None:
+        results["lpi"] = _unsupported("ftp_w missing (vt2_power_w not available)")
+    else:
+        # ftp_ref = 2.5 W/kg × body_mass; body_mass = vo2max_ml / vo2max_rel
+        _lpi_ftp_ref = 2.5 * (float(vo2max_ml) / float(vo2max_rel))
+        if _lpi_ftp_ref <= 0:
+            results["lpi"] = _unsupported("ftp_ref is zero (vo2max_ml / vo2max_rel yielded zero)")
+        else:
+            _lpi_val = (
+                (float(vo2max_rel) / 35.0)
+                * (float(hrr1_bpm) / 12.0)
+                * (float(oues_val) / 1500.0)
+                * (float(ftp_w) / _lpi_ftp_ref)
+            )
+            results["lpi"] = _supported(
+                round(_lpi_val, 4),
+                "ratio^4 (VO2-norm x HRR1-norm x OUES-norm x FTP-norm)",
+                "Partial LPI — ref values: VO2 35 mL/kg/min, HRR1 12 bpm, OUES 1500, FTP 2.5 W/kg",
+            )
     results["longevity_pi"] = _unsupported(_proprietary_blocker)
 
     # -----------------------------------------------------------------
-    # FTP-dependent stubs (7) — Phase 2 blocker
+    # FTP-dependent indices (7) — implemented via ftp_w = VT2 × 0.95
     # -----------------------------------------------------------------
-    _ftp_blocker = "FTP not available; use VT2_W x 0.95 as proxy or provide via workspace metadata"
-    results["crpi"] = _unsupported(_ftp_blocker)
-    results["prr"] = _unsupported(_ftp_blocker)
-    results["fbzf"] = _unsupported(_ftp_blocker)
-    results["atpr"] = _unsupported(_ftp_blocker)
-    results["vpsi"] = _unsupported(_ftp_blocker)
-    results["tpdi"] = _unsupported(_ftp_blocker)
-    results["tzwi"] = _unsupported(_ftp_blocker)
+    if ftp_w is None:
+        _ftp_blocker = "ftp_w missing (vt2_power_w not available)"
+        results["crpi"] = _unsupported(_ftp_blocker)
+        results["prr"] = _unsupported(_ftp_blocker)
+        results["fbzf"] = _unsupported(_ftp_blocker)
+        results["atpr"] = _unsupported(_ftp_blocker)
+        results["vpsi"] = _unsupported(_ftp_blocker)
+        results["tpdi"] = _unsupported(_ftp_blocker)
+        results["tzwi"] = _unsupported(_ftp_blocker)
+    else:
+        # crpi — Cardiac-to-Power Ratio Index  [bpm/W]
+        if hrr1_bpm is None:
+            results["crpi"] = _unsupported("hrr1_bpm missing")
+        else:
+            results["crpi"] = _supported(
+                round(float(hrr1_bpm) / float(ftp_w), 5),
+                "bpm/W",
+                "Cardiac-to-Power Ratio Index: HRR1 / FTP",
+            )
+
+        # prr — Power-to-Recovery Ratio  [W/bpm]
+        if hrr1_bpm is None or float(hrr1_bpm) == 0:
+            results["prr"] = _unsupported("hrr1_bpm missing or zero")
+        else:
+            results["prr"] = _supported(
+                round(float(ftp_w) / float(hrr1_bpm), 4),
+                "W/bpm",
+                "Power-to-Recovery Ratio: FTP / HRR1",
+            )
+
+        # fbzf — Fat-Burning Zone Fraction  [ratio]
+        if fatmax_power_w is None:
+            results["fbzf"] = _unsupported("fatmax_power_w missing from substrate_results")
+        else:
+            results["fbzf"] = _supported(
+                round(float(fatmax_power_w) / float(ftp_w), 4),
+                "ratio",
+                "Fat-Burning Zone Fraction: FATmax power / FTP",
+            )
+
+        # atpr — Aerobic Threshold Power Ratio  [ratio]
+        if vt1_power_w is None:
+            results["atpr"] = _unsupported("vt1_power_w missing from vt_results")
+        else:
+            results["atpr"] = _supported(
+                round(float(vt1_power_w) / float(ftp_w), 4),
+                "ratio",
+                "Aerobic Threshold Power Ratio: VT1 power / FTP",
+            )
+
+        # vpsi — Ventilatory Power-Slope Index  [ratio·W]
+        if ve_vco2_slope_val is None:
+            results["vpsi"] = _unsupported("ve_vco2_slope could not be computed")
+        else:
+            results["vpsi"] = _supported(
+                round(float(ve_vco2_slope_val) * float(ftp_w), 3),
+                "ratio·W",
+                "Ventilatory Power-Slope Index: VE/VCO2 slope × FTP",
+            )
+
+        # tpdi — Tau-Power Dysfunctionality Index  [sec·bpm/W²]
+        _hr_w_slope_val_tpdi = results.get("hr_w_slope", {}).get("value")
+        if _tau_sec is None:
+            results["tpdi"] = _unsupported(
+                "mono-exp recovery fit not available (energy_system_results.mono_exp_fit missing)"
+            )
+        elif _hr_w_slope_val_tpdi is None:
+            results["tpdi"] = _unsupported(
+                "hr_w_slope not computed (insufficient paired HR-power data)"
+            )
+        elif float(ftp_w) == 0:
+            results["tpdi"] = _unsupported("ftp_w is zero; division undefined")
+        else:
+            results["tpdi"] = _supported(
+                round(float(_tau_sec) * float(_hr_w_slope_val_tpdi) / float(ftp_w), 5),
+                "sec·bpm/W²",
+                "Tau-Power Dysfunctionality Index: tau_off × HR-power slope / FTP",
+            )
+
+        # tzwi — Threshold Zone Width Index  [ratio]
+        if vt1_power_w is None:
+            results["tzwi"] = _unsupported("vt1_power_w missing from vt_results")
+        elif vt2_power_w is None:
+            results["tzwi"] = _unsupported("vt2_power_w missing from vt_results")
+        else:
+            results["tzwi"] = _supported(
+                round((float(vt2_power_w) - float(vt1_power_w)) / float(ftp_w), 4),
+                "ratio",
+                "Threshold Zone Width Index: (VT2 - VT1) power / FTP",
+            )
 
     # -----------------------------------------------------------------
     # W'-dependent stubs (2) — anaerobic capacity not modeled
