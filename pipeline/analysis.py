@@ -978,6 +978,10 @@ def _interpolate_and_compute_markers(
         })
     if crossovers:
         crossovers.sort(key=lambda m: m["confidence"], reverse=True)
+        cx_power = crossovers[0]["power_w"]
+        zone_max = min(zone_max, cx_power)
+        if zone_max <= zone_min:
+            zone_max = zone_min + 10.0
 
     dense = {"power": dp, "fat": df, "cho": dc, "hr": dh, "vo2": dv}
     markers = {
@@ -1058,6 +1062,13 @@ def _anchor_power_domain_markers(
     if zone_max - zone_min < 8.0:
         zone_min = max(float(dense_power[0]), fatmax_power - 10.0)
         zone_max = min(float(dense_power[-1]), fatmax_power + 10.0)
+
+    cx = markers.get("primary_crossover")
+    if cx:
+        cx_power = float(cx["power_w"])
+        zone_max = min(zone_max, cx_power)
+        if zone_max <= zone_min:
+            zone_max = zone_min + 10.0
 
     markers.update(
         {
