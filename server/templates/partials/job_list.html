@@ -130,7 +130,7 @@
   </div>
 
   <!-- Row 2: File tags + slug -->
-  <div class="flex items-center gap-2 mt-1.5">
+  <div class="flex flex-wrap items-center gap-2 mt-1.5">
     {% for tag in job.file_tags or [] %}
       {% if tag == 'INSCYD' %}
         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-700">{{ tag }}</span>
