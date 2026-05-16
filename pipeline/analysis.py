@@ -848,26 +848,28 @@ def _select_primary_substrate_window(valid: pd.DataFrame) -> tuple[pd.DataFrame,
     return primary.reset_index(drop=True), "block_1"
 
 
-def _build_power_domain_substrate(valid: pd.DataFrame) -> dict[str, Any]:
-    """Build a chart-ready power-domain substrate contract from breath data."""
+def _bin_and_aggregate_power_substrate(
+    valid: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame] | None:
+    """Filter BxB data, bin into 5W intervals, aggregate medians, apply smoothing.
+
+    Returns (grouped, power_domain) or None when no valid rows remain.
+    power_domain is the filtered raw DataFrame; grouped is the binned result.
+    """
     required = ["bike_power_w", "fat_gmin", "cho_gmin"]
     power_domain = valid.dropna(subset=required).copy()
     power_domain = power_domain[power_domain["bike_power_w"] >= 40].copy()
-    for column in ["bike_power_w", "fat_gmin", "cho_gmin", "hr_bpm", "vo2_kg"]:
-        if column in power_domain.columns:
-            power_domain[column] = pd.to_numeric(
-                power_domain[column], errors="coerce"
-            )
-    for column in ["bike_power_w", "fat_gmin", "cho_gmin"]:
-        power_domain = power_domain[np.isfinite(power_domain[column])]
+    for col in ["bike_power_w", "fat_gmin", "cho_gmin", "hr_bpm", "vo2_kg"]:
+        if col in power_domain.columns:
+            power_domain[col] = pd.to_numeric(power_domain[col], errors="coerce")
+    for col in ["bike_power_w", "fat_gmin", "cho_gmin"]:
+        power_domain = power_domain[np.isfinite(power_domain[col])]
     if power_domain.empty:
-        return {}
+        return None
 
     power_domain["fat_gmin"] = power_domain["fat_gmin"].clip(lower=0)
     power_domain["cho_gmin"] = power_domain["cho_gmin"].clip(lower=0)
-    power_domain["power_bin_w"] = (
-        (power_domain["bike_power_w"] / 5.0).round() * 5.0
-    )
+    power_domain["power_bin_w"] = (power_domain["bike_power_w"] / 5.0).round() * 5.0
 
     agg_map: dict[str, tuple[str, str]] = {
         "fat_gmin": ("fat_gmin", "median"),
@@ -885,152 +887,137 @@ def _build_power_domain_substrate(valid: pd.DataFrame) -> dict[str, Any]:
         .sort_values("power_bin_w")
         .reset_index(drop=True)
     )
+    for col in ["hr_bpm", "vo2_kg"]:
+        if col not in grouped.columns:
+            grouped[col] = np.nan
+    for col in ["fat_gmin", "cho_gmin", "hr_bpm", "vo2_kg"]:
+        grouped[col] = _rolling_mean(grouped[col], window=5)
+        grouped[col] = pd.to_numeric(grouped[col], errors="coerce")
+    return grouped, power_domain
 
-    for column in ["hr_bpm", "vo2_kg"]:
-        if column not in grouped.columns:
-            grouped[column] = np.nan
 
-    for column in ["fat_gmin", "cho_gmin", "hr_bpm", "vo2_kg"]:
-        grouped[column] = _rolling_mean(grouped[column], window=5)
-        grouped[column] = pd.to_numeric(grouped[column], errors="coerce")
+def _interpolate_and_compute_markers(
+    grouped: pd.DataFrame,
+    power_domain: pd.DataFrame,
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    """Build dense PCHIP curves and compute FatMax zone + crossovers.
 
+    Returns (dense_arrays, markers) or None when no finite bins remain.
+    dense_arrays has keys: power, fat, cho, hr, vo2 (numpy arrays).
+    """
     x = grouped["power_bin_w"].to_numpy(dtype=float)
-    dense_power = x.copy()
-    dense_fat = grouped["fat_gmin"].to_numpy(dtype=float)
-    dense_cho = grouped["cho_gmin"].to_numpy(dtype=float)
-    dense_hr = grouped["hr_bpm"].to_numpy(dtype=float)
-    dense_vo2 = grouped["vo2_kg"].to_numpy(dtype=float)
+    fat_raw = grouped["fat_gmin"].to_numpy(dtype=float)
+    cho_raw = grouped["cho_gmin"].to_numpy(dtype=float)
+    hr_raw = grouped["hr_bpm"].to_numpy(dtype=float)
+    vo2_raw = grouped["vo2_kg"].to_numpy(dtype=float)
 
-    finite_mask = np.isfinite(x) & np.isfinite(dense_fat) & np.isfinite(dense_cho)
-    x_finite = x[finite_mask]
-    fat_finite = dense_fat[finite_mask]
-    cho_finite = dense_cho[finite_mask]
-    hr_finite = dense_hr[finite_mask]
-    vo2_finite = dense_vo2[finite_mask]
+    finite_mask = np.isfinite(x) & np.isfinite(fat_raw) & np.isfinite(cho_raw)
+    x_f = x[finite_mask]
+    if len(x_f) == 0:
+        return None
 
-    if len(x_finite) == 0:
-        return {}
+    dp = x_f.copy()
+    df = fat_raw[finite_mask].copy()
+    dc = cho_raw[finite_mask].copy()
+    dh = hr_raw[finite_mask].copy()
+    dv = vo2_raw[finite_mask].copy()
 
-    dense_power = x_finite.copy()
-    dense_fat = fat_finite.copy()
-    dense_cho = cho_finite.copy()
-    dense_hr = hr_finite.copy()
-    dense_vo2 = vo2_finite.copy()
-
-    if len(x_finite) >= 4 and len(np.unique(x_finite)) >= 4:
-        dense_power = np.arange(
-            float(x_finite[0]), float(x_finite[-1]) + 0.5, 0.5
+    if len(x_f) >= 4 and len(np.unique(x_f)) >= 4:
+        dp = np.arange(float(x_f[0]), float(x_f[-1]) + 0.5, 0.5)
+        df = PchipInterpolator(x_f, fat_raw[finite_mask])(dp)
+        dc = PchipInterpolator(x_f, cho_raw[finite_mask])(dp)
+        hr_ok = np.isfinite(dh)
+        vo2_ok = np.isfinite(dv)
+        dh = (
+            PchipInterpolator(x_f[hr_ok], dh[hr_ok])(dp)
+            if hr_ok.sum() >= 4 and len(np.unique(x_f[hr_ok])) >= 4
+            else np.full_like(dp, np.nan, dtype=float)
         )
-        dense_fat = PchipInterpolator(x_finite, fat_finite)(dense_power)
-        dense_cho = PchipInterpolator(x_finite, cho_finite)(dense_power)
-        hr_valid = np.isfinite(hr_finite)
-        vo2_valid = np.isfinite(vo2_finite)
-        if hr_valid.sum() >= 4 and len(np.unique(x_finite[hr_valid])) >= 4:
-            dense_hr = PchipInterpolator(
-                x_finite[hr_valid], hr_finite[hr_valid]
-            )(dense_power)
-        else:
-            dense_hr = np.full_like(dense_power, np.nan, dtype=float)
-        if vo2_valid.sum() >= 4 and len(np.unique(x_finite[vo2_valid])) >= 4:
-            dense_vo2 = PchipInterpolator(
-                x_finite[vo2_valid], vo2_finite[vo2_valid]
-            )(dense_power)
-        else:
-            dense_vo2 = np.full_like(dense_power, np.nan, dtype=float)
+        dv = (
+            PchipInterpolator(x_f[vo2_ok], dv[vo2_ok])(dp)
+            if vo2_ok.sum() >= 4 and len(np.unique(x_f[vo2_ok])) >= 4
+            else np.full_like(dp, np.nan, dtype=float)
+        )
 
-    dense_fat = np.clip(dense_fat, 0, None)
-    dense_cho = np.clip(dense_cho, 0, None)
+    df = np.clip(df, 0, None)
+    dc = np.clip(dc, 0, None)
 
-    raw_fatmax_idx = power_domain["fat_gmin"].idxmax()
-    raw_fatmax_power = float(power_domain.loc[raw_fatmax_idx, "bike_power_w"])
-    raw_fatmax_value = float(power_domain.loc[raw_fatmax_idx, "fat_gmin"])
-    fatmax_idx = int(np.argmin(np.abs(dense_power - raw_fatmax_power)))
-    fatmax_power = raw_fatmax_power
-    fatmax_value = raw_fatmax_value
-    curve_anchor_value = float(dense_fat[fatmax_idx]) if len(dense_fat) else raw_fatmax_value
-    fatmax_threshold = curve_anchor_value * 0.90
-    if fatmax_threshold > 0:
-        left_idx = fatmax_idx
-        right_idx = fatmax_idx
-        while left_idx > 0 and dense_fat[left_idx - 1] >= fatmax_threshold:
-            left_idx -= 1
-        while right_idx < len(dense_fat) - 1 and dense_fat[right_idx + 1] >= fatmax_threshold:
-            right_idx += 1
-        zone_min = float(dense_power[left_idx])
-        zone_max = float(dense_power[right_idx])
+    raw_idx = power_domain["fat_gmin"].idxmax()
+    fm_power = float(power_domain.loc[raw_idx, "bike_power_w"])
+    fm_value = float(power_domain.loc[raw_idx, "fat_gmin"])
+    fm_idx = int(np.argmin(np.abs(dp - fm_power)))
+    curve_anchor = float(df[fm_idx]) if len(df) else fm_value
+    threshold = curve_anchor * 0.90
+    if threshold > 0:
+        li, ri = fm_idx, fm_idx
+        while li > 0 and df[li - 1] >= threshold:
+            li -= 1
+        while ri < len(df) - 1 and df[ri + 1] >= threshold:
+            ri += 1
+        zone_min, zone_max = float(dp[li]), float(dp[ri])
     else:
-        zone_min = max(float(dense_power[0]), fatmax_power - 10.0)
-        zone_max = min(float(dense_power[-1]), fatmax_power + 10.0)
+        zone_min = max(float(dp[0]), fm_power - 10.0)
+        zone_max = min(float(dp[-1]), fm_power + 10.0)
     if zone_max - zone_min < 8.0:
-        zone_min = max(float(dense_power[0]), fatmax_power - 10.0)
-        zone_max = min(float(dense_power[-1]), fatmax_power + 10.0)
+        zone_min = max(float(dp[0]), fm_power - 10.0)
+        zone_max = min(float(dp[-1]), fm_power + 10.0)
 
-    diff = dense_fat - dense_cho
+    diff = df - dc
     crossovers: list[dict[str, Any]] = []
-    for idx in range(len(diff) - 1):
-        d1 = float(diff[idx])
-        d2 = float(diff[idx + 1])
+    for i in range(len(diff) - 1):
+        d1, d2 = float(diff[i]), float(diff[i + 1])
         if not ((d1 > 0 >= d2) or (d1 >= 0 > d2)):
             continue
-        p1 = float(dense_power[idx])
-        p2 = float(dense_power[idx + 1])
+        p1, p2 = float(dp[i]), float(dp[i + 1])
         t = 0.0 if d1 == d2 else (-d1 / (d2 - d1))
-        crossovers.append(
-            {
-                "power_w": round(p1 + t * (p2 - p1), 1),
-                "fat_gmin": round(
-                    float(
-                        dense_fat[idx]
-                        + t * (dense_fat[idx + 1] - dense_fat[idx])
-                    ),
-                    4,
-                ),
-                "cho_gmin": round(
-                    float(
-                        dense_cho[idx]
-                        + t * (dense_cho[idx + 1] - dense_cho[idx])
-                    ),
-                    4,
-                ),
-                "confidence": round(abs(d1 - d2), 4),
-            }
-        )
-
-    primary_crossover = None
+        crossovers.append({
+            "power_w": round(p1 + t * (p2 - p1), 1),
+            "fat_gmin": round(float(df[i] + t * (df[i + 1] - df[i])), 4),
+            "cho_gmin": round(float(dc[i] + t * (dc[i + 1] - dc[i])), 4),
+            "confidence": round(abs(d1 - d2), 4),
+        })
     if crossovers:
-        crossovers.sort(key=lambda marker: marker["confidence"], reverse=True)
-        primary_crossover = crossovers[0]
+        crossovers.sort(key=lambda m: m["confidence"], reverse=True)
+
+    dense = {"power": dp, "fat": df, "cho": dc, "hr": dh, "vo2": dv}
+    markers = {
+        "fatmax_power_w": round(fm_power, 1),
+        "fatmax_gmin": round(fm_value, 4),
+        "fatmax_zone_min_w": round(zone_min, 1),
+        "fatmax_zone_max_w": round(zone_max, 1),
+        "primary_crossover": crossovers[0] if crossovers else None,
+        "all_crossovers": crossovers,
+    }
+    return dense, markers
+
+
+def _build_power_domain_substrate(valid: pd.DataFrame) -> dict[str, Any]:
+    """Build a chart-ready power-domain substrate contract from breath data."""
+    agg = _bin_and_aggregate_power_substrate(valid)
+    if agg is None:
+        return {}
+    grouped, power_domain = agg
+
+    result = _interpolate_and_compute_markers(grouped, power_domain)
+    if result is None:
+        return {}
+    dense, markers = result
 
     return {
         "metabolism_power_curve": {
-            "power_w": [round(float(v), 1) for v in dense_power.tolist()],
-            "fat_gmin": [round(float(v), 4) for v in dense_fat.tolist()],
-            "cho_gmin": [round(float(v), 4) for v in dense_cho.tolist()],
-            "hr_bpm": [round(float(v), 1) for v in dense_hr.tolist()],
-            "vo2_kg": [round(float(v), 2) for v in dense_vo2.tolist()],
+            "power_w": [round(float(v), 1) for v in dense["power"].tolist()],
+            "fat_gmin": [round(float(v), 4) for v in dense["fat"].tolist()],
+            "cho_gmin": [round(float(v), 4) for v in dense["cho"].tolist()],
+            "hr_bpm": [round(float(v), 1) for v in dense["hr"].tolist()],
+            "vo2_kg": [round(float(v), 2) for v in dense["vo2"].tolist()],
         },
         "metabolism_power_bins": {
-            "power_w": [
-                round(float(v), 1) for v in grouped["power_bin_w"].tolist()
-            ],
-            "fat_gmin": [
-                round(float(v), 4) for v in grouped["fat_gmin"].tolist()
-            ],
-            "cho_gmin": [
-                round(float(v), 4) for v in grouped["cho_gmin"].tolist()
-            ],
-            "sample_count": [
-                int(v) for v in grouped["sample_count"].tolist()
-            ],
+            "power_w": [round(float(v), 1) for v in grouped["power_bin_w"].tolist()],
+            "fat_gmin": [round(float(v), 4) for v in grouped["fat_gmin"].tolist()],
+            "cho_gmin": [round(float(v), 4) for v in grouped["cho_gmin"].tolist()],
+            "sample_count": [int(v) for v in grouped["sample_count"].tolist()],
         },
-        "metabolism_markers": {
-            "fatmax_power_w": round(fatmax_power, 1),
-            "fatmax_gmin": round(fatmax_value, 4),
-            "fatmax_zone_min_w": round(zone_min, 1),
-            "fatmax_zone_max_w": round(zone_max, 1),
-            "primary_crossover": primary_crossover,
-            "all_crossovers": crossovers,
-        },
+        "metabolism_markers": markers,
     }
 
 
