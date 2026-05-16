@@ -2428,95 +2428,21 @@ def _compute_pm_indices(prim: dict) -> dict:
     return r
 
 
-def _compute_cpmw_indices(prim: dict) -> dict:
+def _compute_w_domain_indices(prim: dict) -> dict:
     r: dict = {}
-    active_bxb = prim["active_bxb"]
-    bxb = prim["bxb"]
-    vo2max_ml = prim["vo2max_ml"]
-    vo2max_rel = prim["vo2max_rel"]
-    peak_power_achieved_w = prim["peak_power_achieved_w"]
-    actual_max_hr = prim["actual_max_hr"]
-    vt1_hr = prim["vt1_hr"]
-    vt1_power_w = prim["vt1_power_w"]
-    vt1_time_s = prim["vt1_time_s"]
-    vt2_power_w = prim["vt2_power_w"]
-    ve_vco2_slope_val = prim["ve_vco2_slope_val"]
     o2_pulse_val = prim["o2_pulse_val"]
-    oues_val = prim["oues_val"]
-    ve_vco2_nadir_val = prim["ve_vco2_nadir_val"]
-    hrr1_bpm = prim["hrr1_bpm"]
-    vo2_slope = prim["vo2_slope"]
-    ftp_w = prim["ftp_w"]
-    fatmax_power_w = prim["fatmax_power_w"]
-    tau_sec = prim["tau_sec"]
-    amp_l_min = prim["amp_l_min"]
-    hr_power_slope = prim["hr_power_slope"]
+    peak_power_achieved_w = prim["peak_power_achieved_w"]
     hr_w_slope_val = prim["hr_w_slope_val"]
     ve_w_slope_val = prim["ve_w_slope_val"]
+    vt2_power_w = prim["vt2_power_w"]
+    oues_val = prim["oues_val"]
+    vo2max_ml = prim["vo2max_ml"]
+    vo2max_rel = prim["vo2max_rel"]
+    tau_sec = prim["tau_sec"]
     peak_gross_efficiency_pct = prim["peak_gross_efficiency_pct"]
-
-    _proprietary_blocker = "ZeLiA proprietary algorithm; not implemented"
-    _wprime_blocker = "W prime anaerobic capacity not modeled"
-
-    # 14. aer  (3-domain)
-    if ve_vco2_slope_val is None:
-        r["aer"] = _cpm_unsupported(
-            "Insufficient active BxB data or missing ve_lmin/vco2_ml columns"
-        )
-    elif o2_pulse_val is None:
-        r["aer"] = _cpm_unsupported("vo2max_ml or actual_max_hr missing/zero")
-    elif vo2max_ml is None:
-        r["aer"] = _cpm_unsupported("vo2max_ml missing")
-    else:
-        _aer_denom = ve_vco2_slope_val * o2_pulse_val
-        if abs(_aer_denom) < 1e-9:
-            r["aer"] = _cpm_unsupported("ve_vco2_slope × o2_pulse is zero; division undefined")
-        else:
-            r["aer"] = _cpm_supported(
-                round(float(vo2max_ml) / _aer_denom, 4), "ratio",
-                "Aerobic Efficiency Ratio: VO2max / (VE/VCO2 slope × O2 pulse)"
-            )
-
-    # 15. sci  (3-domain)
-    if vt1_time_s is None:
-        r["sci"] = _cpm_unsupported("vt1_time_s is None")
-    elif vt1_hr is None or vt1_hr == 0:
-        r["sci"] = _cpm_unsupported("vt1_hr is None or zero")
-    elif vt1_power_w is None:
-        r["sci"] = _cpm_unsupported("vt1_power_w is None")
-    elif bxb.empty or "ve_lmin" not in bxb.columns or "t_s" not in bxb.columns:
-        r["sci"] = _cpm_unsupported("bxb missing or lacks ve_lmin/t_s for VT1 window lookup")
-    else:
-        window_mask = (bxb["t_s"] - float(vt1_time_s)).abs() <= 30
-        window_rows = bxb.loc[window_mask, "ve_lmin"].dropna()
-        if window_rows.empty:
-            r["sci"] = _cpm_unsupported(
-                "No BxB rows within ±30s of vt1_time_s; empty VE window"
-            )
-        else:
-            ve_at_vt1 = float(window_rows.mean())
-            if abs(float(vt1_hr) * ve_at_vt1) < 1e-9:
-                r["sci"] = _cpm_unsupported("vt1_hr × ve_at_vt1 is zero; division undefined")
-            else:
-                rq_at_vt1 = None
-                if "rq" in bxb.columns:
-                    _rq_window = bxb.loc[window_mask, "rq"].dropna()
-                    if not _rq_window.empty:
-                        rq_at_vt1 = float(_rq_window.mean())
-                if rq_at_vt1 is not None and abs(rq_at_vt1) > 1e-9:
-                    r["sci"] = _cpm_supported(
-                        round(float(vt1_power_w) * rq_at_vt1 / (float(vt1_hr) * ve_at_vt1), 5),
-                        "W·RER/(bpm·L/min)",
-                        f"Substrate-Cardiac Index: VT1_power × RQ / (VT1_HR × VE_at_VT1). "
-                        f"VE@VT1={ve_at_vt1:.1f}, RQ@VT1={rq_at_vt1:.3f}"
-                    )
-                else:
-                    r["sci"] = _cpm_supported(
-                        round(float(vt1_power_w) / (float(vt1_hr) * ve_at_vt1), 5),
-                        "W/(bpm·L/min)",
-                        f"Substrate-Cardiac Index: VT1_power / (VT1_HR × VE_at_VT1). "
-                        f"VE@VT1={ve_at_vt1:.1f}"
-                    )
+    actual_max_hr = prim["actual_max_hr"]
+    ve_vco2_slope_val = prim["ve_vco2_slope_val"]
+    vo2_slope = prim["vo2_slope"]
 
     # 25. cow
     if o2_pulse_val is None:
@@ -2642,71 +2568,20 @@ def _compute_cpmw_indices(prim: dict) -> dict:
                 "Integrated Performance Index: peak power / (max_HR × VE/VCO2_slope × VO2-power slope)",
             )
 
-    # tau_hr_slope
-    if tau_sec is None:
-        r["tau_hr_slope"] = _cpm_unsupported(
-            "mono-exp recovery fit not available (energy_system_results.mono_exp_fit missing)"
-        )
-    elif hr_power_slope is None:
-        r["tau_hr_slope"] = _cpm_unsupported(
-            "hr_power_slope not computed (insufficient staged HR-power data)"
-        )
-    else:
-        r["tau_hr_slope"] = _cpm_supported(
-            round(float(tau_sec) * float(hr_power_slope), 3), "sec·bpm/W",
-            f"tau_off ({tau_sec:.1f}s) × HR-power slope ({hr_power_slope:.3f} bpm/W)",
-        )
+    return r
 
-    # epoc_vo2peak
-    if tau_sec is None or amp_l_min is None:
-        r["epoc_vo2peak"] = _cpm_unsupported(
-            "mono-exp recovery fit not available (energy_system_results.mono_exp_fit missing)"
-        )
-    elif vo2max_ml is None or float(vo2max_ml) == 0:
-        r["epoc_vo2peak"] = _cpm_unsupported("vo2max_ml missing or zero; cannot normalise EPOC")
-    else:
-        epoc_ml = float(amp_l_min) * float(tau_sec) / 60.0 * 1000.0
-        r["epoc_vo2peak"] = _cpm_supported(
-            round(epoc_ml / float(vo2max_ml), 4), "ratio",
-            f"EPOC ({epoc_ml:.1f} mL O2) / VO2peak ({vo2max_ml:.0f} mL); "
-            f"EPOC = amplitude ({amp_l_min:.4f} L/min) × tau ({tau_sec:.1f}s) / 60 × 1000",
-        )
 
-    r["fzi_cardiopulmonary"] = _cpm_unsupported(_proprietary_blocker)
-    r["mri_composite"] = _cpm_unsupported(_proprietary_blocker)
-    r["iee"] = _cpm_unsupported(_proprietary_blocker)
+def _compute_ftp_indices(prim: dict) -> dict:
+    r: dict = {}
+    ftp_w = prim["ftp_w"]
+    hrr1_bpm = prim["hrr1_bpm"]
+    fatmax_power_w = prim["fatmax_power_w"]
+    vt1_power_w = prim["vt1_power_w"]
+    vt2_power_w = prim["vt2_power_w"]
+    ve_vco2_slope_val = prim["ve_vco2_slope_val"]
+    tau_sec = prim["tau_sec"]
+    hr_w_slope_val = prim["hr_w_slope_val"]
 
-    if vo2max_rel is None or float(vo2max_rel) <= 0:
-        r["lpi"] = _cpm_unsupported("vo2max_rel missing or zero")
-    elif vo2max_ml is None or float(vo2max_ml) <= 0:
-        r["lpi"] = _cpm_unsupported("vo2max_ml missing or zero")
-    elif hrr1_bpm is None:
-        r["lpi"] = _cpm_unsupported("hrr1_bpm missing")
-    elif oues_val is None:
-        r["lpi"] = _cpm_unsupported("oues could not be computed")
-    elif ftp_w is None:
-        r["lpi"] = _cpm_unsupported("ftp_w missing (vt2_power_w not available)")
-    else:
-        _lpi_ftp_ref = 2.5 * (float(vo2max_ml) / float(vo2max_rel))
-        if _lpi_ftp_ref <= 0:
-            r["lpi"] = _cpm_unsupported(
-                "ftp_ref is zero (vo2max_ml / vo2max_rel yielded zero)"
-            )
-        else:
-            _lpi_val = (
-                (float(vo2max_rel) / 35.0)
-                * (float(hrr1_bpm) / 12.0)
-                * (float(oues_val) / 1500.0)
-                * (float(ftp_w) / _lpi_ftp_ref)
-            )
-            r["lpi"] = _cpm_supported(
-                round(_lpi_val, 4),
-                "ratio^4 (VO2-norm x HRR1-norm x OUES-norm x FTP-norm)",
-                "Partial LPI — ref values: VO2 35 mL/kg/min, HRR1 12 bpm, OUES 1500, FTP 2.5 W/kg",
-            )
-    r["longevity_pi"] = _cpm_unsupported(_proprietary_blocker)
-
-    # FTP-dependent indices (7)
     if ftp_w is None:
         _ftp_blocker = "ftp_w missing (vt2_power_w not available)"
         r["crpi"] = _cpm_unsupported(_ftp_blocker)
@@ -2778,7 +2653,93 @@ def _compute_cpmw_indices(prim: dict) -> dict:
                 "Threshold Zone Width Index: (VT2 - VT1) power / FTP",
             )
 
-    # s4ci — 4-domain alias of sci
+    return r
+
+
+def _compute_compound_cpm_indices(prim: dict) -> dict:
+    r: dict = {}
+    active_bxb = prim["active_bxb"]
+    bxb = prim["bxb"]
+    vo2max_ml = prim["vo2max_ml"]
+    vo2max_rel = prim["vo2max_rel"]
+    peak_power_achieved_w = prim["peak_power_achieved_w"]
+    vt1_hr = prim["vt1_hr"]
+    vt1_power_w = prim["vt1_power_w"]
+    vt1_time_s = prim["vt1_time_s"]
+    ve_vco2_slope_val = prim["ve_vco2_slope_val"]
+    o2_pulse_val = prim["o2_pulse_val"]
+    oues_val = prim["oues_val"]
+    ve_vco2_nadir_val = prim["ve_vco2_nadir_val"]
+    hrr1_bpm = prim["hrr1_bpm"]
+    ftp_w = prim["ftp_w"]
+    tau_sec = prim["tau_sec"]
+    amp_l_min = prim["amp_l_min"]
+    hr_power_slope = prim["hr_power_slope"]
+
+    _proprietary_blocker = "ZeLiA proprietary algorithm; not implemented"
+    _wprime_blocker = "W prime anaerobic capacity not modeled"
+
+    # 14. aer  (3-domain)
+    if ve_vco2_slope_val is None:
+        r["aer"] = _cpm_unsupported(
+            "Insufficient active BxB data or missing ve_lmin/vco2_ml columns"
+        )
+    elif o2_pulse_val is None:
+        r["aer"] = _cpm_unsupported("vo2max_ml or actual_max_hr missing/zero")
+    elif vo2max_ml is None:
+        r["aer"] = _cpm_unsupported("vo2max_ml missing")
+    else:
+        _aer_denom = ve_vco2_slope_val * o2_pulse_val
+        if abs(_aer_denom) < 1e-9:
+            r["aer"] = _cpm_unsupported("ve_vco2_slope × o2_pulse is zero; division undefined")
+        else:
+            r["aer"] = _cpm_supported(
+                round(float(vo2max_ml) / _aer_denom, 4), "ratio",
+                "Aerobic Efficiency Ratio: VO2max / (VE/VCO2 slope × O2 pulse)"
+            )
+
+    # 15. sci  (3-domain)
+    if vt1_time_s is None:
+        r["sci"] = _cpm_unsupported("vt1_time_s is None")
+    elif vt1_hr is None or vt1_hr == 0:
+        r["sci"] = _cpm_unsupported("vt1_hr is None or zero")
+    elif vt1_power_w is None:
+        r["sci"] = _cpm_unsupported("vt1_power_w is None")
+    elif bxb.empty or "ve_lmin" not in bxb.columns or "t_s" not in bxb.columns:
+        r["sci"] = _cpm_unsupported("bxb missing or lacks ve_lmin/t_s for VT1 window lookup")
+    else:
+        window_mask = (bxb["t_s"] - float(vt1_time_s)).abs() <= 30
+        window_rows = bxb.loc[window_mask, "ve_lmin"].dropna()
+        if window_rows.empty:
+            r["sci"] = _cpm_unsupported(
+                "No BxB rows within ±30s of vt1_time_s; empty VE window"
+            )
+        else:
+            ve_at_vt1 = float(window_rows.mean())
+            if abs(float(vt1_hr) * ve_at_vt1) < 1e-9:
+                r["sci"] = _cpm_unsupported("vt1_hr × ve_at_vt1 is zero; division undefined")
+            else:
+                rq_at_vt1 = None
+                if "rq" in bxb.columns:
+                    _rq_window = bxb.loc[window_mask, "rq"].dropna()
+                    if not _rq_window.empty:
+                        rq_at_vt1 = float(_rq_window.mean())
+                if rq_at_vt1 is not None and abs(rq_at_vt1) > 1e-9:
+                    r["sci"] = _cpm_supported(
+                        round(float(vt1_power_w) * rq_at_vt1 / (float(vt1_hr) * ve_at_vt1), 5),
+                        "W·RER/(bpm·L/min)",
+                        f"Substrate-Cardiac Index: VT1_power × RQ / (VT1_HR × VE_at_VT1). "
+                        f"VE@VT1={ve_at_vt1:.1f}, RQ@VT1={rq_at_vt1:.3f}"
+                    )
+                else:
+                    r["sci"] = _cpm_supported(
+                        round(float(vt1_power_w) / (float(vt1_hr) * ve_at_vt1), 5),
+                        "W/(bpm·L/min)",
+                        f"Substrate-Cardiac Index: VT1_power / (VT1_HR × VE_at_VT1). "
+                        f"VE@VT1={ve_at_vt1:.1f}"
+                    )
+
+    # s4ci — 4-domain alias of sci (computed immediately after sci)
     _sci_entry = r.get("sci", {})
     if _sci_entry.get("supported"):
         r["s4ci"] = _cpm_supported(
@@ -2791,6 +2752,70 @@ def _compute_cpmw_indices(prim: dict) -> dict:
         r["s4ci"] = dict(_sci_entry) if _sci_entry else _cpm_unsupported(
             "s4ci requires sci to be supported"
         )
+
+    # tau_hr_slope
+    if tau_sec is None:
+        r["tau_hr_slope"] = _cpm_unsupported(
+            "mono-exp recovery fit not available (energy_system_results.mono_exp_fit missing)"
+        )
+    elif hr_power_slope is None:
+        r["tau_hr_slope"] = _cpm_unsupported(
+            "hr_power_slope not computed (insufficient staged HR-power data)"
+        )
+    else:
+        r["tau_hr_slope"] = _cpm_supported(
+            round(float(tau_sec) * float(hr_power_slope), 3), "sec·bpm/W",
+            f"tau_off ({tau_sec:.1f}s) × HR-power slope ({hr_power_slope:.3f} bpm/W)",
+        )
+
+    # epoc_vo2peak
+    if tau_sec is None or amp_l_min is None:
+        r["epoc_vo2peak"] = _cpm_unsupported(
+            "mono-exp recovery fit not available (energy_system_results.mono_exp_fit missing)"
+        )
+    elif vo2max_ml is None or float(vo2max_ml) == 0:
+        r["epoc_vo2peak"] = _cpm_unsupported("vo2max_ml missing or zero; cannot normalise EPOC")
+    else:
+        epoc_ml = float(amp_l_min) * float(tau_sec) / 60.0 * 1000.0
+        r["epoc_vo2peak"] = _cpm_supported(
+            round(epoc_ml / float(vo2max_ml), 4), "ratio",
+            f"EPOC ({epoc_ml:.1f} mL O2) / VO2peak ({vo2max_ml:.0f} mL); "
+            f"EPOC = amplitude ({amp_l_min:.4f} L/min) × tau ({tau_sec:.1f}s) / 60 × 1000",
+        )
+
+    r["fzi_cardiopulmonary"] = _cpm_unsupported(_proprietary_blocker)
+    r["mri_composite"] = _cpm_unsupported(_proprietary_blocker)
+    r["iee"] = _cpm_unsupported(_proprietary_blocker)
+
+    if vo2max_rel is None or float(vo2max_rel) <= 0:
+        r["lpi"] = _cpm_unsupported("vo2max_rel missing or zero")
+    elif vo2max_ml is None or float(vo2max_ml) <= 0:
+        r["lpi"] = _cpm_unsupported("vo2max_ml missing or zero")
+    elif hrr1_bpm is None:
+        r["lpi"] = _cpm_unsupported("hrr1_bpm missing")
+    elif oues_val is None:
+        r["lpi"] = _cpm_unsupported("oues could not be computed")
+    elif ftp_w is None:
+        r["lpi"] = _cpm_unsupported("ftp_w missing (vt2_power_w not available)")
+    else:
+        _lpi_ftp_ref = 2.5 * (float(vo2max_ml) / float(vo2max_rel))
+        if _lpi_ftp_ref <= 0:
+            r["lpi"] = _cpm_unsupported(
+                "ftp_ref is zero (vo2max_ml / vo2max_rel yielded zero)"
+            )
+        else:
+            _lpi_val = (
+                (float(vo2max_rel) / 35.0)
+                * (float(hrr1_bpm) / 12.0)
+                * (float(oues_val) / 1500.0)
+                * (float(ftp_w) / _lpi_ftp_ref)
+            )
+            r["lpi"] = _cpm_supported(
+                round(_lpi_val, 4),
+                "ratio^4 (VO2-norm x HRR1-norm x OUES-norm x FTP-norm)",
+                "Partial LPI — ref values: VO2 35 mL/kg/min, HRR1 12 bpm, OUES 1500, FTP 2.5 W/kg",
+            )
+    r["longevity_pi"] = _cpm_unsupported(_proprietary_blocker)
 
     # rovi
     if hrr1_bpm is None:
@@ -2851,6 +2876,14 @@ def _compute_cpmw_indices(prim: dict) -> dict:
     r["anaerobic_cardiac_reserve"] = _cpm_unsupported(_wprime_blocker)
     r["anaerobic_cardiopulmonary_reserve"] = _cpm_unsupported(_wprime_blocker)
 
+    return r
+
+
+def _compute_cpmw_indices(prim: dict) -> dict:
+    r: dict = {}
+    r.update(_compute_compound_cpm_indices(prim))
+    r.update(_compute_w_domain_indices(prim))
+    r.update(_compute_ftp_indices(prim))
     return r
 
 
