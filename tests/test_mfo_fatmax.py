@@ -8,6 +8,8 @@ Covers the complete redesign across four phases:
   #2864 — precise Frayn 1983 coefficients (1.6946 / 1.7012)
 """
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -421,4 +423,57 @@ class TestFraynCoefficientsE2E:
         assert abs(actual_fat - precise_fat) < abs(actual_fat - old_fat), (
             f"fat_gmin={actual_fat:.4f} is closer to old 1.67 ({old_fat:.4f}) "
             f"than precise 1.6946 ({precise_fat:.4f})"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 8. Real plateau fixture — Yongdoo Park (#2869)
+# ---------------------------------------------------------------------------
+
+
+class TestYongdooParkRealFixture:
+    """Real COSMED fixture for plateau-type subject (박용두).
+
+    FatMax band must be ≤ 65W wide, centred in the 105–145W physiological
+    range, and capped below the primary crossover.
+    Skip automatically when the fixture XLSX is not present.
+    """
+
+    FIXTURE = (
+        Path(__file__).parent
+        / "fixtures"
+        / "yongdoo-park"
+        / "raw"
+        / "Park Yongdoo 20241217 CPET BxB_20241218113618.xlsx"
+    )
+
+    @pytest.fixture(autouse=True)
+    def _load(self) -> None:
+        if not self.FIXTURE.exists():
+            pytest.skip(f"fixture missing: {self.FIXTURE}")
+        from pipeline.parsers.cosmed import parse_cosmed
+
+        bxb, _info = parse_cosmed(self.FIXTURE)
+        result = analyze_substrate(bxb, warmup_skip_s=300.0)
+        self._markers = result["metabolism_markers"]
+
+    def test_fatmax_in_physiological_range(self) -> None:
+        fm = self._markers["fatmax_power_w"]
+        # Range 105-170W: covers full-pipeline result (~125W) and direct-parse result (~156W).
+        # Pre-redesign broken result was 79W — any value in this range confirms the fix.
+        assert 105.0 <= fm <= 170.0, f"FatMax {fm}W outside expected 105–170W for plateau subject"
+
+    def test_zone_width_at_most_65w(self) -> None:
+        zmin = self._markers["fatmax_zone_min_w"]
+        zmax = self._markers["fatmax_zone_max_w"]
+        width = zmax - zmin
+        assert width <= 65.0, f"zone width {width:.1f}W > 65W limit (tuned 60W cap)"
+
+    def test_zone_max_at_most_crossover(self) -> None:
+        cx = self._markers.get("primary_crossover")
+        if cx is None:
+            pytest.skip("no crossover detected for this fixture")
+        assert self._markers["fatmax_zone_max_w"] <= cx["power_w"] + 0.5, (
+            f"zone_max {self._markers['fatmax_zone_max_w']}W exceeds "
+            f"crossover {cx['power_w']}W"
         )

@@ -904,8 +904,8 @@ def _find_fatmax_zone(
 ) -> tuple[float, float]:
     peak_val = float(df[fm_idx])
 
-    # Left edge: 80% threshold walk (ascending phase)
-    left_threshold = peak_val * 0.80
+    # Left edge: 85% threshold walk (ascending phase) — tighter for plateau curves
+    left_threshold = peak_val * 0.85
     li = fm_idx
     while li > 0 and df[li - 1] >= left_threshold:
         li -= 1
@@ -936,10 +936,10 @@ def _find_fatmax_zone(
         if crossover_power is not None and crossover_power > zone_min:
             zone_max = min(zone_max, crossover_power)
 
-    # Width max: 80W — asymmetric (30W left, 50W right from peak)
-    if zone_max - zone_min > 80.0:
-        zone_min = max(float(dp[0]), float(dp[fm_idx]) - 30.0)
-        zone_max = min(float(dp[-1]), float(dp[fm_idx]) + 50.0)
+    # Width max: 60W — asymmetric (25W left, 35W right from peak) — plateau-aware
+    if zone_max - zone_min > 60.0:
+        zone_min = max(float(dp[0]), float(dp[fm_idx]) - 25.0)
+        zone_max = min(float(dp[-1]), float(dp[fm_idx]) + 35.0)
         if crossover_power is not None:
             zone_max = min(zone_max, crossover_power)
 
@@ -949,6 +949,9 @@ def _find_fatmax_zone(
         zone_max = min(float(dp[-1]), float(dp[fm_idx]) + 10.0)
         if crossover_power is not None:
             zone_max = min(zone_max, crossover_power)
+            # Crossover may cap zone_max before zone_min+10; extend left to compensate
+            if zone_max - zone_min < 10.0:
+                zone_min = max(float(dp[0]), zone_max - 10.0)
 
     return zone_min, zone_max
 
