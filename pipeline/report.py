@@ -2806,6 +2806,13 @@ def render_html(context: dict[str, Any]) -> str:
     const metabolismAxisMax = metabolismPowerMax > 0
       ? Math.ceil(metabolismPowerMax / metabolismAxisStep) * metabolismAxisStep
       : 400;
+    const metabolismPowerMin = Math.min(
+      ...(chartData.metabolism.power_w || []).filter(v => Number.isFinite(v)),
+      Infinity
+    );
+    const metabolismAxisMin = Number.isFinite(metabolismPowerMin) && metabolismPowerMin > 0
+      ? Math.floor(metabolismPowerMin / metabolismAxisStep) * metabolismAxisStep
+      : 0;
 
     createChart('chart-metabolism', {{
       type: 'line',
@@ -2850,7 +2857,7 @@ def render_html(context: dict[str, Any]) -> str:
         scales: {{
           x: {{
             type: 'linear',
-            min: 0,
+            min: metabolismAxisMin,
             max: metabolismAxisMax,
             title: axisTitle('Power (W)'),
             ticks: axisTickOptions('linear'),
