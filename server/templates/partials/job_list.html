@@ -18,7 +18,7 @@
   data-search="{{ (job.subject_name or '')|lower }} {{ (job.test_date or '')|lower }} {{ (job.report_slug or '')|lower }} {{ (job.note or '')|lower }} {{ ((job.file_tags or [])|join(' '))|lower }}"
 >
   <!-- Row 1: Name + Date + Status + Actions -->
-  <div class="flex items-center justify-between gap-3">
+  <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
     <div class="flex items-center gap-3 min-w-0">
       <!-- 피험자명 -->
       {% if not grouped_by_subject %}
@@ -45,7 +45,7 @@
       {% endif %}
     </div>
 
-    <div class="flex items-center gap-2 flex-shrink-0">
+    <div class="flex items-center gap-2 sm:flex-shrink-0 flex-wrap">
       <!-- 상태 -->
       {% if job.status == "pending" %}
         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-yellow-100 text-yellow-800">대기</span>
