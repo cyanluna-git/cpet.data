@@ -14,8 +14,8 @@
       --radius: 22px;
       position: relative;
       overflow: hidden;
-      padding: 32px 34px;
-      border-radius: 28px;
+      padding: 28px 30px;
+      border-radius: 20px;
       background:
         radial-gradient(circle at top left, rgba(143, 59, 47, 0.06), transparent 28%),
         radial-gradient(circle at top right, rgba(24, 78, 89, 0.08), transparent 26%),
@@ -23,12 +23,12 @@
       border: 1px solid rgba(255, 255, 255, 0.52);
       box-shadow: var(--shadow);
       color: var(--ink);
-      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-family: var(--cpet-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
     }
     .dashboard-analytics-shell h2,
     .dashboard-analytics-shell h3,
     .dashboard-analytics-shell h4 {
-      font-family: "Iowan Old Style", "Palatino Linotype", serif;
+      font-family: var(--cpet-serif, "Iowan Old Style", "Palatino Linotype", serif);
       letter-spacing: -0.02em;
     }
     .dashboard-analytics-shell .analytics-eyebrow {
@@ -80,7 +80,7 @@
     }
     .dashboard-analytics-shell .analytics-kpi-value {
       margin-top: 10px;
-      font-family: "Iowan Old Style", "Palatino Linotype", serif;
+      font-family: var(--cpet-serif, "Iowan Old Style", "Palatino Linotype", serif);
       font-size: 2.35rem;
       line-height: 1;
       color: var(--ink);

@@ -12,6 +12,24 @@
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 
   <style>
+    :root {
+      --cpet-paper: #f4efe6;
+      --cpet-paper-strong: #efe6d8;
+      --cpet-paper-bg: #f8f4ef;
+      --cpet-ink: #162028;
+      --cpet-muted: #5f6d74;
+      --cpet-line: rgba(22, 32, 40, 0.08);
+      --cpet-accent: #8f3b2f;
+      --cpet-teal: #184e59;
+      --cpet-gold: #a17b37;
+      --cpet-serif: "Iowan Old Style", "Palatino Linotype", "Georgia", serif;
+      --cpet-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+    }
+    body {
+      background-color: var(--cpet-paper-bg);
+      font-family: var(--cpet-sans);
+      color: var(--cpet-ink);
+    }
     /* htmx request indicator: show spinner while request is in flight */
     .htmx-indicator {
       display: none;
@@ -22,7 +40,7 @@
     }
   </style>
 </head>
-<body class="min-h-screen bg-gray-50 text-gray-900">
+<body class="min-h-screen">
 
   <!-- Navigation -->
   {% set onboarding_done = (not current_user) or current_user.onboarding_completed %}
