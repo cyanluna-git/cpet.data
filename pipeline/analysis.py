@@ -930,6 +930,11 @@ def _find_fatmax_zone(
     # Collapse fallback: cap must not invert or collapse zone
     if zone_max <= zone_min:
         zone_max = zone_min + 10.0
+        # Re-apply crossover only when it lies above zone_min; otherwise the cap
+        # would immediately re-invert the zone (crossover below FatMax peak is
+        # physiologically degenerate — let fallback width take precedence).
+        if crossover_power is not None and crossover_power > zone_min:
+            zone_max = min(zone_max, crossover_power)
 
     # Width max: 80W — asymmetric (30W left, 50W right from peak)
     if zone_max - zone_min > 80.0:
@@ -1113,8 +1118,10 @@ def analyze_substrate(
             from substrate analysis.  Early-exercise metabolic instability
             (first ~5 min) can produce anomalously high fat values that pull
             FatMax to physiologically implausible low intensities.  Set to 0
-            to disable.  Fallback: if the trimmed window has <10 rows the
-            original window is kept unchanged.
+            to disable.  The skip is applied only when the remaining window
+            after trimming contains ≥10 rows AND spans at least warmup_skip_s
+            seconds — short ramp tests (<2× warmup_skip_s total) fall back to
+            the full window silently.
     """
     results: dict[str, Any] = {}
 
