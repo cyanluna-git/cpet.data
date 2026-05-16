@@ -27,7 +27,11 @@
       </div>
       {% elif job.analysis_method %}
       <div class="font-medium text-sm text-gray-700 truncate">
-        {{ job.analysis_method }}
+        {% if job.status == "done" and job.report_url %}
+          <a href="{{ job.report_url }}" class="hover:underline hover:text-blue-700 transition-colors">{{ job.analysis_method }}</a>
+        {% else %}
+          {{ job.analysis_method }}
+        {% endif %}
       </div>
       {% endif %}
 

@@ -271,14 +271,24 @@ def _describe_generation_method(report_payload: dict | None) -> str:
     if meta.get("analysis_method"):
         return str(meta["analysis_method"])
 
+    # Fallback: derive label from analysis data for reports generated before
+    # analysis_method was added to meta.
     analysis = report_payload.get("analysis") or {}
-    suitability = analysis.get("suitability") or {}
+    report_profile = report_payload.get("report_profile") or {}
+    has_blood = bool(report_profile.get("has_blood") or report_payload.get("blood_samples"))
+    is_two_block = bool(report_profile.get("is_two_block_cpet"))
+    has_cp_model = bool(analysis.get("cp_model"))
 
-    if suitability:
-        return "CPET 프로토콜 보정"
-    if analysis:
-        return "기본 CPET"
-    return "알 수 없음"
+    if is_two_block:
+        base = "Two-Block CPET"
+    elif has_blood or analysis.get("suitability"):
+        base = "Belgium 젖산 CPET"
+    elif analysis:
+        base = "CPET"
+    else:
+        return "알 수 없음"
+
+    return base + (" + CP/W′" if has_cp_model else "")
 
 
 def _describe_report_version(report_slug: str | None) -> str:

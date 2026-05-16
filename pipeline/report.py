@@ -1197,6 +1197,15 @@ def build_report_context(db_path: Path) -> dict[str, Any]:
     protocol_meta = analysis.get("protocol", {})
     protocol_family = str(protocol_meta.get("protocol_family") or "")
     is_two_block_cpet = protocol_family == "two_block_cpet" or ((not has_blood) and ("Two-Block" in protocol_name))
+    has_cp_model = bool(analysis.get("cp_model"))
+
+    if is_two_block_cpet:
+        _base_method = "Two-Block CPET"
+    elif has_blood:
+        _base_method = "Belgium 젖산 CPET"
+    else:
+        _base_method = "CPET"
+    _analysis_method = _base_method + (" + CP/W′" if has_cp_model else "")
 
     context = {
         "meta": {
@@ -1206,6 +1215,7 @@ def build_report_context(db_path: Path) -> dict[str, Any]:
                 if is_two_block_cpet
                 else "Belgium Lactate Test Analysis Report"
             ),
+            "analysis_method": _analysis_method,
             "chart_count": 10,
         },
         "subject": subject,
