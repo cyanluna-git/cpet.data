@@ -32,16 +32,16 @@
       {% endif %}
 
       <!-- 날짜 -->
-      <span class="text-xs text-gray-400 whitespace-nowrap">{{ job.test_date or "" }}</span>
+      <span class="text-xs text-gray-400 whitespace-nowrap flex-shrink-0">{{ job.test_date or "" }}</span>
 
       {% if job.duplicate_cluster_count and job.duplicate_cluster_count > 1 %}
-      <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold {% if job.duplicate_badge == 'exact' %}bg-red-100 text-red-700{% else %}bg-amber-100 text-amber-700{% endif %}">
+      <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap {% if job.duplicate_badge == 'exact' %}bg-red-100 text-red-700{% else %}bg-amber-100 text-amber-700{% endif %}">
         {% if job.duplicate_badge == 'exact' %}중복 일치{% else %}중복 후보{% endif %} {{ job.duplicate_cluster_count }}건
       </span>
       {% endif %}
 
       {% if job.is_mine %}
-        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-100 text-violet-700">내 리포트</span>
+        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap bg-violet-100 text-violet-700">내 리포트</span>
       {% endif %}
     </div>
 
