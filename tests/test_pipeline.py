@@ -336,6 +336,22 @@ class TestCosmedOnly:
         efficiency = self._results.get("efficiency", {})
         assert efficiency.get("peak_gross_efficiency_pct") is not None
 
+    def test_report_no_cycling_section_without_fit(self) -> None:
+        """COSMED-only report must not show a cycling panel with CP values.
+
+        No FIT files → cp_model is absent from analysis → cycling_panel returns
+        an empty string → the ``cycling-panel`` section id must not appear in HTML.
+        """
+        from pipeline.report import generate_report
+
+        report_path = generate_report(
+            COSMED_WS / "analysis.db", COSMED_WS / "report"
+        )
+        html = report_path.read_text(encoding="utf-8")
+        # The cycling panel section is only rendered when cp_model/combined_guidance
+        # data exists; COSMED-only workspace has neither.
+        assert 'id="cycling-panel"' not in html
+
 
 # =====================================================================
 # Validator Tests

@@ -1014,6 +1014,161 @@ def build_cpm_panel(cpm_indices: dict[str, Any]) -> str:
     </section>"""
 
 
+def build_cycling_panel(context: dict[str, Any]) -> str:
+    """Build the Critical Power / W′ cycling panel HTML section.
+
+    Reads combined_guidance and cp_model from context["analysis"].
+    Returns an empty string when no cycling data exists (CPET-only workspace).
+    """
+    analysis = context.get("analysis", {})
+    combined_guidance = analysis.get("combined_guidance", {})
+    cp_model_data = analysis.get("cp_model", {})
+
+    # No cycling data at all — CPET-only workspace (no FIT files processed).
+    # cp_model is only stored when at least one FIT file is present; its absence
+    # is the reliable signal that no cycling history was ingested.
+    if not cp_model_data:
+        return ""
+
+    # cp_result is wrapped: analysis["cp_model"]["cp_result"]
+    cp_result: dict[str, Any] = {}
+    if isinstance(cp_model_data, dict):
+        raw = cp_model_data.get("cp_result")
+        if isinstance(raw, dict):
+            cp_result = raw
+
+    status = combined_guidance.get("status", "abstain")
+    anchors = combined_guidance.get("anchors", {})
+    confidence = combined_guidance.get("confidence", {})
+    narrative = combined_guidance.get("narrative", {})
+    summary_card = combined_guidance.get("summary_card", {})
+
+    cp_w = anchors.get("cp_w")
+    w_prime_j = anchors.get("w_prime_j")
+    r_squared = cp_result.get("r_squared")
+    cp_model_quality = confidence.get("cp_model_quality", "missing")
+    cpet_quality = confidence.get("cpet_quality", "low")
+    narrative_body = narrative.get("body", "")
+    warnings = narrative.get("warnings", [])
+
+    # Status badge
+    if status == "supported":
+        badge_label = "지원됨"
+        badge_color = "#184e59"
+    elif status == "low_confidence":
+        badge_label = "낮은 신뢰도"
+        badge_color = "#a17b37"
+    else:
+        badge_label = "보류"
+        badge_color = "#60707a"
+
+    def _quality_badge(label: str, color: str) -> str:
+        return (
+            f'<span style="display:inline-block;padding:2px 8px;border-radius:4px;'
+            f'font-size:0.72rem;font-weight:600;background:{color};color:#fff;margin-right:4px;">'
+            f"{html_text(label)}</span>"
+        )
+
+    status_badge = _quality_badge(badge_label, badge_color)
+
+    # ---- Supported / low_confidence branch ----
+    if status in ("supported", "low_confidence") and cp_w is not None:
+        cp_display = f"{cp_w:.0f} W"
+        wp_display = f"{w_prime_j / 1000:.1f} kJ" if w_prime_j is not None else "—"
+        r2_display = f"{r_squared:.3f}" if r_squared is not None else "—"
+
+        model_quality_label = {
+            "point": "Point Estimate",
+            "band": "Band Estimate",
+            "hidden": "Low Fit (R² < 0.80)",
+        }.get(cp_model_quality, "Not Available")
+        cpet_quality_label = {
+            "high": "High",
+            "medium": "Medium",
+            "low": "Low",
+        }.get(cpet_quality, cpet_quality)
+
+        cp_card = (
+            f'<article class="kpi-card">'
+            f'<span class="kpi-label">Critical Power</span>'
+            f'<strong class="kpi-value">{html_text(cp_display)}</strong>'
+            f'<span class="kpi-unit">CP</span>'
+            f'<p class="kpi-note">Hyperbolic model fitted CP</p>'
+            f"</article>"
+        )
+        wp_card = (
+            f'<article class="kpi-card">'
+            f'<span class="kpi-label">W′ (Anaerobic Capacity)</span>'
+            f'<strong class="kpi-value">{html_text(wp_display)}</strong>'
+            f'<span class="kpi-unit">W′</span>'
+            f'<p class="kpi-note">Work capacity above CP</p>'
+            f"</article>"
+        )
+        r2_card = (
+            f'<article class="kpi-card">'
+            f'<span class="kpi-label">Model R²</span>'
+            f'<strong class="kpi-value">{html_text(r2_display)}</strong>'
+            f'<span class="kpi-unit">fit quality</span>'
+            f'<p class="kpi-note">{html_text(model_quality_label)}</p>'
+            f"</article>"
+        )
+
+        warnings_html = ""
+        if warnings:
+            items = "".join(
+                f'<li style="margin-bottom:4px;">{html_text(w)}</li>' for w in warnings
+            )
+            warnings_html = (
+                f'<ul style="margin:12px 0 0 0;padding-left:18px;'
+                f'font-size:0.8rem;color:var(--muted,#60707a);">{items}</ul>'
+            )
+
+        quality_badges = (
+            _quality_badge(f"CPET: {cpet_quality_label}", "#184e59")
+            + _quality_badge(f"CP Model: {model_quality_label}", "#60707a")
+        )
+
+        return f"""
+    <section class="section" id="cycling-panel">
+      <div class="section-header">
+        <div>
+          <span class="section-tag">Critical Power Model</span>
+          <h2>사이클링 성능 앵커</h2>
+          <p>FIT 파일 운동 이력을 2-parameter hyperbolic CP 모델로 적합하여 Critical Power와 W′을 도출합니다.</p>
+        </div>
+      </div>
+      <div style="margin-bottom:12px;">{status_badge}{quality_badges}</div>
+      <div class="kpi-grid">{cp_card}{wp_card}{r2_card}</div>
+      <div style="margin-top:16px;padding:16px;background:white;border-radius:var(--radius,12px);box-shadow:var(--shadow,0 1px 3px rgba(0,0,0,0.1));">
+        <p style="font-size:0.9rem;color:var(--ink,#162028);margin:0;">{html_text(narrative_body)}</p>
+        {warnings_html}
+      </div>
+    </section>"""
+
+    # ---- Abstain / withheld branch ----
+    abstain_reason = cp_result.get("abstain_reason") or combined_guidance.get(
+        "narrative", {}
+    ).get("body") or "FIT 기록 없음"
+
+    headline = summary_card.get("headline") or "Critical Power model not available"
+
+    return f"""
+    <section class="section" id="cycling-panel">
+      <div class="section-header">
+        <div>
+          <span class="section-tag">Critical Power Model</span>
+          <h2>사이클링 성능 앵커</h2>
+          <p>FIT 파일 운동 이력을 2-parameter hyperbolic CP 모델로 적합하여 Critical Power와 W′을 도출합니다.</p>
+        </div>
+      </div>
+      <div style="margin-bottom:12px;">{status_badge}</div>
+      <div style="padding:24px;background:white;border-radius:var(--radius,12px);box-shadow:var(--shadow,0 1px 3px rgba(0,0,0,0.1));opacity:0.75;">
+        <p style="font-size:1rem;font-weight:600;color:var(--muted,#60707a);margin:0 0 8px 0;">{html_text(headline)}</p>
+        <p style="font-size:0.85rem;color:var(--muted,#60707a);margin:0;">{html_text(abstain_reason)}</p>
+      </div>
+    </section>"""
+
+
 def build_report_context(db_path: Path) -> dict[str, Any]:
     """Load all report data from SQLite and normalize it for rendering."""
     conn = sqlite3.connect(str(db_path))
@@ -1376,6 +1531,7 @@ def render_html(context: dict[str, Any]) -> str:
     </section>"""
 
     cpm_panel_section = build_cpm_panel(analysis.get("cpm_indices", {}))
+    cycling_panel = build_cycling_panel(context)
 
     blood_table = render_table(
         ["Block", "Step", "Load", "%FTP", "Duration", "HR", "Lactate", "Glucose", "Notes"],
@@ -2261,6 +2417,8 @@ def render_html(context: dict[str, Any]) -> str:
     {energy_system_section}
 
     {cpm_panel_section}
+
+    {cycling_panel}
 
     <section class="section" id="tables">
       <div class="section-header">
