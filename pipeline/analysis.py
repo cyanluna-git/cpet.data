@@ -896,6 +896,58 @@ def _bin_and_aggregate_power_substrate(
     return grouped, power_domain
 
 
+def _find_fatmax_zone(
+    dp: np.ndarray,
+    df: np.ndarray,
+    fm_idx: int,
+    crossover_power: float | None = None,
+) -> tuple[float, float]:
+    peak_val = float(df[fm_idx])
+
+    # Left edge: 80% threshold walk (ascending phase)
+    left_threshold = peak_val * 0.80
+    li = fm_idx
+    while li > 0 and df[li - 1] >= left_threshold:
+        li -= 1
+    zone_min = float(dp[li])
+
+    # Right edge: gradient-based decline detection
+    slope = np.gradient(df, dp) if len(dp) >= 2 else np.zeros_like(df)
+    # Noise floor: avoid false triggering on near-zero curves
+    decline_threshold = min(-peak_val * 0.008, -0.001)
+    ri = fm_idx
+    for i in range(fm_idx + 1, len(dp)):
+        if slope[i] < decline_threshold:
+            ri = i
+            break
+        ri = i  # no decline found yet — extend to end
+    zone_max = float(dp[ri])
+
+    # Crossover hard cap (internal — used by _anchor path)
+    if crossover_power is not None:
+        zone_max = min(zone_max, crossover_power)
+
+    # Collapse fallback: cap must not invert or collapse zone
+    if zone_max <= zone_min:
+        zone_max = zone_min + 10.0
+
+    # Width max: 80W — asymmetric (30W left, 50W right from peak)
+    if zone_max - zone_min > 80.0:
+        zone_min = max(float(dp[0]), float(dp[fm_idx]) - 30.0)
+        zone_max = min(float(dp[-1]), float(dp[fm_idx]) + 50.0)
+        if crossover_power is not None:
+            zone_max = min(zone_max, crossover_power)
+
+    # Width min: 10W — asymmetric (5W left, 10W right from peak)
+    if zone_max - zone_min < 10.0:
+        zone_min = max(float(dp[0]), float(dp[fm_idx]) - 5.0)
+        zone_max = min(float(dp[-1]), float(dp[fm_idx]) + 10.0)
+        if crossover_power is not None:
+            zone_max = min(zone_max, crossover_power)
+
+    return zone_min, zone_max
+
+
 def _interpolate_and_compute_markers(
     grouped: pd.DataFrame,
 ) -> tuple[dict[str, Any], dict[str, Any]] | None:
@@ -944,21 +996,7 @@ def _interpolate_and_compute_markers(
     fm_idx = int(np.argmax(df))
     fm_power = float(dp[fm_idx])
     fm_value = float(df[fm_idx])
-    curve_anchor = float(df[fm_idx]) if len(df) else fm_value
-    threshold = curve_anchor * 0.90
-    if threshold > 0:
-        li, ri = fm_idx, fm_idx
-        while li > 0 and df[li - 1] >= threshold:
-            li -= 1
-        while ri < len(df) - 1 and df[ri + 1] >= threshold:
-            ri += 1
-        zone_min, zone_max = float(dp[li]), float(dp[ri])
-    else:
-        zone_min = max(float(dp[0]), fm_power - 10.0)
-        zone_max = min(float(dp[-1]), fm_power + 10.0)
-    if zone_max - zone_min < 8.0:
-        zone_min = max(float(dp[0]), fm_power - 10.0)
-        zone_max = min(float(dp[-1]), fm_power + 10.0)
+    zone_min, zone_max = _find_fatmax_zone(dp, df, fm_idx)
 
     diff = df - dc
     crossovers: list[dict[str, Any]] = []
@@ -1041,32 +1079,14 @@ def _anchor_power_domain_markers(
 
     fatmax_power = float(fatmax_power_w)
     anchor_idx = min(range(len(dense_power)), key=lambda idx: abs(dense_power[idx] - fatmax_power))
-    curve_anchor_value = dense_fat[anchor_idx]
-    threshold = curve_anchor_value * 0.90
-
-    if threshold > 0:
-        left_idx = anchor_idx
-        right_idx = anchor_idx
-        while left_idx > 0 and dense_fat[left_idx - 1] >= threshold:
-            left_idx -= 1
-        while right_idx < len(dense_fat) - 1 and dense_fat[right_idx + 1] >= threshold:
-            right_idx += 1
-        zone_min = float(dense_power[left_idx])
-        zone_max = float(dense_power[right_idx])
-    else:
-        zone_min = max(float(dense_power[0]), fatmax_power - 10.0)
-        zone_max = min(float(dense_power[-1]), fatmax_power + 10.0)
-
-    if zone_max - zone_min < 8.0:
-        zone_min = max(float(dense_power[0]), fatmax_power - 10.0)
-        zone_max = min(float(dense_power[-1]), fatmax_power + 10.0)
-
     cx = markers.get("primary_crossover")
-    if cx:
-        cx_power = float(cx["power_w"])
-        zone_max = min(zone_max, cx_power)
-        if zone_max <= zone_min:
-            zone_max = zone_min + 10.0
+    cx_power = float(cx["power_w"]) if cx else None
+    zone_min, zone_max = _find_fatmax_zone(
+        np.asarray(dense_power, dtype=float),
+        np.asarray(dense_fat, dtype=float),
+        anchor_idx,
+        cx_power,
+    )
 
     markers.update(
         {
