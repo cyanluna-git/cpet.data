@@ -898,7 +898,6 @@ def _bin_and_aggregate_power_substrate(
 
 def _interpolate_and_compute_markers(
     grouped: pd.DataFrame,
-    power_domain: pd.DataFrame,
 ) -> tuple[dict[str, Any], dict[str, Any]] | None:
     """Build dense PCHIP curves and compute FatMax zone + crossovers.
 
@@ -942,10 +941,9 @@ def _interpolate_and_compute_markers(
     df = np.clip(df, 0, None)
     dc = np.clip(dc, 0, None)
 
-    raw_idx = power_domain["fat_gmin"].idxmax()
-    fm_power = float(power_domain.loc[raw_idx, "bike_power_w"])
-    fm_value = float(power_domain.loc[raw_idx, "fat_gmin"])
-    fm_idx = int(np.argmin(np.abs(dp - fm_power)))
+    fm_idx = int(np.argmax(df))
+    fm_power = float(dp[fm_idx])
+    fm_value = float(df[fm_idx])
     curve_anchor = float(df[fm_idx]) if len(df) else fm_value
     threshold = curve_anchor * 0.90
     if threshold > 0:
@@ -1002,7 +1000,7 @@ def _build_power_domain_substrate(valid: pd.DataFrame) -> dict[str, Any]:
         return {}
     grouped, power_domain = agg
 
-    result = _interpolate_and_compute_markers(grouped, power_domain)
+    result = _interpolate_and_compute_markers(grouped)
     if result is None:
         return {}
     dense, markers = result
@@ -1099,7 +1097,8 @@ def analyze_substrate(bxb: pd.DataFrame) -> dict[str, Any]:
     if fat.notna().sum() == 0 or cho.notna().sum() == 0:
         return results
 
-    fatmax_idx = fat.idxmax()
+    fat_smooth = fat.rolling(window=7, center=True, min_periods=1).mean()
+    fatmax_idx = fat_smooth.idxmax()
     results["fatmax_gmin"] = round(float(fat.loc[fatmax_idx]), 3)
     results["fatmax_time_s"] = round(float(substrate_window.loc[fatmax_idx, "t_s"]), 1)
     if "bike_power_w" in substrate_window.columns and pd.notna(

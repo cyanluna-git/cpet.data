@@ -150,7 +150,7 @@ class TestParkGeunyun:
     def test_fatmax_gmin(self) -> None:
         _assert_within_pct(
             self._results["substrate"]["fatmax_gmin"],
-            1.2,
+            0.87,  # smoothed (window=7) value; raw-bin argmax was 1.2
             label="fatmax_gmin",
         )
 
@@ -221,7 +221,7 @@ class TestHongChangsun:
     def test_fatmax_gmin(self) -> None:
         _assert_within_pct(
             self._results["substrate"]["fatmax_gmin"],
-            1.412,
+            1.063,  # smoothed (window=7) value; raw-bin argmax was 1.412
             label="fatmax_gmin",
         )
 
