@@ -1287,9 +1287,11 @@ async def submit(
                 conn.commit()
                 conn.close()
 
-            # Reuse existing job if available (prevents dashboard duplication on re-analysis)
+            # Reuse existing job if available (prevents dashboard duplication on re-analysis).
+            # Never reset a job that's actively processing — two pipeline subprocesses on the
+            # same workspace would corrupt analysis.db and the published report.
             existing_job = get_latest_job(db_path, reanalyze)
-            if existing_job:
+            if existing_job and existing_job.get("status") != "processing":
                 job_id = existing_job["id"]
                 reset_job_for_reanalysis(db_path, job_id)
             else:
