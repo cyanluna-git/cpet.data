@@ -1796,6 +1796,18 @@ def update_report_catalog_analysis_method(
     conn.close()
 
 
+def get_recent_published_slug(db_path: Path) -> str | None:
+    """Return the report_slug of the most recently published report, or None."""
+    conn = _connect(db_path)
+    row = conn.execute(
+        """SELECT report_slug FROM report_catalog
+           ORDER BY COALESCE(completed_at, updated_at, '') DESC
+           LIMIT 1"""
+    ).fetchone()
+    conn.close()
+    return row["report_slug"] if row else None
+
+
 def get_report_catalog_entry(db_path: Path, report_slug: str) -> dict | None:
     """Fetch a single report_catalog row by slug. Returns None if missing."""
     conn = _connect(db_path)

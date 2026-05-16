@@ -76,6 +76,7 @@ from server.db import (
     update_submission_test_date,
     update_report_catalog_test_date,
     update_report_catalog_analysis_method,
+    get_recent_published_slug,
     get_report_catalog_entry,
     list_submissions_with_users,
     list_users,
@@ -320,7 +321,12 @@ def _inject_reanalyze_button(html: str, submission_id: str) -> str:
 @app.get("/", response_class=HTMLResponse)
 async def index_page(request: Request) -> HTMLResponse:
     """Render the landing page."""
-    return _template_response(request, "index.html")
+    user = _get_session_user(request)
+    recent_slug: str | None = None
+    if user:
+        db_path = request.app.state.db_path
+        recent_slug = get_recent_published_slug(db_path)
+    return _template_response(request, "index.html", {"recent_report_slug": recent_slug})
 
 
 @app.get("/upload", response_class=HTMLResponse)
@@ -940,8 +946,11 @@ def _require_manage_access(request: Request) -> dict | RedirectResponse:
 
 
 def _require_notes_access(request: Request) -> dict | RedirectResponse:
-    """Notes are visible only to researcher/admin users."""
-    return _require_manage_access(request)
+    """Notes are visible to any authenticated user."""
+    session_user = _get_session_user(request)
+    if session_user is None:
+        return RedirectResponse(url="/auth/google/login", status_code=302)
+    return session_user
 
 
 def _require_dashboard_access(request: Request) -> dict | RedirectResponse:
