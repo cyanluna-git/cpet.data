@@ -3162,6 +3162,14 @@ def run_analysis(db_path: Path) -> dict[str, Any]:
         else:
             print(f"   Abstained: {cp_result.get('abstain_reason')}")
 
+    print("\n12. Combined Cycling Guidance...")
+    from pipeline.combined_guidance import compute_combined_guidance
+    cp_result_for_guidance = all_results.get("cp_model", {}).get("cp_result")
+    combined_guidance = _safe_run("Combined Guidance", compute_combined_guidance,
+        all_results, cp_result_for_guidance)
+    all_results["combined_guidance"] = combined_guidance
+    print(f"   Status: {combined_guidance.get('status')}")
+
     print("\nStoring results...")
     store_results(db_path, all_results)
 
