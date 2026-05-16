@@ -765,9 +765,9 @@ def _build_rq1_fuel_split(valid: pd.DataFrame) -> dict[str, Any]:
 def _ensure_substrate_columns(valid: pd.DataFrame) -> pd.DataFrame:
     """Backfill fat/CHO oxidation from VO2/VCO2 when COSMED columns are absent.
 
-    Frayn 1983, assuming negligible protein oxidation:
-    - fat g/min = 1.67 * VO2(L/min) - 1.67 * VCO2(L/min)
-    - cho g/min = 4.55 * VCO2(L/min) - 3.21 * VO2(L/min)
+    Frayn 1983 / Jeukendrup & Wallis 2005, assuming negligible protein oxidation:
+    - fat g/min = 1.6946 * VO2(L/min) - 1.7012 * VCO2(L/min)
+    - cho g/min = 4.5503 * VCO2(L/min) - 3.2254 * VO2(L/min)
     """
     df = valid.copy()
     if "fat_gmin" in df.columns:
@@ -799,8 +799,8 @@ def _ensure_substrate_columns(valid: pd.DataFrame) -> pd.DataFrame:
 
     vo2_l = pd.to_numeric(df["vo2_ml"], errors="coerce") / 1000.0
     vco2_l = pd.to_numeric(df["vco2_ml"], errors="coerce") / 1000.0
-    derived_fat = (1.67 * vo2_l - 1.67 * vco2_l).clip(lower=0)
-    derived_cho = (4.55 * vco2_l - 3.21 * vo2_l).clip(lower=0)
+    derived_fat = (1.6946 * vo2_l - 1.7012 * vco2_l).clip(lower=0)
+    derived_cho = (4.5503 * vco2_l - 3.2254 * vo2_l).clip(lower=0)
 
     df["fat_gmin"] = (
         _normalize_substrate_rate(df["fat_gmin"])

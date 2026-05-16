@@ -642,8 +642,8 @@ class TestAnalysisEdgeCases:
         )
 
         result = _ensure_substrate_columns(bxb)
-        assert result["fat_gmin"].tolist() == pytest.approx([0.501, 0.0], abs=0.01)
-        assert result["cho_gmin"].tolist() == pytest.approx([0.645, 2.412], abs=0.01)
+        assert result["fat_gmin"].tolist() == pytest.approx([0.5005, 0.0], abs=0.01)
+        assert result["cho_gmin"].tolist() == pytest.approx([0.6223, 2.3848], abs=0.01)
 
     def test_power_domain_substrate_uses_pchip_curve_argmax(self) -> None:
         import numpy as np
