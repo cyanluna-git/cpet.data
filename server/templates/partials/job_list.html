@@ -81,7 +81,7 @@
         {% if job.submission_id %}
         <a
           href="/upload?reanalyze={{ job.submission_id }}"
-          class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition"
+          class="hidden sm:inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition"
         >추가 분석</a>
         {% if current_user_role in ['admin', 'researcher'] or job.is_mine %}
         <button
@@ -96,7 +96,7 @@
         {% else %}
         <a
           href="/upload"
-          class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition"
+          class="hidden sm:inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition"
         >추가 분석</a>
         {% endif %}
       {% elif job.status == "failed" and job.error_message %}
@@ -106,7 +106,7 @@
       {% if current_user_role == 'admin' or job.is_mine %}
         <button
           type="button"
-          class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition"
+          class="hidden sm:inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition"
           data-submission-id="{{ job.submission_id or '' }}"
           data-report-slug="{{ job.report_slug or '' }}"
           data-subject-name="{{ job.subject_name or '' }}"
@@ -118,7 +118,7 @@
           onclick="openReportMetaModalFromButton(this)"
         >편집</button>
         <button
-          class="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-medium text-red-600 hover:bg-red-50 transition"
+          class="hidden sm:inline-flex items-center px-2 py-1 rounded-md text-[10px] font-medium text-red-600 hover:bg-red-50 transition"
           hx-delete="/api/manage/entries/{{ job.submission_id or job.id }}"
           hx-target="closest .job-row"
           hx-swap="outerHTML"
