@@ -1085,16 +1085,24 @@ def _anchor_power_domain_markers(
     if not dense_power or not dense_fat:
         return payload
 
+    dp_arr = np.asarray(dense_power, dtype=float)
+    df_arr = np.asarray(dense_fat, dtype=float)
+
     fatmax_power = float(fatmax_power_w)
-    anchor_idx = min(range(len(dense_power)), key=lambda idx: abs(dense_power[idx] - fatmax_power))
     cx = markers.get("primary_crossover")
     cx_power = float(cx["power_w"]) if cx else None
-    zone_min, zone_max = _find_fatmax_zone(
-        np.asarray(dense_power, dtype=float),
-        np.asarray(dense_fat, dtype=float),
-        anchor_idx,
-        cx_power,
-    )
+
+    # Cap FatMax at crossover: when fat keeps rising past crossover (plateau/noisy data),
+    # restrict to the fat argmax within the physiological fat-dominant range (≤ crossover).
+    if cx_power is not None and fatmax_power > cx_power:
+        cx_limit_idx = int(np.searchsorted(dp_arr, cx_power, side="right"))
+        if cx_limit_idx > 0:
+            capped_idx = int(np.argmax(df_arr[:cx_limit_idx]))
+            fatmax_power = float(dp_arr[capped_idx])
+            fatmax_gmin = float(df_arr[capped_idx])
+
+    anchor_idx = min(range(len(dense_power)), key=lambda idx: abs(dense_power[idx] - fatmax_power))
+    zone_min, zone_max = _find_fatmax_zone(dp_arr, df_arr, anchor_idx, cx_power)
 
     markers.update(
         {
@@ -1677,7 +1685,7 @@ def _suitability_performance_metrics(
     )
 
     markers = substrate.get("metabolism_markers") or {}
-    fatmax_power = substrate.get("fatmax_power_w")
+    fatmax_power = markers.get("fatmax_power_w") or substrate.get("fatmax_power_w")
     band_min = markers.get("fatmax_zone_min_w")
     band_max = markers.get("fatmax_zone_max_w")
     band_width = (
@@ -1704,7 +1712,7 @@ def _suitability_performance_metrics(
         source_window=window_meta.get("substrate_window"),
         confidence=fm_conf if fatmax_power is not None else None,
         point_power_w=fatmax_power,
-        point_gmin=substrate.get("fatmax_gmin"),
+        point_gmin=markers.get("fatmax_gmin") or substrate.get("fatmax_gmin"),
         band_power_w=(
             {"low": band_min, "high": band_max}
             if band_min is not None and band_max is not None
