@@ -29,6 +29,7 @@ from server.db import (
     delete_report_catalog_entry,
     get_job,
     get_job_by_submission,
+    get_latest_job,
     get_prior_report_slug,
     get_subject,
     get_submission,
@@ -41,6 +42,7 @@ from server.db import (
     list_submissions_with_users,
     list_subjects,
     refresh_targeted_materializations,
+    reset_job_for_reanalysis,
     restore_submission_files,
     save_submission_files,
     upsert_report_catalog_entry,
@@ -498,7 +500,10 @@ def _reconcile_job_artifacts(
         or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     )
 
-    prior_slug = get_prior_report_slug(
+    # Prefer the slug already on this job (set during reset-for-reanalysis or prior run),
+    # then fall back to another done job's slug, then discover from published dir.
+    own_slug = str(job.get("report_slug") or "").strip() or None
+    prior_slug = own_slug or get_prior_report_slug(
         get_db_path(request),
         str(submission["id"]),
         exclude_job_id=str(job["id"]),
@@ -1282,17 +1287,22 @@ async def submit(
                 conn.commit()
                 conn.close()
 
-            # Create new job for re-analysis
-            job_id = create_job(db_path, reanalyze)
-            prior_slug = get_prior_report_slug(db_path, reanalyze, exclude_job_id=job_id)
-            if prior_slug:
-                update_job_status(
-                    db_path,
-                    job_id,
-                    "pending",
-                    report_slug=prior_slug,
-                    report_url=f"/report/{prior_slug}/",
-                )
+            # Reuse existing job if available (prevents dashboard duplication on re-analysis)
+            existing_job = get_latest_job(db_path, reanalyze)
+            if existing_job:
+                job_id = existing_job["id"]
+                reset_job_for_reanalysis(db_path, job_id)
+            else:
+                job_id = create_job(db_path, reanalyze)
+                prior_slug = get_prior_report_slug(db_path, reanalyze, exclude_job_id=job_id)
+                if prior_slug:
+                    update_job_status(
+                        db_path,
+                        job_id,
+                        "pending",
+                        report_slug=prior_slug,
+                        report_url=f"/report/{prior_slug}/",
+                    )
             refreshed_sub = get_submission(db_path, reanalyze) or existing_sub
             payload = _build_channel_payload(
                 {"id": job_id},

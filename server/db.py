@@ -760,6 +760,33 @@ def get_submission_id_for_report_slug(
     return row["submission_id"] if row else None
 
 
+def get_latest_job(db_path: Path, submission_id: str) -> dict | None:
+    """Return the most recently created job for a submission."""
+    conn = _connect(db_path)
+    row = conn.execute(
+        "SELECT * FROM jobs WHERE submission_id = ? ORDER BY rowid DESC LIMIT 1",
+        (submission_id,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def reset_job_for_reanalysis(db_path: Path, job_id: str) -> None:
+    """Reset an existing job back to pending for re-analysis, preserving its report_slug."""
+    conn = _connect(db_path)
+    conn.execute(
+        """UPDATE jobs
+           SET status = 'pending',
+               started_at = NULL,
+               completed_at = NULL,
+               error_message = NULL
+           WHERE id = ?""",
+        (job_id,),
+    )
+    conn.commit()
+    conn.close()
+
+
 def get_prior_report_slug(
     db_path: Path,
     submission_id: str,
