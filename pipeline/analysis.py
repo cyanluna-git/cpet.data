@@ -1484,6 +1484,210 @@ def _build_metric_suitability(
     return payload
 
 
+def _suitability_lt_metrics(
+    lactate: dict, vt: dict, zones: dict, window_meta: dict
+) -> dict:
+    r: dict = {}
+    if lactate.get("lt1_dmax_power_w") or lactate.get("lt1_fixed_power_w"):
+        r["lt1"] = _build_metric_suitability(
+            "supported",
+            basis="direct_lactate_turnpoint",
+            reason="혈중 lactate 샘플 기반 LT1 point가 존재합니다.",
+            source_window=window_meta.get("threshold_window"),
+            confidence="high",
+            power_w=lactate.get("lt1_dmax_power_w") or lactate.get("lt1_fixed_power_w"),
+            alternate_power_w=lactate.get("lt1_fixed_power_w"),
+        )
+    elif vt.get("vt1_power_w") is not None:
+        r["lt1"] = _build_metric_suitability(
+            "indirect",
+            basis="ventilatory_surrogate",
+            reason="직접 lactate LT1가 없어 VT1를 surrogate로만 제시합니다.",
+            source_window=window_meta.get("threshold_window"),
+            confidence="moderate",
+            power_w=vt.get("vt1_power_w"),
+            hr_bpm=vt.get("vt1_hr"),
+        )
+    else:
+        r["lt1"] = _build_metric_suitability(
+            "unsupported",
+            basis="insufficient_direct_or_surrogate_signal",
+            reason="LT1를 직접 또는 환기 surrogate로 읽을 근거가 부족합니다.",
+            source_window=window_meta.get("threshold_window"),
+        )
+
+    lt2_power = zones.get("lt2_power_w")
+    if lt2_power is not None:
+        r["lt2"] = _build_metric_suitability(
+            "indirect",
+            basis=str(zones.get("lt2_basis") or "estimated_lt2_reference"),
+            reason="직접 lactate LT2가 아니라 추정 LT2/FTP 보수 기준입니다.",
+            source_window=window_meta.get("threshold_window"),
+            confidence="moderate",
+            power_w=lt2_power,
+            hr_bpm=zones.get("lt2_hr_bpm"),
+            reference_vt2_power_w=vt.get("vt2_power_w"),
+        )
+    else:
+        r["lt2"] = _build_metric_suitability(
+            "unsupported",
+            basis="no_threshold_reference",
+            reason="LT2 참고치를 만들 기준 데이터가 부족합니다.",
+            source_window=window_meta.get("threshold_window"),
+        )
+    return r
+
+
+def _suitability_vt_metrics(vt: dict, window_meta: dict) -> dict:
+    r: dict = {}
+    if vt.get("vt1_power_w") is not None:
+        r["vt1"] = _build_metric_suitability(
+            "supported",
+            basis="ventilatory_breakpoint",
+            reason="VE/VO2 breakpoint에서 VT1가 산출되었습니다.",
+            source_window=window_meta.get("threshold_window"),
+            confidence="moderate",
+            power_w=vt.get("vt1_power_w"),
+            hr_bpm=vt.get("vt1_hr"),
+        )
+    else:
+        r["vt1"] = _build_metric_suitability(
+            "unsupported",
+            basis="no_breakpoint_detected",
+            reason="VE/VO2 기반 VT1 breakpoint를 안정적으로 찾지 못했습니다.",
+            source_window=window_meta.get("threshold_window"),
+        )
+    if vt.get("vt2_power_w") is not None:
+        r["vt2"] = _build_metric_suitability(
+            "supported",
+            basis="ventilatory_breakpoint",
+            reason="VE/VCO2 breakpoint에서 VT2가 산출되었습니다.",
+            source_window=window_meta.get("threshold_window"),
+            confidence="moderate",
+            power_w=vt.get("vt2_power_w"),
+            hr_bpm=vt.get("vt2_hr"),
+        )
+    else:
+        r["vt2"] = _build_metric_suitability(
+            "unsupported",
+            basis="no_breakpoint_detected",
+            reason="VE/VCO2 기반 VT2 breakpoint를 안정적으로 찾지 못했습니다.",
+            source_window=window_meta.get("threshold_window"),
+        )
+    return r
+
+
+def _suitability_performance_metrics(
+    vo2max: dict,
+    substrate: dict,
+    efficiency: dict,
+    clearance: dict,
+    weight: float | None,
+    protocol_meta: dict,
+    window_meta: dict,
+) -> dict:
+    r: dict = {}
+
+    triplet = [float(v) for v in vo2max.get("vo2max_triplet_values") or []]
+    vo2_range_rel = None
+    if triplet and weight and weight > 0:
+        vo2_range_rel = {
+            "low": round(min(triplet) / weight, 1),
+            "high": round(max(triplet) / weight, 1),
+        }
+    has_plateau = bool(vo2max.get("vo2_plateau"))
+    has_rel = vo2max.get("vo2max_rel") is not None
+    r["vo2max"] = _build_metric_suitability(
+        ("supported" if has_plateau else "low_confidence") if has_rel else "unsupported",
+        basis=("plateau_supported_peak" if has_plateau else "peak_triplet_average") if has_rel else "no_peak_signal",
+        reason=(
+            "VO2 plateau가 보여 direct peak interpretation이 가능합니다."
+            if has_plateau
+            else "VO2 plateau 근거가 약해 top-3 peak average 기반 참고치로 제시합니다."
+        ) if has_rel else "VO2max를 계산할 peak 호흡 데이터가 부족합니다.",
+        source_window=window_meta.get("vo2max_window"),
+        confidence="high" if has_plateau else "moderate",
+        value_rel_ml_kg_min=vo2max.get("vo2max_rel"),
+        value_abs_ml_min=vo2max.get("vo2max_ml"),
+        range_rel_ml_kg_min=vo2_range_rel,
+        peak_power_w=vo2max.get("peak_power_achieved_w"),
+    )
+
+    markers = substrate.get("metabolism_markers") or {}
+    fatmax_power = substrate.get("fatmax_power_w")
+    band_min = markers.get("fatmax_zone_min_w")
+    band_max = markers.get("fatmax_zone_max_w")
+    band_width = (
+        round(float(band_max) - float(band_min), 1)
+        if band_min is not None and band_max is not None
+        else None
+    )
+    fm_status, fm_conf, fm_reason = "supported", "high", "기질 산화 곡선에서 FatMax anchor와 band를 직접 확인했습니다."
+    if fatmax_power is None:
+        fm_status, fm_reason = "unsupported", "FatMax를 읽을 substrate 곡선이 부족합니다."
+    elif (
+        protocol_meta.get("protocol_family") == "two_block_cpet"
+        and substrate.get("fatmax_scope_block") != "block_1"
+    ):
+        fm_status, fm_conf = "low_confidence", "low"
+        fm_reason = "2블럭 CPET지만 block_1 기반 substrate window를 명확히 분리하지 못했습니다."
+    elif band_width is not None and band_width >= 35.0:
+        fm_status, fm_conf = "low_confidence", "moderate"
+        fm_reason = "FatMax band 폭이 넓어 point보다 범위 해석이 안전합니다."
+    r["fatmax"] = _build_metric_suitability(
+        fm_status,
+        basis="substrate_curve_anchor" if fatmax_power is not None else "no_substrate_curve",
+        reason=fm_reason,
+        source_window=window_meta.get("substrate_window"),
+        confidence=fm_conf if fatmax_power is not None else None,
+        point_power_w=fatmax_power,
+        point_gmin=substrate.get("fatmax_gmin"),
+        band_power_w=(
+            {"low": band_min, "high": band_max}
+            if band_min is not None and band_max is not None
+            else None
+        ),
+        crossover_power_w=substrate.get("crossover_power_w"),
+    )
+
+    if clearance.get("clearance_points"):
+        r["clearance"] = _build_metric_suitability(
+            "supported",
+            basis="block_3_lactate_clearance",
+            reason="VO2max 이후 block_3 lactate clearance 데이터를 직접 측정했습니다.",
+            source_window=window_meta.get("clearance_window"),
+            confidence="moderate",
+            best_clearance_power_w=clearance.get("best_clearance_power_w"),
+        )
+    else:
+        r["clearance"] = _build_metric_suitability(
+            "unsupported",
+            basis="no_clearance_block",
+            reason="post-VO2max lactate clearance block이 없어 생략합니다.",
+            source_window=window_meta.get("clearance_window"),
+        )
+
+    stage_count = len(efficiency.get("efficiency_by_stage") or [])
+    if stage_count >= 2:
+        r["efficiency"] = _build_metric_suitability(
+            "supported",
+            basis="submax_ramp_stages",
+            reason="125-250W submax ramp stage가 충분해 효율 곡선을 계산했습니다.",
+            source_window=window_meta.get("substrate_window"),
+            confidence="moderate",
+            stage_count=stage_count,
+            peak_gross_efficiency_pct=efficiency.get("peak_gross_efficiency_pct"),
+        )
+    else:
+        r["efficiency"] = _build_metric_suitability(
+            "unsupported",
+            basis="insufficient_submax_stages",
+            reason="효율 계산에 필요한 submax ramp stage 수가 부족합니다.",
+            source_window=window_meta.get("substrate_window"),
+        )
+    return r
+
+
 def _build_protocol_metric_suitability(
     data: dict[str, pd.DataFrame],
     protocol_meta: dict[str, Any],
@@ -1508,186 +1712,11 @@ def _build_protocol_metric_suitability(
 
     window_meta = protocol_meta.get("window_metadata") or {}
     suitability: dict[str, Any] = {}
-
-    if lactate.get("lt1_dmax_power_w") or lactate.get("lt1_fixed_power_w"):
-        suitability["lt1"] = _build_metric_suitability(
-            "supported",
-            basis="direct_lactate_turnpoint",
-            reason="혈중 lactate 샘플 기반 LT1 point가 존재합니다.",
-            source_window=window_meta.get("threshold_window"),
-            confidence="high",
-            power_w=lactate.get("lt1_dmax_power_w") or lactate.get("lt1_fixed_power_w"),
-            alternate_power_w=lactate.get("lt1_fixed_power_w"),
-        )
-    elif vt.get("vt1_power_w") is not None:
-        suitability["lt1"] = _build_metric_suitability(
-            "indirect",
-            basis="ventilatory_surrogate",
-            reason="직접 lactate LT1가 없어 VT1를 surrogate로만 제시합니다.",
-            source_window=window_meta.get("threshold_window"),
-            confidence="moderate",
-            power_w=vt.get("vt1_power_w"),
-            hr_bpm=vt.get("vt1_hr"),
-        )
-    else:
-        suitability["lt1"] = _build_metric_suitability(
-            "unsupported",
-            basis="insufficient_direct_or_surrogate_signal",
-            reason="LT1를 직접 또는 환기 surrogate로 읽을 근거가 부족합니다.",
-            source_window=window_meta.get("threshold_window"),
-        )
-
-    if vt.get("vt1_power_w") is not None:
-        suitability["vt1"] = _build_metric_suitability(
-            "supported",
-            basis="ventilatory_breakpoint",
-            reason="VE/VO2 breakpoint에서 VT1가 산출되었습니다.",
-            source_window=window_meta.get("threshold_window"),
-            confidence="moderate",
-            power_w=vt.get("vt1_power_w"),
-            hr_bpm=vt.get("vt1_hr"),
-        )
-    else:
-        suitability["vt1"] = _build_metric_suitability(
-            "unsupported",
-            basis="no_breakpoint_detected",
-            reason="VE/VO2 기반 VT1 breakpoint를 안정적으로 찾지 못했습니다.",
-            source_window=window_meta.get("threshold_window"),
-        )
-
-    if vt.get("vt2_power_w") is not None:
-        suitability["vt2"] = _build_metric_suitability(
-            "supported",
-            basis="ventilatory_breakpoint",
-            reason="VE/VCO2 breakpoint에서 VT2가 산출되었습니다.",
-            source_window=window_meta.get("threshold_window"),
-            confidence="moderate",
-            power_w=vt.get("vt2_power_w"),
-            hr_bpm=vt.get("vt2_hr"),
-        )
-    else:
-        suitability["vt2"] = _build_metric_suitability(
-            "unsupported",
-            basis="no_breakpoint_detected",
-            reason="VE/VCO2 기반 VT2 breakpoint를 안정적으로 찾지 못했습니다.",
-            source_window=window_meta.get("threshold_window"),
-        )
-
-    lt2_power = zones.get("lt2_power_w")
-    if lt2_power is not None:
-        suitability["lt2"] = _build_metric_suitability(
-            "indirect",
-            basis=str(zones.get("lt2_basis") or "estimated_lt2_reference"),
-            reason="직접 lactate LT2가 아니라 추정 LT2/FTP 보수 기준입니다.",
-            source_window=window_meta.get("threshold_window"),
-            confidence="moderate",
-            power_w=lt2_power,
-            hr_bpm=zones.get("lt2_hr_bpm"),
-            reference_vt2_power_w=vt.get("vt2_power_w"),
-        )
-    else:
-        suitability["lt2"] = _build_metric_suitability(
-            "unsupported",
-            basis="no_threshold_reference",
-            reason="LT2 참고치를 만들 기준 데이터가 부족합니다.",
-            source_window=window_meta.get("threshold_window"),
-        )
-
-    triplet = [float(value) for value in vo2max.get("vo2max_triplet_values") or []]
-    vo2_range_rel = None
-    if triplet and weight and weight > 0:
-        vo2_range_rel = {
-            "low": round(min(triplet) / weight, 1),
-            "high": round(max(triplet) / weight, 1),
-        }
-    vo2_status = "supported" if vo2max.get("vo2_plateau") else "low_confidence"
-    vo2_basis = "plateau_supported_peak" if vo2max.get("vo2_plateau") else "peak_triplet_average"
-    vo2_reason = (
-        "VO2 plateau가 보여 direct peak interpretation이 가능합니다."
-        if vo2max.get("vo2_plateau")
-        else "VO2 plateau 근거가 약해 top-3 peak average 기반 참고치로 제시합니다."
-    )
-    suitability["vo2max"] = _build_metric_suitability(
-        vo2_status if vo2max.get("vo2max_rel") is not None else "unsupported",
-        basis=vo2_basis if vo2max.get("vo2max_rel") is not None else "no_peak_signal",
-        reason=vo2_reason if vo2max.get("vo2max_rel") is not None else "VO2max를 계산할 peak 호흡 데이터가 부족합니다.",
-        source_window=window_meta.get("vo2max_window"),
-        confidence="high" if vo2max.get("vo2_plateau") else "moderate",
-        value_rel_ml_kg_min=vo2max.get("vo2max_rel"),
-        value_abs_ml_min=vo2max.get("vo2max_ml"),
-        range_rel_ml_kg_min=vo2_range_rel,
-        peak_power_w=vo2max.get("peak_power_achieved_w"),
-    )
-
-    markers = substrate.get("metabolism_markers") or {}
-    fatmax_power = substrate.get("fatmax_power_w")
-    band_min = markers.get("fatmax_zone_min_w")
-    band_max = markers.get("fatmax_zone_max_w")
-    band_width = None
-    if band_min is not None and band_max is not None:
-        band_width = round(float(band_max) - float(band_min), 1)
-    fatmax_status = "supported"
-    fatmax_confidence = "high"
-    fatmax_reason = "기질 산화 곡선에서 FatMax anchor와 band를 직접 확인했습니다."
-    if fatmax_power is None:
-        fatmax_status = "unsupported"
-        fatmax_reason = "FatMax를 읽을 substrate 곡선이 부족합니다."
-    elif protocol_meta.get("protocol_family") == "two_block_cpet" and substrate.get("fatmax_scope_block") != "block_1":
-        fatmax_status = "low_confidence"
-        fatmax_confidence = "low"
-        fatmax_reason = "2블럭 CPET지만 block_1 기반 substrate window를 명확히 분리하지 못했습니다."
-    elif band_width is not None and band_width >= 35.0:
-        fatmax_status = "low_confidence"
-        fatmax_confidence = "moderate"
-        fatmax_reason = "FatMax band 폭이 넓어 point보다 범위 해석이 안전합니다."
-    suitability["fatmax"] = _build_metric_suitability(
-        fatmax_status,
-        basis="substrate_curve_anchor" if fatmax_power is not None else "no_substrate_curve",
-        reason=fatmax_reason,
-        source_window=window_meta.get("substrate_window"),
-        confidence=fatmax_confidence if fatmax_power is not None else None,
-        point_power_w=fatmax_power,
-        point_gmin=substrate.get("fatmax_gmin"),
-        band_power_w={"low": band_min, "high": band_max} if band_min is not None and band_max is not None else None,
-        crossover_power_w=substrate.get("crossover_power_w"),
-    )
-
-    if clearance.get("clearance_points"):
-        suitability["clearance"] = _build_metric_suitability(
-            "supported",
-            basis="block_3_lactate_clearance",
-            reason="VO2max 이후 block_3 lactate clearance 데이터를 직접 측정했습니다.",
-            source_window=window_meta.get("clearance_window"),
-            confidence="moderate",
-            best_clearance_power_w=clearance.get("best_clearance_power_w"),
-        )
-    else:
-        suitability["clearance"] = _build_metric_suitability(
-            "unsupported",
-            basis="no_clearance_block",
-            reason="post-VO2max lactate clearance block이 없어 생략합니다.",
-            source_window=window_meta.get("clearance_window"),
-        )
-
-    stage_count = len(efficiency.get("efficiency_by_stage") or [])
-    if stage_count >= 2:
-        suitability["efficiency"] = _build_metric_suitability(
-            "supported",
-            basis="submax_ramp_stages",
-            reason="125-250W submax ramp stage가 충분해 효율 곡선을 계산했습니다.",
-            source_window=window_meta.get("substrate_window"),
-            confidence="moderate",
-            stage_count=stage_count,
-            peak_gross_efficiency_pct=efficiency.get("peak_gross_efficiency_pct"),
-        )
-    else:
-        suitability["efficiency"] = _build_metric_suitability(
-            "unsupported",
-            basis="insufficient_submax_stages",
-            reason="효율 계산에 필요한 submax ramp stage 수가 부족합니다.",
-            source_window=window_meta.get("substrate_window"),
-        )
-
+    suitability.update(_suitability_lt_metrics(lactate, vt, zones, window_meta))
+    suitability.update(_suitability_vt_metrics(vt, window_meta))
+    suitability.update(_suitability_performance_metrics(
+        vo2max, substrate, efficiency, clearance, weight, protocol_meta, window_meta
+    ))
     return suitability
 
 
