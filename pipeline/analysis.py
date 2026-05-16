@@ -1102,8 +1102,20 @@ def _anchor_power_domain_markers(
     return payload
 
 
-def analyze_substrate(bxb: pd.DataFrame) -> dict[str, Any]:
-    """Analyze fat and CHO oxidation rates."""
+def analyze_substrate(
+    bxb: pd.DataFrame,
+    warmup_skip_s: float = 300.0,
+) -> dict[str, Any]:
+    """Analyze fat and CHO oxidation rates.
+
+    Args:
+        warmup_skip_s: Seconds from the first power-on timestamp to exclude
+            from substrate analysis.  Early-exercise metabolic instability
+            (first ~5 min) can produce anomalously high fat values that pull
+            FatMax to physiologically implausible low intensities.  Set to 0
+            to disable.  Fallback: if the trimmed window has <10 rows the
+            original window is kept unchanged.
+    """
     results: dict[str, Any] = {}
 
     valid = _active_bxb_window(bxb)
@@ -1111,6 +1123,17 @@ def analyze_substrate(bxb: pd.DataFrame) -> dict[str, Any]:
         return results
     valid = _ensure_substrate_columns(valid)
     substrate_window, scope_block = _select_primary_substrate_window(valid)
+
+    if warmup_skip_s > 0 and "t_s" in substrate_window.columns and not substrate_window.empty:
+        t_start = float(substrate_window["t_s"].min())
+        trimmed = substrate_window[substrate_window["t_s"] >= t_start + warmup_skip_s]
+        remaining_s = (
+            float(trimmed["t_s"].max()) - float(trimmed["t_s"].min())
+            if len(trimmed) >= 2
+            else 0.0
+        )
+        if len(trimmed) >= 10 and remaining_s >= warmup_skip_s:
+            substrate_window = trimmed.reset_index(drop=True)
 
     fat = substrate_window["fat_gmin"].clip(lower=0)
     cho = substrate_window["cho_gmin"].clip(lower=0)
