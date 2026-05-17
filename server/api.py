@@ -47,6 +47,7 @@ from server.db import (
     save_submission_files,
     upsert_report_catalog_entry,
     store_report_html,
+    get_report_html,
     update_submission_duplicate_metadata,
     update_job_status,
 )
@@ -869,8 +870,10 @@ def sync_published_report_catalog(db_path: Path, published_dir: Path) -> None:
     for row in list_report_catalog(db_path):
         report_slug = str(row["report_slug"])
         if report_slug not in current_slugs:
-            # Keep entries that already have HTML stored in DB
-            if row.get("html_content"):
+            # Keep entries that already have HTML stored in DB.
+            # get_report_html reads html_content directly — list_report_catalog
+            # intentionally omits it to avoid loading large BLOBs in listings.
+            if get_report_html(db_path, report_slug):
                 continue
             delete_report_catalog_entry(db_path, report_slug)
 
