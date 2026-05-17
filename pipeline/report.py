@@ -2863,7 +2863,7 @@ def render_html(context: dict[str, Any]) -> str:
       Infinity
     );
     const metabolismAxisMin = Number.isFinite(metabolismPowerMin) && metabolismPowerMin > 0
-      ? Math.floor(metabolismPowerMin / metabolismAxisStep) * metabolismAxisStep
+      ? Math.floor(metabolismPowerMin / 25) * 25
       : 0;
 
     createChart('chart-metabolism', {{
