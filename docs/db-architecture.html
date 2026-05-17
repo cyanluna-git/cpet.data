@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CPET DB Architecture</title>
+<style>
+  :root {
+    --platform: #1a56a0;
+    --analysis: #0f7a4e;
+    --neutral: #4b5563;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --text: #1e293b;
+    --muted: #64748b;
+    --pk: #7c3aed;
+    --fk: #b45309;
+    --blob: #dc2626;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.6; }
+  header { background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%); color: #fff; padding: 2rem 2.5rem; }
+  header h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; }
+  header p { margin-top: 0.4rem; color: #94a3b8; font-size: 0.875rem; }
+  .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-left: 0.5rem; vertical-align: middle; }
+  .badge-platform { background: #dbeafe; color: var(--platform); }
+  .badge-analysis { background: #d1fae5; color: var(--analysis); }
+
+  main { max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem; }
+  section { margin-bottom: 2.5rem; }
+  h2 { font-size: 1.15rem; font-weight: 700; color: var(--text); margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--border); display: flex; align-items: center; gap: 0.5rem; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 1.5rem 0 0.5rem; }
+
+  /* Flow diagram */
+  .flow { display: flex; align-items: stretch; gap: 0; overflow-x: auto; padding: 1.5rem; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+  .flow-group { display: flex; flex-direction: column; gap: 0.4rem; }
+  .flow-node { padding: 0.5rem 0.9rem; border-radius: 6px; font-size: 0.78rem; font-weight: 600; white-space: nowrap; text-align: center; }
+  .fn-upload  { background: #f0f9ff; border: 1.5px solid #0ea5e9; color: #0369a1; }
+  .fn-platform{ background: #dbeafe; border: 1.5px solid #3b82f6; color: var(--platform); }
+  .fn-pipeline{ background: #fef3c7; border: 1.5px solid #f59e0b; color: #92400e; }
+  .fn-analysis{ background: #d1fae5; border: 1.5px solid #10b981; color: var(--analysis); }
+  .fn-serve   { background: #f3e8ff; border: 1.5px solid #a855f7; color: #6b21a8; }
+  .flow-arrow { display: flex; align-items: center; padding: 0 0.6rem; color: var(--muted); font-size: 1.1rem; flex-shrink: 0; }
+  .flow-label { font-size: 0.68rem; color: var(--muted); text-align: center; margin-top: 0.2rem; }
+
+  /* DB panels */
+  .db-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  @media (max-width: 900px) { .db-panels { grid-template-columns: 1fr; } }
+  .db-panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .db-panel-header { padding: 0.8rem 1.2rem; font-weight: 700; font-size: 0.85rem; letter-spacing: 0.02em; }
+  .db-panel-header.platform { background: #dbeafe; color: var(--platform); border-bottom: 2px solid #93c5fd; }
+  .db-panel-header.analysis { background: #d1fae5; color: var(--analysis); border-bottom: 2px solid #6ee7b7; }
+  .db-panel-header small { font-weight: 400; opacity: 0.75; margin-left: 0.4rem; }
+
+  /* Table listing */
+  .table-list { padding: 0.8rem 1.2rem; }
+  .table-item { margin-bottom: 1.2rem; }
+  .table-name { font-weight: 700; font-size: 0.88rem; font-family: 'SF Mono', 'Fira Code', monospace; margin-bottom: 0.3rem; }
+  .table-desc { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.4rem; }
+  table.schema { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+  table.schema th { background: #f1f5f9; color: var(--muted); text-align: left; padding: 0.25rem 0.5rem; font-weight: 600; border-bottom: 1px solid var(--border); }
+  table.schema td { padding: 0.22rem 0.5rem; border-bottom: 1px solid #f1f5f9; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.72rem; vertical-align: top; }
+  table.schema tr:last-child td { border-bottom: none; }
+  .col-pk { color: var(--pk); font-weight: 700; }
+  .col-fk { color: var(--fk); }
+  .col-blob { color: var(--blob); }
+  .col-type { color: #334155; }
+  .col-note { color: var(--muted); font-family: -apple-system, sans-serif; font-size: 0.7rem; }
+  .tag-pk { background: #ede9fe; color: var(--pk); padding: 0 4px; border-radius: 3px; font-size: 0.65rem; font-weight: 700; margin-left: 3px; }
+  .tag-fk { background: #fef3c7; color: var(--fk); padding: 0 4px; border-radius: 3px; font-size: 0.65rem; font-weight: 700; margin-left: 3px; }
+  .tag-blob { background: #fee2e2; color: var(--blob); padding: 0 4px; border-radius: 3px; font-size: 0.65rem; font-weight: 700; margin-left: 3px; }
+  .divider { border: none; border-top: 1px solid var(--border); margin: 0.8rem 0; }
+
+  /* Legend */
+  .legend { display: flex; gap: 1.2rem; flex-wrap: wrap; padding: 0.8rem 1.2rem; background: var(--card); border: 1px solid var(--border); border-radius: 8px; font-size: 0.75rem; }
+  .legend-item { display: flex; align-items: center; gap: 0.3rem; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+  .ld-pk { background: var(--pk); }
+  .ld-fk { background: var(--fk); }
+  .ld-blob { background: var(--blob); }
+
+  /* Summary cards */
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+  .sum-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.2rem; }
+  .sum-card .num { font-size: 1.8rem; font-weight: 800; line-height: 1; }
+  .sum-card .lbl { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; }
+  .sum-card.p .num { color: var(--platform); }
+  .sum-card.a .num { color: var(--analysis); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>CPET — Database Architecture</h1>
+  <p>Platform DB (cpet_platform.db) · Analysis DB (analysis.db) · 데이터 흐름 및 스키마 참조 문서</p>
+</header>
+
+<main>
+
+<!-- Summary -->
+<section>
+  <div class="summary-grid">
+    <div class="sum-card p">
+      <div class="num">12</div>
+      <div class="lbl">platform DB 테이블<br><span style="font-family:monospace;font-size:0.7rem">cpet_platform.db</span></div>
+    </div>
+    <div class="sum-card a">
+      <div class="num">7</div>
+      <div class="lbl">analysis DB 테이블<br><span style="font-family:monospace;font-size:0.7rem">analysis.db (per-workspace)</span></div>
+    </div>
+    <div class="sum-card p">
+      <div class="num">1</div>
+      <div class="lbl">중앙 플랫폼 DB<br>서버 전체 공유</div>
+    </div>
+    <div class="sum-card a">
+      <div class="num">N</div>
+      <div class="lbl">워크스페이스 DB<br>제출 건당 1개</div>
+    </div>
+  </div>
+</section>
+
+<!-- Data Flow -->
+<section>
+  <h2>📦 데이터 흐름 (Upload → Pipeline → Serve)</h2>
+  <div class="flow">
+    <div class="flow-group">
+      <div class="flow-node fn-upload">사용자 파일 업로드<br><span style="font-weight:400;font-size:0.7rem">XLSX · FIT · ZWO · PDF</span></div>
+      <div class="flow-label">Browser</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-group">
+      <div class="flow-node fn-platform">submissions<br><small>submission_files</small></div>
+      <div class="flow-label">platform DB<br>파일 gzip BLOB 저장</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-group">
+      <div class="flow-node fn-pipeline">pipeline<br><small>python -m pipeline</small></div>
+      <div class="flow-label">CLI / webhook<br>파싱 · 분석</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-group">
+      <div class="flow-node fn-analysis">analysis.db<br><small>BxB · metrics</small></div>
+      <div class="flow-label">per-workspace DB<br>원시 데이터 + 계산 결과</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-group">
+      <div class="flow-node fn-platform">report_catalog<br><small>html_content BLOB</small></div>
+      <div class="flow-label">platform DB<br>HTML 리포트 저장</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-group">
+      <div class="flow-node fn-platform">subject_metric_<br>snapshots</div>
+      <div class="flow-label">platform DB<br>핵심 지표 materialize</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-group">
+      <div class="flow-node fn-serve">/report/{slug}/<br><small>DB-primary</small></div>
+      <div class="flow-label">FastAPI<br>html_content 직접 서빙</div>
+    </div>
+  </div>
+</section>
+
+<!-- Legend -->
+<section>
+  <div class="legend">
+    <strong style="font-size:0.75rem">범례:</strong>
+    <div class="legend-item"><div class="legend-dot ld-pk"></div> PK — Primary Key</div>
+    <div class="legend-item"><div class="legend-dot ld-fk"></div> FK — Foreign Key</div>
+    <div class="legend-item"><div class="legend-dot ld-blob"></div> BLOB — 바이너리/대용량 컬럼</div>
+  </div>
+</section>
+
+<!-- DB Panels -->
+<section>
+  <h2>🗄️ 스키마 상세</h2>
+  <div class="db-panels">
+
+    <!-- PLATFORM DB -->
+    <div class="db-panel">
+      <div class="db-panel-header platform">
+        📁 cpet_platform.db
+        <small>· 서버 중앙 DB · data/cpet_platform.db</small>
+      </div>
+      <div class="table-list">
+
+        <div class="table-item">
+          <div class="table-name">subjects</div>
+          <div class="table-desc">피험자 마스터. users.subject_id 로 계정과 연결.</div>
+          <table class="schema">
+            <tr><th>컬럼</th><th>타입</th><th>비고</th></tr>
+            <tr><td><span class="col-pk">id</span><span class="tag-pk">PK</span></td><td class="col-type">TEXT</td><td class="col-note">UUID</td></tr>
+            <tr><td>name</td><td class="col-type">TEXT</td><td class="col-note">NOT NULL</td></tr>
+            <tr><td>gender / birth_year</td><td class="col-type">TEXT / INT</td><td class="col-note"></td></tr>
+            <tr><td>height_cm / weight_kg</td><td class="col-type">REAL</td><td class="col-note"></td></tr>
+            <tr><td>body_fat_pct / bmi / skeletal_muscle_mass</td><td class="col-type">REAL</td><td class="col-note"></td></tr>
+            <tr><td>training_level / notes</td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+            <tr><td>created_at</td><td class="col-type">TEXT</td><td class="col-note">datetime('now')</td></tr>
+          </table>
+        </div>
+        <hr class="divider">
+
+        <div class="table-item">
+          <div class="table-name">users</div>
+          <div class="table-desc">Google OAuth 계정. role: user / researcher / admin.</div>
+          <table class="schema">
+            <tr><th>컬럼</th><th>타입</th><th>비고</th></tr>
+            <tr><td><span class="col-pk">id</span><span class="tag-pk">PK</span></td><td class="col-type">TEXT</td><td class="col-note">UUID</td></tr>
+            <tr><td>google_id / email</td><td class="col-type">TEXT</td><td class="col-note">UNIQUE</td></tr>
+            <tr><td>display_name / avatar_url</td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+            <tr><td>role</td><td class="col-type">TEXT</td><td class="col-note">DEFAULT 'user'</td></tr>
+            <tr><td>onboarding_completed</td><td class="col-type">INT</td><td class="col-note">DEFAULT 0</td></tr>
+            <tr><td><span class="col-fk">subject_id</span><span class="tag-fk">FK</span></td><td class="col-type">TEXT</td><td class="col-note">→ subjects.id</td></tr>
+            <tr><td>created_at / last_login_at</td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+          </table>
+        </div>
+        <hr class="divider">
+
+        <div class="table-item">
+          <div class="table-name">submissions</div>
+          <div class="table-desc">파일 제출 건. workspace_path 로 분석 디렉토리 연결.</div>
+          <table class="schema">
+            <tr><th>컬럼</th><th>타입</th><th>비고</th></tr>
+            <tr><td><span class="col-pk">id</span><span class="tag-pk">PK</span></td><td class="col-type">TEXT</td><td class="col-note">UUID</td></tr>
+            <tr><td>description</td><td class="col-type">TEXT</td><td class="col-note">업로드 메모</td></tr>
+            <tr><td>file_manifest</td><td class="col-type">TEXT</td><td class="col-note">JSON — 파일 목록 + 해시</td></tr>
+            <tr><td>workspace_path</td><td class="col-type">TEXT</td><td class="col-note">data/workspaces/&lt;uuid&gt;</td></tr>
+            <tr><td>subject_name / test_date</td><td class="col-type">TEXT</td><td class="col-note">파싱 결과</td></tr>
+            <tr><td><span class="col-fk">subject_id</span><span class="tag-fk">FK</span></td><td class="col-type">TEXT</td><td class="col-note">→ subjects.id</td></tr>
+            <tr><td><span class="col-fk">user_id / uploaded_by_user_id</span><span class="tag-fk">FK</span></td><td class="col-type">TEXT</td><td class="col-note">→ users.id</td></tr>
+            <tr><td>source_signature / submission_fingerprint</td><td class="col-type">TEXT</td><td class="col-note">중복 감지용</td></tr>
+            <tr><td>duplicate_confidence / duplicate_group_key</td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+            <tr><td>created_at</td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+          </table>
+        </div>
+        <hr class="divider">
+
+        <div class="table-item">
+          <div class="table-name">submission_files</div>
+          <div class="table-desc">원본 업로드 파일 BLOB 저장소. gzip 압축 저장. 파이프라인 실행 시 workspace/raw/ 로 복원.</div>
+          <table class="schema">
+            <tr><th>컬럼</th><th>타입</th><th>비고</th></tr>
+            <tr><td><span class="col-pk">id</span><span class="tag-pk">PK</span></td><td class="col-type">TEXT</td><td class="col-note">UUID hex</td></tr>
+            <tr><td><span class="col-fk">submission_id</span><span class="tag-fk">FK</span></td><td class="col-type">TEXT</td><td class="col-note">→ submissions.id ON DELETE CASCADE</td></tr>
+            <tr><td>filename</td><td class="col-type">TEXT</td><td class="col-note">NOT NULL</td></tr>
+            <tr><td><span class="col-blob">content_gz</span><span class="tag-blob">BLOB</span></td><td class="col-type">BLOB</td><td class="col-note">gzip(원본 파일), NOT NULL</td></tr>
+            <tr><td>size_bytes</td><td class="col-type">INT</td><td class="col-note">압축 전 원본 크기</td></tr>
+            <tr><td>created_at</td><td class="col-type">TEXT</td><td class="col-note">UNIQUE(submission_id, filename)</td></tr>
+          </table>
+        </div>
+        <hr class="divider">
+
+        <div class="table-item">
+          <div class="table-name">jobs</div>
+          <div class="table-desc">파이프라인 실행 이력. status: pending → processing → done / failed.</div>
+          <table class="schema">
+            <tr><th>컬럼</th><th>타입</th><th>비고</th></tr>
+            <tr><td><span class="col-pk">id</span><span class="tag-pk">PK</span></td><td class="col-type">TEXT</td><td class="col-note">UUID</td></tr>
+            <tr><td><span class="col-fk">submission_id</span><span class="tag-fk">FK</span></td><td class="col-type">TEXT</td><td class="col-note">→ submissions.id</td></tr>
+            <tr><td>status</td><td class="col-type">TEXT</td><td class="col-note">pending·processing·done·failed</td></tr>
+            <tr><td>error_message</td><td class="col-type">TEXT</td><td class="col-note">실패 시</td></tr>
+            <tr><td>report_slug / report_url</td><td class="col-type">TEXT</td><td class="col-note">완료 시 채워짐</td></tr>
+            <tr><td>started_at / completed_at / created_at</td><td class="col-type">TEXT</td><td class="col-note">ISO 8601</td></tr>
+          </table>
+        </div>
+        <hr class="divider">
+
+        <div class="table-item">
+          <div class="table-name">report_catalog</div>
+          <div class="table-desc">발행된 리포트 메타 + HTML 전문. DB-primary 서빙. 서버 기동 시 sync_published_report_catalog()로 갱신.</div>
+          <table class="schema">
+            <tr><th>컬럼</th><th>타입</th><th>비고</th></tr>
+            <tr><td><span class="col-pk">report_slug</span><span class="tag-pk">PK</span></td><td class="col-type">TEXT</td><td class="col-note">URL 식별자</td></tr>
+            <tr><td>subject_name / test_date</td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+            <tr><td>analysis_method / report_version</td><td class="col-type">TEXT</td><td class="col-note">NOT NULL</td></tr>
+            <tr><td>report_url</td><td class="col-type">TEXT</td><td class="col-note">NOT NULL · /report/{slug}/</td></tr>
+            <tr><td>completed_at / updated_at</td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+            <tr><td>file_tags_json</td><td class="col-type">TEXT</td><td class="col-note">JSON 배열</td></tr>
+            <tr><td><span class="col-blob">html_content</span><span class="tag-blob">BLOB</span></td><td class="col-type">TEXT</td><td class="col-note">HTML 전문 (마이그레이션으로 추가)</td></tr>
+          </table>
+        </div>
+        <hr class="divider">
+
+        <div class="table-item">
+          <div class="table-name">subject_metric_snapshots</div>
+          <div class="table-desc">분석 완료 후 핵심 지표를 materialize한 스냅샷. 트렌드/비교 쿼리용.</div>
+          <table class="schema">
+            <tr><th>컬럼</th><th>타입</th><th>비고</th></tr>
+            <tr><td><span class="col-pk">snapshot_id</span><span class="tag-pk">PK</span></td><td class="col-type">TEXT</td><td class="col-note">UUID</td></tr>
+            <tr><td><span class="col-fk">subject_id</span><span class="tag-fk">FK</span></td><td class="col-type">TEXT</td><td class="col-note">→ subjects.id NOT NULL</td></tr>
+            <tr><td>source_kind / source_ref_id</td><td class="col-type">TEXT</td><td class="col-note">UNIQUE(subject_id, source_kind, source_ref_id)</td></tr>
+            <tr><td><span class="col-fk">submission_id</span><span class="tag-fk">FK</span></td><td class="col-type">TEXT</td><td class="col-note">→ submissions.id</td></tr>
+            <tr><td>measured_at / measured_date</td><td class="col-type">TEXT</td><td class="col-note">measured_date: VIRTUAL GENERATED</td></tr>
+            <tr><td>protocol_type</td><td class="col-type">TEXT</td><td class="col-note">cpet · inscyd 등</td></tr>
+            <tr><td>vo2max_ml / vo2max_rel</td><td class="col-type">REAL</td><td class="col-note">ml/min · ml/kg/min</td></tr>
+            <tr><td>lt1_power_w / lt2_power_w</td><td class="col-type">REAL</td><td class="col-note">LT1 · LT2 (W)</td></tr>
+            <tr><td>fatmax_power_w / fatmax_gmin</td><td class="col-type">REAL</td><td class="col-note">FatMax 존</td></tr>
+            <tr><td>vlamax / at_power_w / carbmax_w / glycogen_g</td><td class="col-type">REAL</td><td class="col-note">INSCYD 지표</td></tr>
+            <tr><td>extraction_version</td><td class="col-type">TEXT</td><td class="col-note">NOT NULL</td></tr>
+            <tr><td>quality_flags_json / payload_json</td><td class="col-type">TEXT</td><td class="col-note">JSON</td></tr>
+          </table>
+        </div>
+        <hr class="divider">
+
+        <div class="table-item">
+          <div class="table-name">subject_feature_sets</div>
+          <div class="table-desc">스냅샷 기반 피처 벡터. ML/분석 파이프라인용 집계 데이터.</div>
+          <table class="schema">
+            <tr><th>컬럼</th><th>타입</th><th>비고</th></tr>
+            <tr><td><span class="col-pk">feature_row_id</span><span class="tag-pk">PK</span></td><td class="col-type">TEXT</td><td class="col-note">UUID</td></tr>
+            <tr><td><span class="col-fk">subject_id</span><span class="tag-fk">FK</span></td><td class="col-type">TEXT</td><td class="col-note">→ subjects.id</td></tr>
+            <tr><td>feature_spec_key / feature_spec_version</td><td class="col-type">TEXT</td><td class="col-note">피처 정의 버전</td></tr>
+            <tr><td><span class="col-fk">anchor_snapshot_id</span><span class="tag-fk">FK</span></td><td class="col-type">TEXT</td><td class="col-note">→ subject_metric_snapshots</td></tr>
+            <tr><td>anchor_measured_at / window_label</td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+            <tr><td>input_snapshot_ids_json / input_source_kinds_json</td><td class="col-type">TEXT</td><td class="col-note">JSON</td></tr>
+            <tr><td>feature_payload_json / quality_flags_json</td><td class="col-type">TEXT</td><td class="col-note">JSON</td></tr>
+          </table>
+        </div>
+        <hr class="divider">
+
+        <div class="table-item">
+          <div class="table-name">report_user_links / report_name_overrides / report_notes</div>
+          <div class="table-desc">리포트 부가 정보. 소유자 연결 / 이름 덮어쓰기 / 코멘트.</div>
+          <table class="schema">
+            <tr><th>테이블</th><th>PK</th><th>주요 컬럼</th></tr>
+            <tr><td>report_user_links</td><td>report_slug</td><td class="col-note">user_id FK, linked_at</td></tr>
+            <tr><td>report_name_overrides</td><td>report_slug</td><td class="col-note">subject_name, updated_at</td></tr>
+            <tr><td>report_notes</td><td>report_slug</td><td class="col-note">note TEXT, updated_at</td></tr>
+          </table>
+        </div>
+        <hr class="divider">
+
+        <div class="table-item">
+          <div class="table-name">user_profiles</div>
+          <div class="table-desc">users와 1:1. 체성분 측정 이력 (별도 갱신 주기).</div>
+          <table class="schema">
+            <tr><th>컬럼</th><th>타입</th><th>비고</th></tr>
+            <tr><td><span class="col-pk">user_id</span><span class="tag-pk">PK</span><span class="tag-fk">FK</span></td><td class="col-type">TEXT</td><td class="col-note">→ users.id</td></tr>
+            <tr><td>weight_kg / height_cm / body_fat_pct / bmi / skeletal_muscle_mass</td><td class="col-type">REAL</td><td class="col-note"></td></tr>
+            <tr><td>birth_year / gender / training_level</td><td class="col-type">INT/TEXT</td><td class="col-note"></td></tr>
+            <tr><td>measured_at / updated_at</td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+          </table>
+        </div>
+        <hr class="divider">
+
+        <div class="table-item">
+          <div class="table-name">notes_board</div>
+          <div class="table-desc">연구 노트 / 가이드 문서. HTML 전문 저장.</div>
+          <table class="schema">
+            <tr><th>컬럼</th><th>타입</th><th>비고</th></tr>
+            <tr><td><span class="col-pk">slug</span><span class="tag-pk">PK</span></td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+            <tr><td>title</td><td class="col-type">TEXT</td><td class="col-note">NOT NULL</td></tr>
+            <tr><td><span class="col-blob">html_content</span><span class="tag-blob">BLOB</span></td><td class="col-type">TEXT</td><td class="col-note">NOT NULL</td></tr>
+            <tr><td><span class="col-fk">uploaded_by_user_id</span><span class="tag-fk">FK</span></td><td class="col-type">TEXT</td><td class="col-note">→ users.id</td></tr>
+            <tr><td>created_at / updated_at</td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+          </table>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ANALYSIS DB -->
+    <div class="db-panel">
+      <div class="db-panel-header analysis">
+        🔬 analysis.db
+        <small>· 워크스페이스별 DB · data/workspaces/&lt;uuid&gt;/analysis.db</small>
+      </div>
+      <div class="table-list">
+
+        <p style="font-size:0.78rem;color:var(--muted);margin-bottom:1rem;line-height:1.5">
+          파이프라인이 <code>pipeline/schema.py</code>의 <code>SCHEMA_SQL</code>으로 생성.
+          제출 건당 1개 독립 SQLite 파일. 재분석 시 DROP → CREATE로 전체 재생성.
+        </p>
+
+        <div class="table-item">
+          <div class="table-name">subject</div>
+          <div class="table-desc">피험자 기본 정보 (COSMED XLSX 메타에서 파싱).</div>
+          <table class="schema">
+            <tr><th>컬럼</th><th>타입</th><th>비고</th></tr>
+            <tr><td><span class="col-pk">id</span><span class="tag-pk">PK</span></td><td class="col-type">INT AUTOINCREMENT</td><td class="col-note"></td></tr>
+            <tr><td>name / last_name / first_name</td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+            <tr><td>gender / age / height_cm / weight_kg</td><td class="col-type">TEXT/REAL</td><td class="col-note"></td></tr>
+            <tr><td>dob</td><td class="col-type">TEXT</td><td class="col-note">생년월일</td></tr>
+            <tr><td>ftp_w / max_hr</td><td class="col-type">INT</td><td class="col-note">혈중 측정 또는 추정</td></tr>
+            <tr><td>est_lt1_w / est_lt2_w</td><td class="col-type">INT</td><td class="col-note">사전 추정 LT1/LT2</td></tr>
+          </table>
+        </div>
+        <hr class="divider">
+
+        <div class="table-item">
+          <div class="table-name">test_session</div>
+          <div class="table-desc">검사 세션 메타. protocol_name으로 프로토콜 유형 식별.</div>
+          <table class="schema">
+            <tr><th>컬럼</th><th>타입</th><th>비고</th></tr>
+            <tr><td><span class="col-pk">id</span><span class="tag-pk">PK</span></td><td class="col-type">INT AUTOINCREMENT</td><td class="col-note"></td></tr>
+            <tr><td><span class="col-fk">subject_id</span><span class="tag-fk">FK</span></td><td class="col-type">INT</td><td class="col-note">→ subject.id</td></tr>
+            <tr><td>test_date / protocol_name</td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+            <tr><td>start_time_kst / end_time_kst</td><td class="col-type">TEXT</td><td class="col-note">KST 타임스탬프</td></tr>
+            <tr><td>ambient_temp_c / humidity_pct / baro_pressure_mmhg</td><td class="col-type">REAL</td><td class="col-note">환경 조건</td></tr>
+          </table>
+        </div>
+        <hr class="divider">
+
+        <div class="table-item">
+          <div class="table-name">protocol_stages</div>
+          <div class="table-desc">ZWO/FIT에서 파싱된 프로토콜 단계. block_1 / block_2 구조.</div>
+          <table class="schema">
+            <tr><th>컬럼</th><th>타입</th><th>비고</th></tr>
+            <tr><td><span class="col-pk">id</span><span class="tag-pk">PK</span></td><td class="col-type">INT AUTOINCREMENT</td><td class="col-note"></td></tr>
+            <tr><td><span class="col-fk">session_id</span><span class="tag-fk">FK</span></td><td class="col-type">INT</td><td class="col-note">→ test_session.id</td></tr>
+            <tr><td>block / step</td><td class="col-type">TEXT/INT</td><td class="col-note">block_1, block_2 등</td></tr>
+            <tr><td>power_normalized</td><td class="col-type">REAL</td><td class="col-note">FTP 비율 (0~1)</td></tr>
+            <tr><td>duration_s</td><td class="col-type">REAL</td><td class="col-note">단계 길이 (초)</td></tr>
+            <tr><td>stage_type</td><td class="col-type">TEXT</td><td class="col-note">steadystate · freeride 등</td></tr>
+          </table>
+        </div>
+        <hr class="divider">
+
+        <div class="table-item">
+          <div class="table-name">workout_data</div>
+          <div class="table-desc">FIT 파일 기반 초단위 사이클링 데이터 (파워, HR, 케이던스 등).</div>
+          <table class="schema">
+            <tr><th>컬럼</th><th>타입</th><th>비고</th></tr>
+            <tr><td><span class="col-pk">id</span><span class="tag-pk">PK</span></td><td class="col-type">INT AUTOINCREMENT</td><td class="col-note"></td></tr>
+            <tr><td><span class="col-fk">session_id</span><span class="tag-fk">FK</span></td><td class="col-type">INT</td><td class="col-note">→ test_session.id</td></tr>
+            <tr><td>timestamp_kst / elapsed_s</td><td class="col-type">TEXT/REAL</td><td class="col-note"></td></tr>
+            <tr><td>block / step</td><td class="col-type">TEXT/INT</td><td class="col-note">ZWO 단계 매핑</td></tr>
+            <tr><td>power_w / target_power_w</td><td class="col-type">REAL</td><td class="col-note">실측 / 목표 파워</td></tr>
+            <tr><td>hr_bpm / cadence_rpm</td><td class="col-type">REAL</td><td class="col-note"></td></tr>
+            <tr><td>speed_mps / distance_m</td><td class="col-type">REAL</td><td class="col-note"></td></tr>
+          </table>
+        </div>
+        <hr class="divider">
+
+        <div class="table-item">
+          <div class="table-name">breath_by_breath</div>
+          <div class="table-desc">COSMED 호흡 단위 가스 교환 데이터. 분석의 핵심 원시 데이터.</div>
+          <table class="schema">
+            <tr><th>컬럼</th><th>타입</th><th>비고</th></tr>
+            <tr><td><span class="col-pk">id</span><span class="tag-pk">PK</span></td><td class="col-type">INT AUTOINCREMENT</td><td class="col-note"></td></tr>
+            <tr><td><span class="col-fk">session_id</span><span class="tag-fk">FK</span></td><td class="col-type">INT</td><td class="col-note">→ test_session.id</td></tr>
+            <tr><td>t_s / timestamp_kst</td><td class="col-type">REAL/TEXT</td><td class="col-note">경과 시간 (초)</td></tr>
+            <tr><td>vo2_ml / vco2_ml / rq</td><td class="col-type">REAL</td><td class="col-note">산소섭취량 / RQ</td></tr>
+            <tr><td>hr_bpm / ve_lmin / vt_l / rf</td><td class="col-type">REAL</td><td class="col-note">HR / 환기량 / 호흡수</td></tr>
+            <tr><td>fat_gmin / cho_gmin</td><td class="col-type">REAL</td><td class="col-note">지방 / 탄수화물 산화율</td></tr>
+            <tr><td>bike_power_w</td><td class="col-type">REAL</td><td class="col-note">FIT 동기화 파워</td></tr>
+            <tr><td>vo2_kg / mets / ee_kcal</td><td class="col-type">REAL</td><td class="col-note">체중 보정 / MET / 소비 kcal</td></tr>
+            <tr><td>pet_o2 / pet_co2 / fe_o2 / fe_co2</td><td class="col-type">REAL</td><td class="col-note">가스 분압</td></tr>
+            <tr><td>ve_vo2 / ve_vco2</td><td class="col-type">REAL</td><td class="col-note">환기 당량</td></tr>
+            <tr><td>ti_s / te_s / ttot_s / vd_vt_e</td><td class="col-type">REAL</td><td class="col-note">호흡 타이밍</td></tr>
+            <tr><td>phase / cadence_rpm</td><td class="col-type">TEXT/REAL</td><td class="col-note">프로토콜 구간</td></tr>
+          </table>
+        </div>
+        <hr class="divider">
+
+        <div class="table-item">
+          <div class="table-name">blood_samples</div>
+          <div class="table-desc">Belgium Lactate Test 혈중 젖산 측정값. 단계별 채혈 기록.</div>
+          <table class="schema">
+            <tr><th>컬럼</th><th>타입</th><th>비고</th></tr>
+            <tr><td><span class="col-pk">id</span><span class="tag-pk">PK</span></td><td class="col-type">INT AUTOINCREMENT</td><td class="col-note"></td></tr>
+            <tr><td><span class="col-fk">session_id</span><span class="tag-fk">FK</span></td><td class="col-type">INT</td><td class="col-note">→ test_session.id</td></tr>
+            <tr><td>block / step / load_w / ftp_pct</td><td class="col-type">TEXT/REAL</td><td class="col-note">단계 정보</td></tr>
+            <tr><td>duration_min / sample_time_kst</td><td class="col-type">REAL/TEXT</td><td class="col-note"></td></tr>
+            <tr><td>hr_bpm / lactate_mmol / glucose_mmol</td><td class="col-type">REAL</td><td class="col-note">측정값</td></tr>
+            <tr><td>notes</td><td class="col-type">TEXT</td><td class="col-note"></td></tr>
+          </table>
+        </div>
+        <hr class="divider">
+
+        <div class="table-item">
+          <div class="table-name">analysis_results</div>
+          <div class="table-desc">pipeline/analysis.py 가 계산한 모든 지표. category·key·value 구조로 유연하게 확장.</div>
+          <table class="schema">
+            <tr><th>컬럼</th><th>타입</th><th>비고</th></tr>
+            <tr><td><span class="col-pk">id</span><span class="tag-pk">PK</span></td><td class="col-type">INT AUTOINCREMENT</td><td class="col-note"></td></tr>
+            <tr><td>category</td><td class="col-type">TEXT</td><td class="col-note">vo2max · substrate · lactate · cycling 등</td></tr>
+            <tr><td>key</td><td class="col-type">TEXT</td><td class="col-note">지표명 (fatmax_power_w, lt1_fixed_power_w …)</td></tr>
+            <tr><td>value</td><td class="col-type">TEXT</td><td class="col-note">JSON 직렬화 (숫자·객체·배열 모두 가능)</td></tr>
+          </table>
+          <div style="margin-top:0.5rem;padding:0.5rem 0.6rem;background:#f0fdf4;border-radius:4px;font-size:0.72rem;color:#166534">
+            이 테이블의 핵심 지표가 서버 기동 시 <strong>subject_metric_snapshots</strong>(platform DB)로 materialize됩니다.
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- /db-panels -->
+</section>
+
+<!-- Key Relationships -->
+<section>
+  <h2>🔗 DB 간 연결 포인트</h2>
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.2rem;font-size:0.8rem;line-height:1.8">
+    <table style="width:100%;border-collapse:collapse">
+      <tr style="border-bottom:1px solid var(--border)">
+        <th style="text-align:left;padding:0.3rem 0.5rem;color:var(--muted);font-size:0.73rem">platform DB</th>
+        <th style="padding:0.3rem;color:var(--muted);font-size:0.73rem">←→</th>
+        <th style="text-align:left;padding:0.3rem 0.5rem;color:var(--muted);font-size:0.73rem">analysis DB</th>
+        <th style="text-align:left;padding:0.3rem 0.5rem;color:var(--muted);font-size:0.73rem">연결 방식</th>
+      </tr>
+      <tr style="border-bottom:1px solid #f1f5f9">
+        <td style="padding:0.35rem 0.5rem;font-family:monospace">submissions.workspace_path</td>
+        <td style="padding:0.35rem;text-align:center;color:var(--muted)">→</td>
+        <td style="padding:0.35rem 0.5rem;font-family:monospace">data/workspaces/&lt;uuid&gt;/analysis.db</td>
+        <td style="padding:0.35rem 0.5rem;color:var(--muted)">파일 경로로 연결. 서버가 파이프라인 실행 시 경로 전달.</td>
+      </tr>
+      <tr style="border-bottom:1px solid #f1f5f9">
+        <td style="padding:0.35rem 0.5rem;font-family:monospace">report_catalog.html_content</td>
+        <td style="padding:0.35rem;text-align:center;color:var(--muted)">←</td>
+        <td style="padding:0.35rem 0.5rem;font-family:monospace">generate_report(analysis.db)</td>
+        <td style="padding:0.35rem 0.5rem;color:var(--muted)">파이프라인 완료 후 api.py가 HTML을 platform DB에 저장.</td>
+      </tr>
+      <tr>
+        <td style="padding:0.35rem 0.5rem;font-family:monospace">subject_metric_snapshots.*</td>
+        <td style="padding:0.35rem;text-align:center;color:var(--muted)">←</td>
+        <td style="padding:0.35rem 0.5rem;font-family:monospace">analysis_results.value</td>
+        <td style="padding:0.35rem 0.5rem;color:var(--muted)">핵심 지표 materialize. 크로스 피험자 쿼리 가속.</td>
+      </tr>
+    </table>
+  </div>
+</section>
+
+<footer style="margin-top:3rem;padding:1.5rem;text-align:center;color:var(--muted);font-size:0.75rem;border-top:1px solid var(--border)">
+  Generated from <code>server/db.py</code> · <code>pipeline/schema.py</code> · cpet.db — 2026-05-17
+</footer>
+
+</main>
+</body>
+</html>
