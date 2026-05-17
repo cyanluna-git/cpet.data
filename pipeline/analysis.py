@@ -821,6 +821,47 @@ def _ensure_substrate_columns(valid: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _cosmed_only_block1_heuristic(valid: pd.DataFrame) -> pd.DataFrame | None:
+    """Detect end of first ramp block via sustained power drop when no FIT block labels exist.
+
+    Returns the sub-window before the drop, or None when detection fails.
+    Failure is silent — caller falls back to returning the full window.
+    """
+    if "bike_power_w" not in valid.columns or "t_s" not in valid.columns:
+        return None
+    power = pd.to_numeric(valid["bike_power_w"], errors="coerce").fillna(0)
+    if power.max() <= 0:
+        return None
+
+    # Rolling median over ~30s (assume ~5s BxB intervals → window=6)
+    smooth = power.rolling(window=6, min_periods=1, center=True).median()
+    rolling_max = smooth.expanding().max()
+
+    # Find first point where power drops ≥40% from rolling max and stays low ≥60s
+    drop_mask = smooth < rolling_max * 0.60
+    t = valid["t_s"].to_numpy(dtype=float)
+    drop_arr = drop_mask.to_numpy()
+    drop_start_idx: int | None = None
+    i = 0
+    while i < len(drop_arr):
+        if drop_arr[i]:
+            j = i
+            while j < len(drop_arr) and drop_arr[j]:
+                j += 1
+            duration = t[j - 1] - t[i] if j > i else 0.0
+            if duration >= 60.0:
+                drop_start_idx = i
+                break
+            i = j
+        else:
+            i += 1
+
+    if drop_start_idx is None or drop_start_idx < 10:
+        return None
+    window = valid.iloc[:drop_start_idx].copy().reset_index(drop=True)
+    return window if len(window) >= 10 else None
+
+
 def _select_primary_substrate_window(valid: pd.DataFrame) -> tuple[pd.DataFrame, str | None]:
     """Prefer the first workload block for FatMax/crossover when multiple blocks exist.
 
@@ -830,7 +871,15 @@ def _select_primary_substrate_window(valid: pd.DataFrame) -> tuple[pd.DataFrame,
     primary substrate window while still keeping the full active window for
     whole-test summaries such as RQ 1.0 crossing.
     """
-    if valid.empty or "block" not in valid.columns:
+    if valid.empty:
+        return valid, None
+
+    # COSMED-only (no FIT/ZWO): block column was never attached.
+    # Use a power-drop heuristic to isolate the first ramp block.
+    if "block" not in valid.columns:
+        window = _cosmed_only_block1_heuristic(valid)
+        if window is not None:
+            return window, "cosmed_heuristic"
         return valid, None
 
     block_series = valid["block"].fillna("").astype(str)
@@ -1092,17 +1141,12 @@ def _anchor_power_domain_markers(
     cx = markers.get("primary_crossover")
     cx_power = float(cx["power_w"]) if cx else None
 
-    # Cap FatMax at crossover: when fat keeps rising past crossover (plateau/noisy data),
-    # restrict to the fat argmax within the physiological fat-dominant range (≤ crossover).
-    if cx_power is not None and fatmax_power > cx_power:
-        cx_limit_idx = int(np.searchsorted(dp_arr, cx_power, side="right"))
-        if cx_limit_idx > 0:
-            capped_idx = int(np.argmax(df_arr[:cx_limit_idx]))
-            fatmax_power = float(dp_arr[capped_idx])
-            fatmax_gmin = float(df_arr[capped_idx])
-
     anchor_idx = min(range(len(dense_power)), key=lambda idx: abs(dense_power[idx] - fatmax_power))
-    zone_min, zone_max = _find_fatmax_zone(dp_arr, df_arr, anchor_idx, cx_power)
+    # Only use crossover as zone upper bound when it lies above FatMax;
+    # crossover below FatMax is physiologically degenerate (block mixing artifact)
+    # and would collapse the zone.
+    zone_cx = cx_power if (cx_power is not None and cx_power > fatmax_power) else None
+    zone_min, zone_max = _find_fatmax_zone(dp_arr, df_arr, anchor_idx, zone_cx)
 
     markers.update(
         {

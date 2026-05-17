@@ -159,16 +159,18 @@ class TestAnchorPowerDomainMarkersCrossoverCap:
                 f"Fallback expected zone_max = zone_min + 10W, got zone_max={zone_max}, zone_min={zone_min}"
             )
 
-    def test_fallback_triggered_explicitly_with_crossover_below_zone_min(self) -> None:
-        """Explicit collapse scenario: crossover much below zone_min → +10W fallback."""
-        # Power from 100–300 with fat peak at 200W
-        # Construct a very narrow fat peak so zone_min ~ 198W
+    def test_crossover_below_fatmax_is_excluded_from_zone_boundary(self) -> None:
+        """Crossover below FatMax power must not cap zone_max (block-mixing artifact).
+
+        When crossover < FatMax, zone_cx is set to None so _find_fatmax_zone
+        computes the zone naturally from the gradient descent and 85%-threshold
+        walk — the crossover is physiologically irrelevant in this position.
+        """
         n_pts = 201
         powers = [100.0 + i * 1.0 for i in range(n_pts)]  # 100..300
-        # Sharp gaussian-like peak at 200W, falls quickly
         fat_vals = [max(0.0, 1.5 * np.exp(-((pw - 200.0) ** 2) / (2 * 2.0 ** 2))) for pw in powers]
 
-        # Crossover at 150W — far below the natural zone_min (~198W)
+        # Crossover at 150W — far below FatMax at 200W
         cx = {"power_w": 150.0, "fat_gmin": 0.1, "cho_gmin": 0.1, "confidence": 0.5}
         payload = _make_anchor_payload(powers, fat_vals, cx)
 
@@ -178,11 +180,14 @@ class TestAnchorPowerDomainMarkersCrossoverCap:
         zone_min = markers["fatmax_zone_min_w"]
         zone_max = markers["fatmax_zone_max_w"]
 
-        # The crossover (150W) < zone_min → collapse → fallback zone_max = zone_min + 10
-        assert zone_max == pytest.approx(zone_min + 10.0, abs=0.2), (
-            f"Expected fallback zone_max = zone_min + 10W; got zone_min={zone_min}, zone_max={zone_max}"
+        # Zone must be valid (no collapse)
+        assert zone_max > zone_min, f"Zone collapsed: zone_min={zone_min}, zone_max={zone_max}"
+        # FatMax marker must be the time-domain value, not capped at crossover
+        assert markers["fatmax_power_w"] == pytest.approx(200.0, abs=0.6)
+        # zone_max must not be capped at crossover (150W) — it should be well above it
+        assert zone_max > 150.0, (
+            f"zone_max {zone_max} should not be capped at crossover 150W when crossover < FatMax"
         )
-        assert zone_max > zone_min
 
     def test_zone_max_equals_crossover_when_cap_is_tight(self) -> None:
         """When crossover slightly below natural zone_max, zone_max = crossover power."""
