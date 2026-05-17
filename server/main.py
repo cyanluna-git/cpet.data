@@ -529,26 +529,21 @@ async def replace_note(
 
 
 # ---------------------------------------------------------------------------
-# Report serving — DB-primary, file fallback
+# Report serving — DB-primary
 # ---------------------------------------------------------------------------
 
 def _serve_report_slug(
     request: Request,
     db_path: Path,
-    published_dir: Path,
     slug: str,
 ) -> HTMLResponse:
-    """Serve a report from DB, falling back to the published file.
+    """Serve a report from the platform DB.
 
     Injects a 재분석 button when the current session user is authorized.
     """
     html = get_report_html(db_path, slug)
     if not html:
-        # File fallback (for reports not yet migrated)
-        index = published_dir / slug / "index.html"
-        if not index.is_file():
-            raise HTTPException(status_code=404, detail="report not found")
-        html = index.read_text(encoding="utf-8")
+        raise HTTPException(status_code=404, detail="report not found")
 
     session_user = _get_session_user(request)
     if session_user:
@@ -569,8 +564,7 @@ async def report_redirect(slug: str) -> RedirectResponse:
 @app.get("/report/{slug}/", response_class=HTMLResponse)
 async def report_page(request: Request, slug: str) -> HTMLResponse:
     db_path = request.app.state.db_path
-    published_dir = request.app.state.published_dir
-    return _serve_report_slug(request, db_path, published_dir, slug)
+    return _serve_report_slug(request, db_path, slug)
 
 
 @app.get("/reports/{slug}", response_class=HTMLResponse)
@@ -591,8 +585,7 @@ async def r_short_redirect(slug: str) -> RedirectResponse:
 @app.get("/r/{slug}/", response_class=HTMLResponse)
 async def r_short_page(request: Request, slug: str) -> HTMLResponse:
     db_path = request.app.state.db_path
-    published_dir = request.app.state.published_dir
-    return _serve_report_slug(request, db_path, published_dir, slug)
+    return _serve_report_slug(request, db_path, slug)
 
 
 def _render_dashboard_analytics(

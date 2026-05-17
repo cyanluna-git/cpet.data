@@ -363,36 +363,21 @@ class TestReportPageReanalyzeButton:
         assert resp.status_code == 200
         assert "재분석" not in resp.text
 
-    def test_file_fallback_branch_also_injects(
-        self, report_client: TestClient, tmp_path: Path
+    def test_missing_html_content_returns_404(
+        self, report_client: TestClient
     ) -> None:
-        """Reports served from file fallback (no DB html_content) also get the button.
-
-        This covers the second branch in `_serve_report_slug` where html is read
-        from `published/<slug>/index.html` instead of report_catalog.
-        """
-        owner = _login_as(
+        """A catalog row with empty html_content returns 404 (no filesystem fallback)."""
+        _login_as(
             report_client, role="user", google_id="ff-owner", email="ff@t.com"
         )
-        # Seed a job + catalog row, but with EMPTY html_content so DB returns None
-        slug = "file-fallback-slug"
+        slug = "no-html-slug"
         _seed_published_report(
-            app.state.db_path, slug=slug, owner_user_id=owner["id"], html=""
-        )
-        # Provide the fallback HTML on disk
-        published_dir = app.state.published_dir
-        report_dir = published_dir / slug
-        report_dir.mkdir(parents=True, exist_ok=True)
-        (report_dir / "index.html").write_text(
-            "<html><body><h1>Disk fallback</h1></body></html>",
-            encoding="utf-8",
+            app.state.db_path, slug=slug, owner_user_id=None, html=""
         )
         resp = report_client.get(f"/report/{slug}/")
-        assert resp.status_code == 200
-        assert "Disk fallback" in resp.text
-        assert "재분석" in resp.text
+        assert resp.status_code == 404
 
     def test_unknown_slug_returns_404(self, report_client: TestClient) -> None:
-        """A slug with no DB row and no file returns 404 (regression)."""
+        """A slug with no DB row returns 404."""
         resp = report_client.get("/report/totally-unknown-slug/")
         assert resp.status_code == 404
