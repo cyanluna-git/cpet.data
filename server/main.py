@@ -583,6 +583,18 @@ async def reports_slug_page(request: Request, slug: str) -> RedirectResponse:
     return RedirectResponse(url=f"/report/{slug}/", status_code=301)
 
 
+@app.get("/r/{slug}", response_class=HTMLResponse)
+async def r_short_redirect(slug: str) -> RedirectResponse:
+    return RedirectResponse(url=f"/r/{slug}/", status_code=301)
+
+
+@app.get("/r/{slug}/", response_class=HTMLResponse)
+async def r_short_page(request: Request, slug: str) -> HTMLResponse:
+    db_path = request.app.state.db_path
+    published_dir = request.app.state.published_dir
+    return _serve_report_slug(request, db_path, published_dir, slug)
+
+
 def _render_dashboard_analytics(
     request: Request,
     session_user: dict,
