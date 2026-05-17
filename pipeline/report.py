@@ -19,6 +19,8 @@ from pathlib import Path
 from statistics import mean, median
 from typing import Any
 
+import numpy as np
+
 
 def _safe_mean(values: list[float]) -> float | None:
     """Return the arithmetic mean when at least one value exists."""
@@ -294,6 +296,55 @@ def smooth_chart_series(
             continue
         smoothed[field] = smooth_numeric_series(values, **config)
     return smoothed
+
+
+def resample_bxb_to_grid(
+    series: dict[str, Any],
+    fields: list[str],
+    step_s: int = 10,
+) -> dict[str, Any]:
+    """Resample BxB series from irregular timestamps to a uniform time grid.
+
+    Replaces series["t_s"] with a uniform grid and linearly interpolates the
+    specified fields onto that grid. Fields not listed (e.g. hr, power) are
+    kept as-is at their original BxB length. Returns the original series
+    unchanged when the data is too sparse to resample meaningfully.
+    """
+    raw_t = series.get("t_s")
+    if not isinstance(raw_t, list) or len(raw_t) < 10:
+        return series
+
+    t_arr = np.array([v for v in raw_t if v is not None and math.isfinite(v)], dtype=float)
+    if len(t_arr) < 10:
+        return series
+
+    t_min, t_max = float(t_arr[0]), float(t_arr[-1])
+    if t_max - t_min < 100.0:
+        return series
+
+    # Stop before the last BxB point to avoid flat-line extrapolation
+    grid_t = np.arange(t_min, t_max + step_s * 0.5, step_s)
+
+    result = dict(series)
+    result["t_s"] = [round(float(v), 1) for v in grid_t]
+
+    for field in fields:
+        raw_vals = series.get(field)
+        if not isinstance(raw_vals, list):
+            continue
+        # Pair t_s with values, drop NaN/None entries
+        pairs = [
+            (float(t), float(v))
+            for t, v in zip(raw_t, raw_vals)
+            if t is not None and v is not None and math.isfinite(float(t)) and math.isfinite(float(v))
+        ]
+        if len(pairs) < 2:
+            continue
+        xs, ys = zip(*pairs)
+        interp_vals = np.interp(grid_t, xs, ys)
+        result[field] = [round(float(v), 4) for v in interp_vals]
+
+    return result
 
 
 def rolling_mean_list(values: list[float], window: int = 5) -> list[float]:
@@ -1257,6 +1308,7 @@ def build_chart_data(context: dict[str, Any], bxb_rows: list[dict[str, Any]]) ->
             "rq": {"radius": 2, "rel_threshold": 0.14, "abs_threshold": 0.12, "smooth_window": 5},
         },
     )
+    vo2_timeseries = resample_bxb_to_grid(vo2_timeseries, ["vo2", "vco2", "ve", "rq"])
     rer_progression = {
         "t_s": vo2_timeseries.get("t_s", []),
         "rq": vo2_timeseries.get("rq", []),
