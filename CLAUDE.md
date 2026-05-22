@@ -94,6 +94,13 @@ Important variables:
 미커밋 변경사항 커밋 → `git push` → VM `git pull` → uvicorn 재시작 → 헬스체크.
 상세 절차: `.claude/skills/deploy/skill.md`
 
+### `/cpet-ingest` — 피험자 데이터 인제스트 & 배포
+
+**자동 트리거:** `inputs/` 하위 경로 언급 + "분석해줘" / "배포해줘" / "리포트 만들어줘" 패턴.
+
+입력 폴더 → 워크스페이스 구성 (BLT 시트 추출 포함) → 파이프라인 실행 → 로컬 DB 등록 → 원격 서버 배포 전 과정 자동화.
+상세 절차: `.claude/skills/cpet-ingest/skill.md`
+
 ### `/update-claude` — 서버 Claude Code 버전 업데이트
 
 **자동 트리거:** "webhook 클로드 버전 업데이트", "서버 claude 업데이트", "claude 업그레이드" 패턴 감지 시 자동 실행.
