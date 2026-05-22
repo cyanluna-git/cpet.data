@@ -230,6 +230,16 @@ MIGRATION_ADD_REPORT_HTML_CONTENT = """
 ALTER TABLE report_catalog ADD COLUMN html_content TEXT;
 """
 
+MIGRATION_ADD_BODY_WEIGHT_KG = """
+ALTER TABLE submissions ADD COLUMN body_weight_kg REAL;
+"""
+MIGRATION_ADD_BODY_FAT_PCT = """
+ALTER TABLE submissions ADD COLUMN body_fat_pct REAL;
+"""
+MIGRATION_ADD_SKELETAL_MUSCLE_MASS_KG = """
+ALTER TABLE submissions ADD COLUMN skeletal_muscle_mass_kg REAL;
+"""
+
 VALID_STATUSES = {"pending", "processing", "done", "failed"}
 
 
@@ -306,6 +316,15 @@ def init_db(db_path: Path) -> None:
         conn.execute(
             "ALTER TABLE submissions ADD COLUMN uploaded_by_user_id TEXT REFERENCES users(id)"
         )
+        conn.commit()
+    if not _column_exists(conn, "submissions", "body_weight_kg"):
+        conn.execute(MIGRATION_ADD_BODY_WEIGHT_KG)
+        conn.commit()
+    if not _column_exists(conn, "submissions", "body_fat_pct"):
+        conn.execute(MIGRATION_ADD_BODY_FAT_PCT)
+        conn.commit()
+    if not _column_exists(conn, "submissions", "skeletal_muscle_mass_kg"):
+        conn.execute(MIGRATION_ADD_SKELETAL_MUSCLE_MASS_KG)
         conn.commit()
     # Migration: migrate user_profiles data into subjects for users that have profiles
     # but no linked subject yet
@@ -556,12 +575,16 @@ def create_submission(
     submission_fingerprint: str = "",
     duplicate_confidence: str = "",
     duplicate_group_key: str = "",
+    body_weight_kg: float | None = None,
+    body_fat_pct: float | None = None,
+    skeletal_muscle_mass_kg: float | None = None,
 ) -> str:
     """Insert a new submission and return its UUID.
 
     If submission_id is provided, use it; otherwise generate a new one.
     user_id is kept for backward compatibility; subject_id is the new FK.
     uploaded_by_user_id tracks who performed the upload.
+    body_weight_kg / body_fat_pct / skeletal_muscle_mass_kg: optional InBody data.
     """
     if submission_id is None:
         submission_id = str(uuid.uuid4())
@@ -571,8 +594,9 @@ def create_submission(
         """INSERT INTO submissions
            (id, description, file_manifest, workspace_path, subject_name,
             test_date, user_id, subject_id, uploaded_by_user_id,
-            source_signature, submission_fingerprint, duplicate_confidence, duplicate_group_key)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            source_signature, submission_fingerprint, duplicate_confidence, duplicate_group_key,
+            body_weight_kg, body_fat_pct, skeletal_muscle_mass_kg)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             submission_id,
             description,
@@ -587,6 +611,9 @@ def create_submission(
             submission_fingerprint.strip(),
             duplicate_confidence.strip(),
             duplicate_group_key.strip(),
+            body_weight_kg,
+            body_fat_pct,
+            skeletal_muscle_mass_kg,
         ),
     )
     conn.commit()

@@ -36,7 +36,10 @@ CREATE TABLE subject (
     ftp_w INTEGER,
     max_hr INTEGER,
     est_lt1_w INTEGER,
-    est_lt2_w INTEGER
+    est_lt2_w INTEGER,
+    body_fat_pct REAL,
+    skeletal_muscle_mass_kg REAL,
+    lean_body_mass_kg REAL
 );
 
 CREATE TABLE test_session (
@@ -189,10 +192,24 @@ def create_database(workspace: Path, parsed: ParsedData) -> Path:
     est_lt1 = _to_int_like(blood_info.get("\uc608\uc0c1 LT1"))
     est_lt2 = _to_int_like(blood_info.get("\uc608\uc0c1 LT2")) or ftp
 
+    # Resolve weight: InBody is more accurate than XLSX when available
+    body_comp = parsed.body_comp or {}
+    inbody_weight = body_comp.get("body_weight_kg")
+    inbody_fat_pct = body_comp.get("body_fat_pct")
+    inbody_smm = body_comp.get("skeletal_muscle_mass_kg")
+
+    xlsx_weight = subject_info_xlsx.get("weight_kg")
+    effective_weight = inbody_weight if inbody_weight else xlsx_weight
+
+    lean_body_mass_kg: float | None = None
+    if inbody_weight and inbody_fat_pct and inbody_fat_pct > 0:
+        lean_body_mass_kg = round(inbody_weight * (1.0 - inbody_fat_pct / 100.0), 2)
+
     cursor.execute(
         """INSERT INTO subject (name, last_name, first_name, gender, age,
-           height_cm, weight_kg, dob, ftp_w, max_hr, est_lt1_w, est_lt2_w)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           height_cm, weight_kg, dob, ftp_w, max_hr, est_lt1_w, est_lt2_w,
+           body_fat_pct, skeletal_muscle_mass_kg, lean_body_mass_kg)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             subject_info_xlsx.get("name"),
             subject_info_xlsx.get("last_name"),
@@ -200,12 +217,15 @@ def create_database(workspace: Path, parsed: ParsedData) -> Path:
             subject_info_xlsx.get("gender"),
             subject_info_xlsx.get("age"),
             subject_info_xlsx.get("height_cm"),
-            subject_info_xlsx.get("weight_kg"),
+            effective_weight,
             str(subject_info_xlsx.get("dob", "")),
             ftp,
             max_hr,
             est_lt1,
             est_lt2,
+            inbody_fat_pct,
+            inbody_smm,
+            lean_body_mass_kg,
         ),
     )
     subject_id = cursor.lastrowid

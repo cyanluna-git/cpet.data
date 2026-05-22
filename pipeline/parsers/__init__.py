@@ -4,6 +4,7 @@ pipeline.parsers — Dispatch layer for workspace file discovery and parsing.
 All parsers accept explicit Path parameters; no global DATA_DIR.
 """
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,7 @@ class ParsedData:
     laps_df: pd.DataFrame | None = None
     blood_df: pd.DataFrame | None = None
     blood_info: dict[str, Any] = field(default_factory=dict)
+    body_comp: dict[str, Any] | None = None
 
     @property
     def has_fit(self) -> bool:
@@ -117,6 +119,15 @@ def parse_workspace(workspace: Path) -> ParsedData:
     elif lactate_xlsx_path is not None:
         blood_df, blood_info = parse_lactate(xlsx_path=lactate_xlsx_path)
 
+    # --- InBody sidecar (optional) ---
+    body_comp: dict[str, Any] | None = None
+    inbody_path = search_dir / "inbody.json"
+    if inbody_path.exists():
+        try:
+            body_comp = json.loads(inbody_path.read_text(encoding="utf-8"))
+        except Exception:
+            body_comp = None
+
     return ParsedData(
         cosmed_df=cosmed_df,
         subject_info=subject_info,
@@ -125,6 +136,7 @@ def parse_workspace(workspace: Path) -> ParsedData:
         laps_df=laps_df,
         blood_df=blood_df,
         blood_info=blood_info,
+        body_comp=body_comp,
     )
 
 

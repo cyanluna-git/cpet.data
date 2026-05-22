@@ -11,6 +11,7 @@ Canonical source: analysis/analysis.py (identical in both subjects)
 """
 
 import json as _json
+import math
 import sqlite3
 import warnings
 from pathlib import Path
@@ -3095,6 +3096,62 @@ def store_results(db_path: Path, all_results: dict[str, Any]) -> None:
 
 
 # ========================================================================
+# Body Composition LBM Metrics
+# ========================================================================
+
+
+def analyze_body_comp(
+    subject: pd.DataFrame,
+    vo2max_results: dict[str, Any],
+    substrate_results: dict[str, Any],
+    efficiency_results: dict[str, Any],
+) -> dict[str, Any]:
+    """Compute LBM-based performance metrics from InBody body composition data.
+
+    Returns status='no_data' when the subject table has no lean_body_mass_kg.
+    """
+    if subject.empty:
+        return {"status": "no_data", "reason": "no subject row"}
+
+    lbm = pd.to_numeric(subject.iloc[0].get("lean_body_mass_kg"), errors="coerce")
+    weight = pd.to_numeric(subject.iloc[0].get("weight_kg"), errors="coerce")
+    fat_pct = pd.to_numeric(subject.iloc[0].get("body_fat_pct"), errors="coerce")
+    smm = pd.to_numeric(subject.iloc[0].get("skeletal_muscle_mass_kg"), errors="coerce")
+
+    if lbm is None or (isinstance(lbm, float) and math.isnan(lbm)) or lbm <= 0:
+        return {"status": "no_data", "reason": "lean_body_mass_kg not available"}
+
+    results: dict[str, Any] = {
+        "status": "computed",
+        "lean_body_mass_kg": round(float(lbm), 2),
+        "body_weight_kg": round(float(weight), 1) if weight and not math.isnan(weight) else None,
+        "body_fat_pct": round(float(fat_pct), 1) if fat_pct and not math.isnan(fat_pct) else None,
+        "skeletal_muscle_mass_kg": round(float(smm), 2) if smm and not math.isnan(smm) else None,
+    }
+
+    # VO2max / LBM (mL/min/kgFFM)
+    vo2max_ml = vo2max_results.get("vo2max_ml")
+    if vo2max_ml and lbm > 0:
+        results["vo2max_per_lbm_ml_min_kg"] = round(float(vo2max_ml) / float(lbm), 1)
+
+    # Peak power / LBM (W/kgFFM)
+    peak_power = vo2max_results.get("peak_power_achieved_w") or vo2max_results.get("peak_power_vo2max")
+    if peak_power and lbm > 0:
+        results["peak_power_per_lbm_w_kg"] = round(float(peak_power) / float(lbm), 2)
+
+    # Gross efficiency peak / LBM (same as W/kgFFM but from efficiency module)
+    # FatMax g/min / fat_mass_kg (fat mobilization efficiency)
+    fatmax_gmin = substrate_results.get("fatmax_gmin")
+    if fatmax_gmin and fat_pct and weight and fat_pct > 0 and not math.isnan(fat_pct) and not math.isnan(weight):
+        fat_mass_kg = float(weight) * float(fat_pct) / 100.0
+        if fat_mass_kg > 0:
+            results["fatmax_per_fat_mass_gmin_per_kg"] = round(float(fatmax_gmin) / fat_mass_kg, 4)
+            results["fat_mass_kg"] = round(fat_mass_kg, 2)
+
+    return results
+
+
+# ========================================================================
 # Main
 # ========================================================================
 
@@ -3284,6 +3341,17 @@ def run_analysis(db_path: Path) -> dict[str, Any]:
         all_results, cp_result_for_guidance)
     all_results["combined_guidance"] = combined_guidance
     print(f"   Status: {combined_guidance.get('status')}")
+
+    print("\n13. Body Composition LBM Metrics...")
+    body_comp_results = _safe_run("Body Comp", analyze_body_comp,
+        data["subject"], vo2max_results, substrate_results, efficiency_results)
+    all_results["body_comp"] = body_comp_results
+    if body_comp_results.get("status") == "computed":
+        print(f"   LBM: {body_comp_results.get('lean_body_mass_kg')} kg")
+        print(f"   VO2max/LBM: {body_comp_results.get('vo2max_per_lbm_ml_min_kg')} mL/min/kgFFM")
+        print(f"   Peak Power/LBM: {body_comp_results.get('peak_power_per_lbm_w_kg')} W/kgFFM")
+    else:
+        print(f"   Skipped ({body_comp_results.get('reason', 'no InBody data')})")
 
     print("\nStoring results...")
     store_results(db_path, all_results)

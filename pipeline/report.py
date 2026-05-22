@@ -1401,6 +1401,83 @@ def build_chart_data(context: dict[str, Any], bxb_rows: list[dict[str, Any]]) ->
     }
 
 
+def build_body_comp_panel(analysis: dict[str, Any]) -> str:
+    """Build an InBody body composition metrics HTML panel.
+
+    Returns an empty string when no InBody data is present.
+    """
+    bc = analysis.get("body_comp", {})
+    if not bc or bc.get("status") != "computed":
+        return ""
+
+    def _v(val: Any, decimals: int = 1) -> str:
+        return format_number(val, decimals) if val is not None else "—"
+
+    lbm = _v(bc.get("lean_body_mass_kg"), 2)
+    weight = _v(bc.get("body_weight_kg"), 1)
+    fat_pct = _v(bc.get("body_fat_pct"), 1)
+    smm = _v(bc.get("skeletal_muscle_mass_kg"), 2)
+    fat_mass = _v(bc.get("fat_mass_kg"), 2)
+    vo2max_lbm = _v(bc.get("vo2max_per_lbm_ml_min_kg"), 1)
+    pp_lbm = _v(bc.get("peak_power_per_lbm_w_kg"), 2)
+    fatmax_eff = _v(bc.get("fatmax_per_fat_mass_gmin_per_kg"), 4)
+
+    return f"""
+    <section class="section" id="body-comp-panel">
+      <div class="section-header">
+        <div>
+          <span class="section-tag">InBody</span>
+          <h2>체성분 기반 지표</h2>
+          <p>InBody 체성분 데이터로 보정한 제지방량(LBM) 기반 퍼포먼스 지표입니다.</p>
+        </div>
+      </div>
+      <div class="kpi-grid">
+        <article class="kpi-card">
+          <span class="kpi-label">체중 (InBody)</span>
+          <strong class="kpi-value">{weight}</strong>
+          <span class="kpi-unit">kg</span>
+          <p class="kpi-note">InBody 측정값</p>
+        </article>
+        <article class="kpi-card">
+          <span class="kpi-label">제지방량 (LBM)</span>
+          <strong class="kpi-value">{lbm}</strong>
+          <span class="kpi-unit">kg</span>
+          <p class="kpi-note">체중 × (1 − 체지방%)</p>
+        </article>
+        <article class="kpi-card">
+          <span class="kpi-label">골격근량</span>
+          <strong class="kpi-value">{smm}</strong>
+          <span class="kpi-unit">kg</span>
+          <p class="kpi-note">InBody SMM</p>
+        </article>
+        <article class="kpi-card">
+          <span class="kpi-label">체지방량</span>
+          <strong class="kpi-value">{fat_mass}</strong>
+          <span class="kpi-unit">kg ({fat_pct}%)</span>
+          <p class="kpi-note">InBody 체지방</p>
+        </article>
+        <article class="kpi-card">
+          <span class="kpi-label">VO₂max / LBM</span>
+          <strong class="kpi-value">{vo2max_lbm}</strong>
+          <span class="kpi-unit">mL/min/kgFFM</span>
+          <p class="kpi-note">제지방 기준 최대산소섭취량</p>
+        </article>
+        <article class="kpi-card">
+          <span class="kpi-label">Peak Power / LBM</span>
+          <strong class="kpi-value">{pp_lbm}</strong>
+          <span class="kpi-unit">W/kgFFM</span>
+          <p class="kpi-note">제지방 기준 최고 파워</p>
+        </article>
+        <article class="kpi-card">
+          <span class="kpi-label">FatMax 효율</span>
+          <strong class="kpi-value">{fatmax_eff}</strong>
+          <span class="kpi-unit">g/min/kg지방</span>
+          <p class="kpi-note">단위 체지방당 최대 지방 산화율</p>
+        </article>
+      </div>
+    </section>"""
+
+
 def render_table(headers: list[str], rows: list[list[Any]]) -> str:
     """Render a generic striped HTML table."""
     thead = "".join(f"<th>{html_text(cell)}</th>" for cell in headers)
@@ -1594,6 +1671,7 @@ def render_html(context: dict[str, Any]) -> str:
 
     cpm_panel_section = build_cpm_panel(analysis.get("cpm_indices", {}))
     cycling_panel = build_cycling_panel(context)
+    body_comp_panel = build_body_comp_panel(analysis)
 
     blood_table = render_table(
         ["Block", "Step", "Load", "%FTP", "Duration", "HR", "Lactate", "Glucose", "Notes"],
@@ -2481,6 +2559,8 @@ def render_html(context: dict[str, Any]) -> str:
     {cpm_panel_section}
 
     {cycling_panel}
+
+    {body_comp_panel}
 
     <section class="section" id="tables">
       <div class="section-header">

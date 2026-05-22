@@ -1193,6 +1193,9 @@ async def submit(
     protocol_outline: str = Form(""),
     operator_notes: str = Form(""),
     override_duplicates: str = Form(""),
+    body_weight_kg: str = Form(""),
+    body_fat_pct: str = Form(""),
+    skeletal_muscle_mass_kg: str = Form(""),
     reanalyze: str | None = Query(default=None),
 ) -> JSONResponse:
     """Upload files, create workspace/submission/job, dispatch to channel.
@@ -1203,6 +1206,21 @@ async def submit(
     db_path = get_db_path(request)
     data_dir = get_data_dir(request)
     channel_url = get_channel_url(request)
+
+    def _parse_float(raw: str) -> float | None:
+        stripped = raw.strip()
+        if not stripped:
+            return None
+        try:
+            val = float(stripped)
+            return val if val > 0 else None
+        except ValueError:
+            return None
+
+    parsed_body_weight_kg = _parse_float(body_weight_kg)
+    parsed_body_fat_pct = _parse_float(body_fat_pct)
+    parsed_skeletal_muscle_mass_kg = _parse_float(skeletal_muscle_mass_kg)
+
     sync_submission_duplicate_metadata(db_path)
     # Reanalyze-only mode: empty multipart is allowed (skip file-pair read).
     # Non-reanalyze paths still require files (helper returns 400 on empty).
@@ -1395,6 +1413,21 @@ async def submit(
     # Build file manifest
     manifest = _build_file_manifest_from_pairs(file_pairs)
 
+    # Write InBody sidecar before dispatching so the pipeline can read it
+    if any(v is not None for v in [parsed_body_weight_kg, parsed_body_fat_pct, parsed_skeletal_muscle_mass_kg]):
+        inbody_data = {}
+        if parsed_body_weight_kg is not None:
+            inbody_data["body_weight_kg"] = parsed_body_weight_kg
+        if parsed_body_fat_pct is not None:
+            inbody_data["body_fat_pct"] = parsed_body_fat_pct
+        if parsed_skeletal_muscle_mass_kg is not None:
+            inbody_data["skeletal_muscle_mass_kg"] = parsed_skeletal_muscle_mass_kg
+        raw_dir = workspace / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        (raw_dir / "inbody.json").write_text(
+            json.dumps(inbody_data, ensure_ascii=False), encoding="utf-8"
+        )
+
     # Create submission and job
     create_submission(
         db_path,
@@ -1411,6 +1444,9 @@ async def submit(
         submission_fingerprint=submission_fingerprint,
         duplicate_confidence="exact" if any(item.get("duplicate_confidence") == "exact" for item in duplicate_candidates) else ("likely" if duplicate_candidates else ""),
         duplicate_group_key=duplicate_group_key,
+        body_weight_kg=parsed_body_weight_kg,
+        body_fat_pct=parsed_body_fat_pct,
+        skeletal_muscle_mass_kg=parsed_skeletal_muscle_mass_kg,
     )
     save_submission_files(db_path, submission_id, file_pairs)
     job_id = create_job(db_path, submission_id)
