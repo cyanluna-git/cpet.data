@@ -128,9 +128,152 @@ def _parse_lactate_md(path: Path) -> tuple[pd.DataFrame, dict[str, Any]]:
     return blood_df, subject_info
 
 
+def _parse_blt_xlsx(lt_xl: "pd.ExcelFile") -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Parse BLT multi-sheet format (Belgium Lactate Test Elite).
+
+    Sheet layout (row indices, 0-based):
+      0: "BLT Data Sheet"  (identifier)
+      1: ... Name ... <name> at col 8
+      3: headers: Test date | date | Step | Load(Watt) | Duration(min) | KST | HR | Lactate | Glucose
+      4+: data rows; col 0 may carry metadata keywords (FTP, Max HR, LT1, LT2, etc.)
+
+    Each sheet in the workbook corresponds to one subject. We parse all sheets
+    and return the combined DataFrame along with subject_info extracted from any
+    sheet that contains FTP / Max HR metadata.
+    """
+    all_samples: list[dict[str, Any]] = []
+    subject_info: dict[str, Any] = {}
+
+    def _fval(v: object) -> float | None:
+        if pd.isna(v):
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    def _sval(v: object) -> str | None:
+        if pd.isna(v):
+            return None
+        s = str(v).strip()
+        return s if s and s.lower() != "nan" else None
+
+    for sheet_name in lt_xl.sheet_names:
+        df = lt_xl.parse(sheet_name, header=None)
+        if df.empty:
+            continue
+
+        # Extract name from row 1, col 8
+        name = _sval(df.iat[1, 8]) if df.shape[1] > 8 else None
+
+        # Extract metadata from col-0 labels (FTP, Max HR, LT1, LT2)
+        meta: dict[str, float | None] = {}
+        for row_idx in range(4, len(df)):
+            label = _sval(df.iat[row_idx, 0])
+            if label is None:
+                continue
+            label_lower = label.lower()
+            val = _fval(df.iat[row_idx, 1]) if df.shape[1] > 1 else None
+            if label_lower == "ftp":
+                meta["FTP"] = val
+            elif "max hr" in label_lower:
+                meta["Max HR"] = val
+            elif label_lower.startswith("lt1"):
+                meta["예상 LT1"] = val
+            elif label_lower.startswith("lt2"):
+                meta["예상 LT2"] = val
+
+        # Extract blood samples: rows 4+ where lactate (col 7) is not NaN
+        for row_idx in range(4, len(df)):
+            step_raw = _sval(df.iat[row_idx, 2]) if df.shape[1] > 2 else None
+            load_w = _fval(df.iat[row_idx, 3]) if df.shape[1] > 3 else None
+            duration_min = _fval(df.iat[row_idx, 4]) if df.shape[1] > 4 else None
+            kst_raw = df.iat[row_idx, 5] if df.shape[1] > 5 else None
+            hr_bpm = _fval(df.iat[row_idx, 6]) if df.shape[1] > 6 else None
+            lactate = _fval(df.iat[row_idx, 7]) if df.shape[1] > 7 else None
+            glucose = _fval(df.iat[row_idx, 8]) if df.shape[1] > 8 else None
+
+            if lactate is None:
+                continue
+
+            # Determine block from step label
+            if step_raw is None or step_raw == "NaN":
+                # Post-VO2max clearance rows without a step label
+                block = "block_2"
+                step = "2-end"
+                ftp_pct = None
+            elif str(step_raw).startswith("3-"):
+                block = "block_3"
+                step = str(step_raw)
+                ftp_ratio = _fval(df.iat[row_idx, 1]) if df.shape[1] > 1 else None
+                ftp_pct = (
+                    f"{round(ftp_ratio * 100):.0f}%"
+                    if ftp_ratio is not None and ftp_ratio > 0
+                    else None
+                )
+            elif str(step_raw).startswith("2-"):
+                block = "block_2"
+                step = str(step_raw)
+                ftp_pct = None
+            elif str(step_raw).startswith("1-"):
+                block = "block_1"
+                step = str(step_raw)
+                ftp_pct = None
+            elif str(step_raw) == "0":
+                block = "rest"
+                step = "0"
+                ftp_pct = None
+            else:
+                block = "block_1"
+                step = str(step_raw)
+                ftp_pct = None
+
+            kst_str = None
+            if kst_raw is not None and not (isinstance(kst_raw, float) and pd.isna(kst_raw)):
+                kst_str = str(kst_raw).strip()
+
+            all_samples.append(
+                {
+                    "block": block,
+                    "step": step,
+                    "ftp_pct": ftp_pct,
+                    "load_w": load_w,
+                    "duration_min": duration_min,
+                    "kst_time": kst_str,
+                    "hr_bpm": hr_bpm,
+                    "lactate_mmol": lactate,
+                    "glucose_mmol": glucose,
+                    "notes": None,
+                    "_sheet": sheet_name,
+                }
+            )
+
+        # Use first sheet with metadata for subject_info
+        if name and not subject_info.get("Name"):
+            subject_info["Name"] = name
+        for key, val in meta.items():
+            if val is not None and key not in subject_info:
+                subject_info[key] = str(int(round(val)))
+
+    if not all_samples:
+        raise ValueError("No lactate samples found in BLT workbook")
+
+    blood_df = pd.DataFrame(all_samples).drop(columns=["_sheet"])
+    return blood_df, subject_info
+
+
 def _parse_lactate_xlsx(path: Path) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Parse lactate data from LT workbook XLSX format."""
     lt_xl = pd.ExcelFile(str(path))
+
+    # Detect BLT multi-sheet format (all sheets have "BLT Data Sheet" at A1)
+    preview0 = lt_xl.parse(lt_xl.sheet_names[0], header=None, nrows=1)
+    first_cell_0 = (
+        str(preview0.iat[0, 0]).strip().lower() if not preview0.empty else ""
+    )
+    if "blt data sheet" in first_cell_0:
+        return _parse_blt_xlsx(lt_xl)
+
     subject_sheet = None
     for sheet_name in lt_xl.sheet_names:
         preview = lt_xl.parse(sheet_name, header=None, nrows=2)
