@@ -289,6 +289,9 @@ def create_database(workspace: Path, parsed: ParsedData) -> Path:
 
     # --- Insert workout data ---
     if workout_df is not None and not workout_df.empty:
+        def _nullable(v: Any) -> Any:
+            return None if pd.isna(v) else v
+
         workout_rows = []
         for _, row in workout_df.iterrows():
             workout_rows.append(
@@ -298,12 +301,12 @@ def create_database(workspace: Path, parsed: ParsedData) -> Path:
                     row["elapsed_s"],
                     row.get("block", ""),
                     int(row.get("step", 0)),
-                    row.get("power_w"),
-                    row.get("target_power_w"),
-                    row.get("hr_bpm"),
-                    row.get("cadence_rpm"),
-                    row.get("speed_mps"),
-                    row.get("distance_m"),
+                    _nullable(row.get("power_w")),
+                    _nullable(row.get("target_power_w")),
+                    _nullable(row.get("hr_bpm")),
+                    _nullable(row.get("cadence_rpm")),
+                    _nullable(row.get("speed_mps")),
+                    _nullable(row.get("distance_m")),
                 )
             )
         cursor.executemany(
