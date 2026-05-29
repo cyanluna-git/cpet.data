@@ -185,11 +185,17 @@ def _parse_blt_xlsx(lt_xl: "pd.ExcelFile") -> tuple[pd.DataFrame, dict[str, Any]
 
         # Extract blood samples: rows 4+ where lactate (col 7) is not NaN
         for row_idx in range(4, len(df)):
+            # Skip QC calibration rows: col 6 contains string labels (STD, YEL, BRW)
+            # instead of a numeric HR value — these are lactate analyzer QC solutions
+            hr_raw = df.iat[row_idx, 6] if df.shape[1] > 6 else None
+            if isinstance(hr_raw, str):
+                continue
+
             step_raw = _sval(df.iat[row_idx, 2]) if df.shape[1] > 2 else None
             load_w = _fval(df.iat[row_idx, 3]) if df.shape[1] > 3 else None
             duration_min = _fval(df.iat[row_idx, 4]) if df.shape[1] > 4 else None
             kst_raw = df.iat[row_idx, 5] if df.shape[1] > 5 else None
-            hr_bpm = _fval(df.iat[row_idx, 6]) if df.shape[1] > 6 else None
+            hr_bpm = _fval(hr_raw)
             lactate = _fval(df.iat[row_idx, 7]) if df.shape[1] > 7 else None
             glucose = _fval(df.iat[row_idx, 8]) if df.shape[1] > 8 else None
 
