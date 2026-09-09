@@ -82,3 +82,10 @@ tests/e2e/.test-user-id
 tests/e2e/node_modules/
 tests/e2e/test-results/
 tests/e2e/playwright-report/
+
+# sinico 원본 반입 자료 — PHI 포함, origin 이 public 이라 추적 금지.
+# 정리 문서(README.md)만 추적한다.
+docs/sinico/**
+!docs/sinico/**/
+!docs/sinico/**/README.md
+docs/from.sinico/
